@@ -45,9 +45,9 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
-  "productName": "en-croissant",
-  "mainBinaryName": "en-croissant",
-  "identifier": "org.encroissant.app",
+  "productName": "en-croissant-dev",
+  "mainBinaryName": "en-croissant-dev",
+  "identifier": "org.encroissant.dev",
   "plugins": {
     "cli": {
       "args": [
@@ -69,7 +69,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "En Croissant",
+        "title": "En Croissant Dev",
         "visible": false,
         "decorations": true
       }
