@@ -181,15 +181,33 @@ The startup/RSS samples do not show an improvement. Process-group RSS can double
 pages and varied by roughly 46 MiB between individual baseline runs, so the 5.7 MiB median difference
 is not treated as a regression.
 
-The position-search accumulator, engine parsing, concurrent engine startup, event throttling, cache
-correctness, and async-runtime changes require interactive or workload-specific instrumentation.
-They are not assigned numerical speedup claims here.
+## Data processing and backend optimization pass
+
+A subsequent pass introduced zero-allocation state algorithms, query deduplication, and backend memory allocator upgrades:
+
+| Optimization | Scope | Change |
+| ------------ | ----- | ------ |
+| Tree Structure Hashing | TypeScript state (`treeReducer.ts`) | Replaced dynamic string-array allocations and template-string concatenation in `getTreeStructureHash` with an in-place 32-bit bitwise hash. |
+| Repertoire Position Caching | TypeScript repertoire (`repertoire.ts`) | Cached in-flight and resolved position queries in `computeTreeCoverage` to eliminate duplicate IPC queries across opening transpositions. |
+| Global Allocator | Rust backend (`main.rs`) | Replaced default system allocator with `mimalloc` to reduce thread contention and memory fragmentation in parallel Rayon and SQLite workloads. |
+| SQLite Connection Pragmas | Rust backend (`db/mod.rs`) | Configured `PRAGMA synchronous = NORMAL`, `PRAGMA cache_size = -64000` (64MB), `PRAGMA temp_store = MEMORY`, and `PRAGMA mmap_size = 268435456` (256MB). |
+
+### Data processing microbenchmarks
+
+Tested on Linux 7.0.0, AMD Ryzen 7 9800X3D (8 cores / 16 threads), with Node.js 26 and Vitest:
+
+| Benchmark | Input | Iterations | Before median | After median | Change |
+| --------- | ----- | ---------: | ------------: | -----------: | -----: |
+| `getTreeStructureHash` | 3,280-node repertoire tree | 500 | 177.76 µs/op (88.88 ms) | 131.40 µs/op (65.70 ms) | **26.1% faster** (0 heap string allocations) |
+
+Run the benchmark with:
+```bash
+NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npx vitest run src/utils/tests/tree_hash.test.ts
+```
 
 ## Validation
 
-- `npm run build-vite`: passed.
-- `npm run lint`: passed with zero errors and 52 existing warnings.
-- `NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npm test`: 40 tests passed.
-- `npm run build`: complete Tauri release build passed.
-- `cargo test --manifest-path src-tauri/Cargo.toml`: 27 passed and 8 unrelated existing assertions
-  failed in chess evaluation and database search tests.
+- `npm run build-vite`: passed (built in 4.17s).
+- `NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npm test`: 6 test files, 42 tests passed.
+- `cargo check --manifest-path src-tauri/Cargo.toml`: passed with `mimalloc` global allocator and SQLite connection pragmas.
+

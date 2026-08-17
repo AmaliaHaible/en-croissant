@@ -34,41 +34,48 @@ export async function computeTreeCoverage(
     const missingGamesMap = new Map<string, number>();
     const fenCoverageCache = new Map<string, Promise<number>>();
     const fenMissingCache = new Map<string, number>();
+    const dbMovesCache = new Map<string, Promise<{ moves: { move: string; games: number }[]; total: number }>>();
 
-    async function getDbMoves(
+    function getDbMoves(
         fen: string,
     ): Promise<{ moves: { move: string; games: number }[]; total: number }> {
-        try {
-            const [openings] = await searchPosition(
-                {
-                    path: dbPath,
-                    type: "exact",
-                    fen,
-                    color: "white",
-                    player: null,
-                    result: "any",
-                } as LocalOptions,
-                "coverage-calc",
-            );
+        const cached = dbMovesCache.get(fen);
+        if (cached) return cached;
 
-            const summary = openings.find((op) => op.move === "*");
-            const moves = openings
-                .filter((op) => op.move !== "*")
-                .map((op) => ({
-                    move: op.move,
-                    games: op.white + op.draw + op.black,
-                }));
+        const promise = (async () => {
+            try {
+                const [openings] = await searchPosition(
+                    {
+                        path: dbPath,
+                        type: "exact",
+                        fen,
+                        color: "white",
+                        player: null,
+                        result: "any",
+                    } as LocalOptions,
+                    "coverage-calc",
+                );
 
-            const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
+                const summary = openings.find((op) => op.move === "*");
+                const moves = openings
+                    .filter((op) => op.move !== "*")
+                    .map((op) => ({
+                        move: op.move,
+                        games: op.white + op.draw + op.black,
+                    }));
 
-            const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
+                const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
+                const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
+                const total = gamesEndingHere + gamesContinuing;
 
-            const total = gamesEndingHere + gamesContinuing;
+                return { moves, total };
+            } catch {
+                return { moves: [], total: 0 };
+            }
+        })();
 
-            return { moves, total };
-        } catch {
-            return { moves: [], total: 0 };
-        }
+        dbMovesCache.set(fen, promise);
+        return promise;
     }
 
     async function compute(node: TreeNode, path: number[]): Promise<number> {

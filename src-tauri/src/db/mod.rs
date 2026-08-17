@@ -170,7 +170,12 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error>
 {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
         (|| {
-            conn.batch_execute("PRAGMA journal_mode = DELETE;")?;
+            conn.batch_execute(
+                "PRAGMA synchronous = NORMAL;
+                 PRAGMA cache_size = -64000;
+                 PRAGMA temp_store = MEMORY;
+                 PRAGMA mmap_size = 268435456;",
+            )?;
             if self.enable_foreign_keys {
                 conn.batch_execute("PRAGMA foreign_keys = ON;")?;
             }

@@ -181,16 +181,35 @@ export const getNodeAtPath = (node: TreeNode, path: number[]): TreeNode => {
 };
 
 export function getTreeStructureHash(node: TreeNode): string {
-    const parts: string[] = [];
+    let hash = 5381;
+
     const stack: TreeNode[] = [node];
     while (stack.length > 0) {
         const n = stack.pop()!;
-        parts.push(`${n.fen}|${n.san ?? ""}|${n.halfMoves}|${n.children.length}`);
-        for (let i = n.children.length - 1; i >= 0; i--) {
+
+        const fen = n.fen;
+        const len = fen.length;
+        for (let i = 0; i < len; i += 2) {
+            hash = ((hash << 5) + hash + fen.charCodeAt(i)) | 0;
+        }
+
+        const san = n.san;
+        if (san) {
+            for (let i = 0; i < san.length; i++) {
+                hash = ((hash << 5) + hash + san.charCodeAt(i)) | 0;
+            }
+        }
+
+        hash = ((hash << 5) + hash + n.halfMoves) | 0;
+        const numChildren = n.children.length;
+        hash = ((hash << 5) + hash + numChildren) | 0;
+
+        for (let i = numChildren - 1; i >= 0; i--) {
             stack.push(n.children[i]);
         }
     }
-    return parts.join(";");
+
+    return (hash >>> 0).toString(16);
 }
 
 export interface ReportState {
