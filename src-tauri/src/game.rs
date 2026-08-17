@@ -555,6 +555,28 @@ pub struct GameManager {
     games: DashMap<GameId, Arc<RwLock<GameController>>>,
 }
 
+async fn initialize_game_engine(
+    player: &PlayerConfig,
+    chess960: bool,
+) -> Result<Option<Arc<Mutex<BaseEngine>>>, Error> {
+    let PlayerConfig::Engine { path, options, .. } = player else {
+        return Ok(None);
+    };
+
+    let mut engine = BaseEngine::spawn(PathBuf::from(path)).await?;
+    engine.init_uci().await?;
+    for option in options {
+        if option.name != "UCI_Chess960" {
+            engine.set_option(&option.name, &option.value).await?;
+        }
+    }
+    engine
+        .set_option("UCI_Chess960", if chess960 { "true" } else { "false" })
+        .await?;
+
+    Ok(Some(Arc::new(Mutex::new(engine))))
+}
+
 impl GameManager {
     pub fn new() -> Self {
         Self {
@@ -579,7 +601,11 @@ impl GameManager {
             config,
             polyglot_book,
             polyglot_max_ply,
-        } = apply_opening_book(config)?;
+        } = tauri::async_runtime::spawn_blocking(move || apply_opening_book(config))
+            .await
+            .map_err(|error| {
+                std::io::Error::other(format!("opening-book task failed: {error}"))
+            })??;
         let castling_mode = CastlingMode::detect(
             config
                 .clone()
@@ -594,39 +620,12 @@ impl GameManager {
         controller.polyglot_book = polyglot_book;
         controller.polyglot_max_ply = polyglot_max_ply;
 
-        if let PlayerConfig::Engine { path, options, .. } = &config.white {
-            let mut engine = BaseEngine::spawn(PathBuf::from(path)).await?;
-            engine.init_uci().await?;
-            for opt in options {
-                if opt.name == "UCI_Chess960" {
-                    continue;
-                }
-                engine.set_option(&opt.name, &opt.value).await?;
-            }
-            if castling_mode.is_chess960() {
-                engine.set_option("UCI_Chess960", "true").await?;
-            } else {
-                engine.set_option("UCI_Chess960", "false").await?;
-            }
-            controller.white_engine = Some(Arc::new(Mutex::new(engine)));
-        }
-
-        if let PlayerConfig::Engine { path, options, .. } = &config.black {
-            let mut engine = BaseEngine::spawn(PathBuf::from(path)).await?;
-            engine.init_uci().await?;
-            for opt in options {
-                if opt.name == "UCI_Chess960" {
-                    continue;
-                }
-                engine.set_option(&opt.name, &opt.value).await?;
-            }
-            if castling_mode.is_chess960() {
-                engine.set_option("UCI_Chess960", "true").await?;
-            } else {
-                engine.set_option("UCI_Chess960", "false").await?;
-            }
-            controller.black_engine = Some(Arc::new(Mutex::new(engine)));
-        }
+        let (white_engine, black_engine) = tokio::try_join!(
+            initialize_game_engine(&config.white, castling_mode.is_chess960()),
+            initialize_game_engine(&config.black, castling_mode.is_chess960()),
+        )?;
+        controller.white_engine = white_engine;
+        controller.black_engine = black_engine;
 
         controller.reset_clock();
 
@@ -1287,6 +1286,10 @@ async fn game_loop(
 
                     if ctrl.status != GameStatus::Playing {
                         break;
+                    }
+
+                    if ctrl.clock.is_none() {
+                        continue;
                     }
 
                     if let Some(result) = ctrl.check_timeout() {

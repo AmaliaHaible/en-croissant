@@ -1,6 +1,7 @@
 use log::info;
 use serde::{Deserialize, Serialize};
 use shakmaty::{fen::Fen, san::San, Chess, EnPassantMode, Position, Setup};
+use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 use specta::Type;
@@ -74,10 +75,10 @@ pub fn get_opening_from_fens(fens: Vec<String>) -> Result<String, Error> {
 }
 
 pub fn get_opening_from_setup(setup: Setup) -> Result<String, Error> {
-    OPENINGS
-        .iter()
-        .find(|o| o.setup == setup)
-        .map(|o| o.name.clone())
+    OPENINGS_BY_SETUP
+        .get(&setup)
+        .and_then(|index| OPENINGS.get(*index))
+        .map(|opening| opening.name.clone())
         .ok_or_else(|| Error::NoOpeningFound)
 }
 
@@ -166,6 +167,13 @@ lazy_static! {
         }
         positions
     };
+    static ref OPENINGS_BY_SETUP: HashMap<Setup, usize> = {
+        let mut openings = HashMap::with_capacity(OPENINGS.len());
+        for (index, opening) in OPENINGS.iter().enumerate() {
+            openings.entry(opening.setup.clone()).or_insert(index);
+        }
+        openings
+    };
 }
 
 #[cfg(test)]
@@ -178,5 +186,22 @@ mod tests {
             get_opening_from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPPKPPP/RNBQ1BNR b kq - 1 2")
                 .unwrap();
         assert_eq!(opening, "Bongcloud Attack");
+    }
+
+    #[test]
+    #[ignore = "manual performance benchmark"]
+    fn benchmark_opening_lookup() {
+        use std::{hint::black_box, time::Instant};
+
+        let setup = OPENINGS.last().unwrap().setup.clone();
+        let iterations = 100_000;
+        let start = Instant::now();
+        for _ in 0..iterations {
+            black_box(get_opening_from_setup(black_box(setup.clone())).unwrap());
+        }
+        println!(
+            "opening_lookup iterations={iterations} elapsed_ns={}",
+            start.elapsed().as_nanos()
+        );
     }
 }

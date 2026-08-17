@@ -2,11 +2,19 @@ use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::PathBuf,
+    time::SystemTime,
 };
 
 use crate::{error::Error, AppState};
 
 const GAME_OFFSET_FREQ: usize = 100;
+
+pub struct PgnIndex {
+    offsets: Vec<u64>,
+    count: i32,
+    file_len: u64,
+    modified: SystemTime,
+}
 
 struct PgnParser {
     reader: BufReader<File>,
@@ -42,10 +50,10 @@ impl PgnParser {
         }
         let pgn_offsets = wrapped_pgn_offsets.unwrap();
 
-        if offset_index == 0 || offset_index < pgn_offsets.len() {
+        if offset_index == 0 || offset_index < pgn_offsets.offsets.len() {
             let offset = match offset_index {
                 0 => self.start,
-                _ => pgn_offsets[offset_index - 1],
+                _ => pgn_offsets.offsets[offset_index - 1],
             };
 
             self.reader.seek(SeekFrom::Start(offset))?;
@@ -72,11 +80,7 @@ impl PgnParser {
 
         let mut line = String::new();
         loop {
-            let res = self.reader.read_line(&mut line);
-            if res.is_err() {
-                continue;
-            }
-            let bytes = res.unwrap();
+            let bytes = self.reader.read_line(&mut line)?;
             skipped += bytes;
             if bytes == 0 {
                 break;
@@ -111,11 +115,7 @@ impl PgnParser {
         let mut in_comment = false;
         self.game.clear();
         loop {
-            let res = self.reader.read_line(&mut self.line);
-            if res.is_err() {
-                continue;
-            }
-            let bytes = res.unwrap();
+            let bytes = self.reader.read_line(&mut self.line)?;
             if bytes == 0 {
                 break;
             }
@@ -158,6 +158,14 @@ pub async fn count_pgn_games(
     state: tauri::State<'_, AppState>,
 ) -> Result<i32, Error> {
     let files_string = file.to_string_lossy().to_string();
+    let metadata = std::fs::metadata(&file)?;
+    let modified = metadata.modified()?;
+
+    if let Some(index) = state.pgn_offsets.get(&files_string) {
+        if index.file_len == metadata.len() && index.modified == modified {
+            return Ok(index.count);
+        }
+    }
 
     let file = File::open(&file)?;
 
@@ -178,7 +186,15 @@ pub async fn count_pgn_games(
         }
     }
 
-    state.pgn_offsets.insert(files_string, offsets);
+    state.pgn_offsets.insert(
+        files_string,
+        PgnIndex {
+            offsets,
+            count,
+            file_len: metadata.len(),
+            modified,
+        },
+    );
     Ok(count)
 }
 
@@ -196,7 +212,8 @@ pub async fn read_games(
 
     parser.offset_by_index(start as usize, &state, &file.to_string_lossy().to_string())?;
 
-    let mut games: Vec<String> = Vec::with_capacity((end - start) as usize);
+    let capacity = end.saturating_sub(start).saturating_add(1).max(0) as usize;
+    let mut games: Vec<String> = Vec::with_capacity(capacity);
 
     for _ in start..=end {
         let game = parser.read_game()?;
@@ -224,6 +241,10 @@ pub async fn delete_game(
     let starting_bytes = parser.position()?;
 
     parser.skip_games(1)?;
+
+    state
+        .pgn_offsets
+        .remove(&file.to_string_lossy().to_string());
 
     let mut file_w = OpenOptions::new().write(true).open(file)?;
 
@@ -254,26 +275,33 @@ pub async fn write_game(
     }
 
     let mut file_r = File::open(&file)?;
-    let mut file_w = OpenOptions::new().write(true).open(&file)?;
-
-    let mut tmpf = tempfile::tempfile()?;
-    io::copy(&mut file_r.try_clone()?, &mut tmpf)?;
-
-    file_r.seek(SeekFrom::Start(0))?;
+    let permissions = file_r.metadata()?.permissions();
     let mut parser = PgnParser::new(file_r.try_clone()?);
 
     parser.offset_by_index(n as usize, &state, &file.to_string_lossy().to_string())?;
+    let replacement_start = parser.position()?;
 
-    tmpf.seek(SeekFrom::Start(parser.position()?))?;
-    tmpf.write_all(pgn.as_bytes())?;
+    state
+        .pgn_offsets
+        .remove(&file.to_string_lossy().to_string());
+
+    let temp_dir = file.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut replacement = tempfile::NamedTempFile::new_in(temp_dir)?;
+
+    file_r.seek(SeekFrom::Start(0))?;
+    io::copy(
+        &mut std::io::Read::by_ref(&mut file_r).take(replacement_start),
+        replacement.as_file_mut(),
+    )?;
+    replacement.write_all(pgn.as_bytes())?;
 
     parser.skip_games(1)?;
-
-    write_to_end(&mut parser.reader, &mut tmpf)?;
-
-    tmpf.seek(SeekFrom::Start(0))?;
-
-    write_to_end(&mut tmpf, &mut file_w)?;
+    io::copy(&mut parser.reader, replacement.as_file_mut())?;
+    replacement.as_file_mut().flush()?;
+    replacement.as_file_mut().set_permissions(permissions)?;
+    drop(parser);
+    drop(file_r);
+    replacement.persist(&file).map_err(|error| error.error)?;
 
     Ok(())
 }

@@ -1,4 +1,3 @@
-use dashmap::DashMap;
 use diesel::prelude::*;
 use log::info;
 use rayon::prelude::*;
@@ -9,11 +8,11 @@ use shakmaty::{
 use specta::Type;
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{BinaryHeap, HashMap},
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::Instant,
 };
@@ -34,6 +33,56 @@ use crate::{
 };
 
 use super::GameQuery;
+
+const MAX_LINE_CACHE_ENTRIES: usize = 256;
+const MAX_SEARCH_SAMPLES: usize = 500;
+
+#[derive(Default)]
+struct SearchAccumulator {
+    openings: HashMap<String, PositionStats>,
+    top_games: BinaryHeap<Reverse<(i16, i32)>>,
+}
+
+impl SearchAccumulator {
+    fn record_game(&mut self, elo: i16, id: i32) {
+        if self.top_games.len() < MAX_SEARCH_SAMPLES {
+            self.top_games.push(Reverse((elo, id)));
+        } else if let Some(&Reverse((min_elo, _))) = self.top_games.peek() {
+            if elo > min_elo {
+                self.top_games.pop();
+                self.top_games.push(Reverse((elo, id)));
+            }
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        for Reverse((elo, id)) in other.top_games {
+            self.record_game(elo, id);
+        }
+        for (move_, stats) in other.openings {
+            self.openings
+                .entry(move_)
+                .and_modify(|current| {
+                    current.white += stats.white;
+                    current.draw += stats.draw;
+                    current.black += stats.black;
+                })
+                .or_insert(stats);
+        }
+        self
+    }
+}
+
+fn cache_search_result(
+    state: &tauri::State<'_, AppState>,
+    key: (GameQuery, PathBuf, std::time::SystemTime),
+    value: (Vec<PositionStats>, Vec<NormalizedGame>),
+) {
+    if state.line_cache.len() >= MAX_LINE_CACHE_ENTRIES {
+        state.line_cache.clear();
+    }
+    state.line_cache.insert(key, value);
+}
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct ExactData {
@@ -242,6 +291,11 @@ pub async fn search_position(
     state: tauri::State<'_, AppState>,
 ) -> Result<(Vec<PositionStats>, Vec<NormalizedGame>), Error> {
     let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let cache_key = (
+        query.clone(),
+        file.clone(),
+        std::fs::metadata(&file)?.modified()?,
+    );
 
     let collision_lock = {
         let entry = state
@@ -253,8 +307,13 @@ pub async fn search_position(
 
     let _guard = collision_lock.lock().await;
 
-    if let Some(pos) = state.line_cache.get(&(query.clone(), file.clone())) {
-        return Ok(pos.clone());
+    if let Some(pos) = state.line_cache.get(&cache_key) {
+        let result = pos.clone();
+        drop(pos);
+        state
+            .search_collisions
+            .remove(&(query.clone(), file.clone()));
+        return Ok(result);
     }
 
     let start = Instant::now();
@@ -264,11 +323,16 @@ pub async fn search_position(
 
     let mmap_index = {
         let mut cache = state.db_cache.lock().unwrap();
-        if cache.is_none() {
+        let cache_is_current = cache
+            .as_ref()
+            .is_some_and(|(cached_file, _)| cached_file == &file)
+            && MmapSearchIndex::is_up_to_date(&file);
+        if !cache_is_current {
             let index_path = get_index_path(&file);
 
-            if !MmapSearchIndex::is_valid(&index_path) {
+            if !MmapSearchIndex::is_up_to_date(&file) {
                 info!("Search index not found, generating automatically...");
+                *cache = None;
                 drop(cache);
                 if let Err(e) = super::generate_search_index(&file, &state) {
                     return Err(Error::from(std::io::Error::other(format!(
@@ -287,14 +351,14 @@ pub async fn search_position(
                         index.len(),
                         start.elapsed()
                     );
-                    *cache = Some(index);
+                    *cache = Some((file.clone(), index));
                 }
                 Err(e) => {
                     return Err(Error::from(e));
                 }
             }
         }
-        cache.as_ref().unwrap().clone()
+        cache.as_ref().unwrap().1.clone()
     };
 
     let game_count = mmap_index.len();
@@ -304,14 +368,6 @@ pub async fn search_position(
         game_count,
         start.elapsed()
     );
-
-    let openings: DashMap<String, PositionStats> = DashMap::new();
-    const MAX_SAMPLES: usize = 500;
-    // Min-heap of (elo_key, game_id) to track top-rated sample games.
-    // Using Reverse so peek() returns the entry with the lowest ELO,
-    // which we can evict when a higher-rated game is found.
-    let top_games: Mutex<BinaryHeap<Reverse<(i16, i32)>>> =
-        Mutex::new(BinaryHeap::with_capacity(MAX_SAMPLES + 1));
 
     let processed = AtomicUsize::new(0);
 
@@ -330,7 +386,7 @@ pub async fn search_position(
 
     info!("start search on {tab_id}");
 
-    let process_entry = |entry: SearchGameEntryRef<'_>| {
+    let process_entry = |acc: &mut SearchAccumulator, entry: SearchGameEntryRef<'_>| {
         let index = processed.fetch_add(1, Ordering::Relaxed) + 1;
         if index.is_multiple_of(50000) {
             let _ = app.emit(
@@ -385,18 +441,9 @@ pub async fn search_position(
             if position_query.can_reach(&end_material, entry.pawn_home) {
                 if let Ok(Some(m)) = get_move_after_match(entry.moves, &entry.fen, position_query) {
                     let elo_key = entry.white_elo.max(entry.black_elo);
-                    let mut heap = top_games.lock().unwrap();
-                    if heap.len() < MAX_SAMPLES {
-                        heap.push(Reverse((elo_key, entry.id)));
-                    } else if let Some(&Reverse((min_elo, _))) = heap.peek() {
-                        if elo_key > min_elo {
-                            heap.pop();
-                            heap.push(Reverse((elo_key, entry.id)));
-                        }
-                    }
-                    drop(heap);
+                    acc.record_game(elo_key, entry.id);
 
-                    openings
+                    acc.openings
                         .entry(m)
                         .and_modify(|opening| match entry.result {
                             GameResult::WhiteWin => opening.white += 1,
@@ -419,18 +466,24 @@ pub async fn search_position(
         }
     };
 
-    mmap_index.par_iter().for_each(process_entry);
+    let results = mmap_index
+        .par_iter()
+        .fold(SearchAccumulator::default, |mut acc, entry| {
+            process_entry(&mut acc, entry);
+            acc
+        })
+        .reduce(SearchAccumulator::default, SearchAccumulator::merge);
 
-    let openings: Vec<PositionStats> = openings
+    let openings: Vec<PositionStats> = results
+        .openings
         .into_iter()
         .map(|(k, mut v)| {
             v.move_ = k;
             v
         })
         .collect();
-    let ids: Vec<i32> = top_games
-        .into_inner()
-        .unwrap()
+    let ids: Vec<i32> = results
+        .top_games
         .into_iter()
         .map(|Reverse((_, id))| id)
         .collect();
@@ -449,8 +502,9 @@ pub async fn search_position(
     let normalized_games = normalize_games(games);
     let file_path = file.clone();
 
-    state.line_cache.insert(
-        (query.clone(), file),
+    cache_search_result(
+        &state,
+        cache_key,
         (openings.clone(), normalized_games.clone()),
     );
 
@@ -466,6 +520,11 @@ pub async fn is_position_in_db(
     query: GameQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<bool, Error> {
+    let cache_key = (
+        query.clone(),
+        file.clone(),
+        std::fs::metadata(&file)?.modified()?,
+    );
     let collision_lock = {
         let entry = state
             .search_collisions
@@ -476,8 +535,13 @@ pub async fn is_position_in_db(
 
     let _guard = collision_lock.lock().await;
 
-    if let Some(pos) = state.line_cache.get(&(query.clone(), file.clone())) {
-        return Ok(!pos.0.is_empty());
+    if let Some(pos) = state.line_cache.get(&cache_key) {
+        let exists = !pos.0.is_empty();
+        drop(pos);
+        state
+            .search_collisions
+            .remove(&(query.clone(), file.clone()));
+        return Ok(exists);
     }
 
     let parsed_position_query: Option<PositionQuery> = if let Some(pq) = &query.position {
@@ -493,11 +557,16 @@ pub async fn is_position_in_db(
 
     let mmap_index = {
         let mut cache = state.db_cache.lock().unwrap();
-        if cache.is_none() {
+        let cache_is_current = cache
+            .as_ref()
+            .is_some_and(|(cached_file, _)| cached_file == &file)
+            && MmapSearchIndex::is_up_to_date(&file);
+        if !cache_is_current {
             let index_path = get_index_path(&file);
 
-            if !MmapSearchIndex::is_valid(&index_path) {
+            if !MmapSearchIndex::is_up_to_date(&file) {
                 info!("Search index not found, generating automatically...");
+                *cache = None;
                 drop(cache);
                 if let Err(e) = super::generate_search_index(&file, &state) {
                     return Err(Error::from(std::io::Error::other(format!(
@@ -516,14 +585,14 @@ pub async fn is_position_in_db(
                         index.len(),
                         start.elapsed()
                     );
-                    *cache = Some(index);
+                    *cache = Some((file.clone(), index));
                 }
                 Err(e) => {
                     return Err(Error::from(e));
                 }
             }
         }
-        cache.as_ref().unwrap().clone()
+        cache.as_ref().unwrap().1.clone()
     };
 
     let check_entry = |entry: SearchGameEntryRef<'_>| -> bool {
@@ -546,9 +615,7 @@ pub async fn is_position_in_db(
     info!("finished search in {:?}", start.elapsed());
 
     if !exists {
-        state
-            .line_cache
-            .insert((query.clone(), file.clone()), (vec![], vec![]));
+        cache_search_result(&state, cache_key, (vec![], vec![]));
     }
 
     state.search_collisions.remove(&(query, file));

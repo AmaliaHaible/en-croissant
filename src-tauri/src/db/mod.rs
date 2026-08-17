@@ -35,6 +35,7 @@ use shakmaty::{
 };
 use specta::Type;
 use std::{
+    collections::HashMap,
     fs::{remove_file, File, OpenOptions},
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
@@ -81,6 +82,54 @@ const BLACK_PAWN: Piece = Piece {
 
 type MaterialCount = ByColor<u8>;
 
+#[derive(Default)]
+struct ImportLookupCache {
+    players: HashMap<String, i32>,
+    events: HashMap<String, i32>,
+    sites: HashMap<String, i32>,
+}
+
+impl ImportLookupCache {
+    fn player_id(
+        &mut self,
+        db: &mut SqliteConnection,
+        name: &str,
+    ) -> Result<i32, diesel::result::Error> {
+        if let Some(id) = self.players.get(name) {
+            return Ok(*id);
+        }
+        let id = create_player(db, name)?.id;
+        self.players.insert(name.to_string(), id);
+        Ok(id)
+    }
+
+    fn event_id(
+        &mut self,
+        db: &mut SqliteConnection,
+        name: &str,
+    ) -> Result<i32, diesel::result::Error> {
+        if let Some(id) = self.events.get(name) {
+            return Ok(*id);
+        }
+        let id = create_event(db, name)?.id;
+        self.events.insert(name.to_string(), id);
+        Ok(id)
+    }
+
+    fn site_id(
+        &mut self,
+        db: &mut SqliteConnection,
+        name: &str,
+    ) -> Result<i32, diesel::result::Error> {
+        if let Some(id) = self.sites.get(name) {
+            return Ok(*id);
+        }
+        let id = create_site(db, name)?.id;
+        self.sites.insert(name.to_string(), id);
+        Ok(id)
+    }
+}
+
 fn get_material_count(board: &Board) -> MaterialCount {
     board.material().map(|material| {
         material.pawn
@@ -102,14 +151,7 @@ fn get_pawn_home(board: &Board) -> u16 {
 }
 
 #[derive(Debug)]
-pub enum JournalMode {
-    Delete,
-    Off,
-}
-
-#[derive(Debug)]
 pub struct ConnectionOptions {
-    pub journal_mode: JournalMode,
     pub enable_foreign_keys: bool,
     pub busy_timeout: Option<Duration>,
 }
@@ -117,7 +159,6 @@ pub struct ConnectionOptions {
 impl Default for ConnectionOptions {
     fn default() -> Self {
         Self {
-            journal_mode: JournalMode::Delete,
             enable_foreign_keys: true,
             busy_timeout: Some(Duration::from_secs(30)),
         }
@@ -129,10 +170,7 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error>
 {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
         (|| {
-            match self.journal_mode {
-                JournalMode::Delete => conn.batch_execute("PRAGMA journal_mode = DELETE;")?,
-                JournalMode::Off => conn.batch_execute("PRAGMA journal_mode = OFF;")?,
-            }
+            conn.batch_execute("PRAGMA journal_mode = DELETE;")?;
             if self.enable_foreign_keys {
                 conn.batch_execute("PRAGMA foreign_keys = ON;")?;
             }
@@ -220,28 +258,32 @@ pub struct TempGame {
 }
 
 impl TempGame {
-    pub fn insert_to_db(&self, db: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
+    fn insert_to_db(
+        &self,
+        db: &mut SqliteConnection,
+        lookup: &mut ImportLookupCache,
+    ) -> Result<(), diesel::result::Error> {
         let pawn_home = get_pawn_home(self.position.board());
 
         let white_id = if let Some(name) = &self.white_name {
-            create_player(db, name)?.id
+            lookup.player_id(db, name)?
         } else {
             0
         };
         let black_id = if let Some(name) = &self.black_name {
-            create_player(db, name)?.id
+            lookup.player_id(db, name)?
         } else {
             0
         };
 
         let event_id = if let Some(name) = &self.event_name {
-            create_event(db, name)?.id
+            lookup.event_id(db, name)?
         } else {
             0
         };
 
         let site_id = if let Some(name) = &self.site_name {
-            create_site(db, name)?.id
+            lookup.site_id(db, name)?
         } else {
             0
         };
@@ -498,7 +540,6 @@ pub async fn convert_pgn(
     app: tauri::AppHandle,
     title: String,
     description: Option<String>,
-    state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
     if files.is_empty() {
         return Ok(());
@@ -507,17 +548,17 @@ pub async fn convert_pgn(
     let description = description.unwrap_or_default();
 
     let db_exists = db_path.exists();
+    let db_path_string = db_path.to_string_lossy().into_owned();
 
-    // create the database file
-    let db = &mut get_db_or_create(
-        &state,
-        db_path.to_str().unwrap(),
-        ConnectionOptions {
-            enable_foreign_keys: false,
-            busy_timeout: None,
-            journal_mode: JournalMode::Off,
-        },
+    // Bulk imports use an isolated connection so their speed-oriented SQLite
+    // pragmas cannot leak into the interactive connection pool (or vice versa).
+    let mut connection = SqliteConnection::establish(&db_path_string)?;
+    connection.batch_execute(
+        "PRAGMA journal_mode = OFF;
+         PRAGMA foreign_keys = OFF;
+         PRAGMA busy_timeout = 0;",
     )?;
+    let db = &mut connection;
 
     if !db_exists {
         db.batch_execute(CREATE_TABLES_SQL)?;
@@ -535,6 +576,7 @@ pub async fn convert_pgn(
     let start = Instant::now();
 
     let mut imported_games = 0usize;
+    let mut lookup = ImportLookupCache::default();
 
     for file_path in files {
         let current_file_name = file_path
@@ -572,7 +614,7 @@ pub async fn convert_pgn(
                     )
                     .unwrap();
                 }
-                game.insert_to_db(db)?;
+                game.insert_to_db(db, &mut lookup)?;
                 file_imported_games += 1;
             }
             Ok(())
@@ -1455,8 +1497,8 @@ pub async fn get_players_game_info(
                     }
                 })?;
 
-                let mut setups = vec![];
                 let mut chess = Chess::default();
+                let mut opening = String::new();
                 for (i, byte) in iter_mainline_move_bytes(moves).enumerate() {
                     if i > 54 {
                         // max length of opening in data
@@ -1466,14 +1508,12 @@ pub async fn get_players_game_info(
                         break;
                     };
                     chess.play_unchecked(&m);
-                    setups.push(chess.clone().into_setup(EnPassantMode::Legal));
+                    if let Ok(name) =
+                        get_opening_from_setup(chess.clone().into_setup(EnPassantMode::Legal))
+                    {
+                        opening = name;
+                    }
                 }
-
-                setups.reverse();
-                let opening = setups
-                    .iter()
-                    .find_map(|setup| get_opening_from_setup(setup.clone()).ok())
-                    .unwrap_or_default();
 
                 let p = progress.fetch_add(1, Ordering::Relaxed);
                 if p.is_multiple_of(1000) || p == info.len() - 1 {
@@ -1896,8 +1936,10 @@ pub async fn merge_players(
 #[tauri::command]
 #[specta::specta]
 pub fn clear_games(state: tauri::State<'_, AppState>) {
-    let mut state = state.db_cache.lock().unwrap();
-    *state = None;
+    let mut db_cache = state.db_cache.lock().unwrap();
+    *db_cache = None;
+    drop(db_cache);
+    state.line_cache.clear();
 }
 
 #[tauri::command]
@@ -1908,18 +1950,29 @@ pub async fn preload_reference_db(
 ) -> Result<(), Error> {
     let index_path = get_index_path(&file);
 
-    if !MmapSearchIndex::is_valid(&index_path) {
+    if !MmapSearchIndex::is_up_to_date(&file) {
         info!("Search index not found for reference database, generating...");
+        let mut cache = state.db_cache.lock().unwrap();
+        if cache
+            .as_ref()
+            .is_some_and(|(cached_file, _)| cached_file == &file)
+        {
+            *cache = None;
+        }
+        drop(cache);
         generate_search_index(&file, &state)?;
     }
 
     let mut cache = state.db_cache.lock().unwrap();
-    if cache.is_none() {
+    let cache_is_current = cache
+        .as_ref()
+        .is_some_and(|(cached_file, _)| cached_file == &file);
+    if !cache_is_current {
         info!("Preloading reference database from {:?}", index_path);
         match MmapSearchIndex::open(&index_path) {
             Ok(index) => {
                 info!("Preloaded reference database with {} games", index.len());
-                *cache = Some(index);
+                *cache = Some((file, index));
             }
             Err(e) => {
                 return Err(Error::from(e));
@@ -2186,5 +2239,26 @@ mod tests {
         assert_eq!(event_count, 1, "Only Unknown should remain");
         let site_count: i64 = sites::table.count().get_result(db).unwrap();
         assert_eq!(site_count, 1, "Only Unknown should remain");
+    }
+
+    #[test]
+    #[ignore = "manual performance benchmark"]
+    fn benchmark_repeated_import_metadata_lookup() {
+        use std::{hint::black_box, time::Instant};
+
+        let db = &mut setup_test_db();
+        let mut lookup = ImportLookupCache::default();
+        let iterations = 10_000;
+        let start = Instant::now();
+        for _ in 0..iterations {
+            black_box(lookup.player_id(db, "White").unwrap());
+            black_box(lookup.player_id(db, "Black").unwrap());
+            black_box(lookup.event_id(db, "Event").unwrap());
+            black_box(lookup.site_id(db, "Site").unwrap());
+        }
+        println!(
+            "import_metadata iterations={iterations} elapsed_ns={}",
+            start.elapsed().as_nanos()
+        );
     }
 }

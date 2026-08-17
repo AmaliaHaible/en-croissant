@@ -5,7 +5,7 @@ use std::{
 };
 
 use log::info;
-use reqwest::{header::HeaderMap, Client};
+use reqwest::header::HeaderMap;
 use specta::Type;
 
 #[cfg(unix)]
@@ -16,6 +16,7 @@ use futures_util::StreamExt;
 use crate::error::Error;
 use crate::progress::update_progress;
 use crate::AppState;
+use std::time::{Duration, Instant};
 
 #[tauri::command]
 #[specta::specta]
@@ -31,7 +32,7 @@ pub async fn download_file(
 ) -> Result<(), Error> {
     let finalize = finalize.unwrap_or(true);
     info!("Downloading file from {}", url);
-    let client = Client::new();
+    let client = state.http_client.clone();
 
     let mut req = client.get(&url);
     // add Bearer if token is present
@@ -50,6 +51,8 @@ pub async fn download_file(
     let mut file: Vec<u8> = Vec::new();
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
+    let mut last_reported_progress = -1.0_f32;
+    let mut last_progress_update = Instant::now();
 
     while let Some(item) = stream.next().await {
         let chunk = item?;
@@ -57,7 +60,13 @@ pub async fn download_file(
         downloaded += chunk.len() as u64;
         if let Some(total_size) = total_size {
             let progress = ((downloaded as f32 / total_size as f32) * 100.0).min(100.0);
-            update_progress(&state.progress_state, &app, id.clone(), progress, false)?;
+            if progress - last_reported_progress >= 0.5
+                || last_progress_update.elapsed() >= Duration::from_millis(100)
+            {
+                update_progress(&state.progress_state, &app, id.clone(), progress, false)?;
+                last_reported_progress = progress;
+                last_progress_update = Instant::now();
+            }
         }
     }
 
@@ -66,10 +75,23 @@ pub async fn download_file(
     info!("Downloaded file to {}", path.display());
 
     if url.ends_with(".zip") {
-        unzip_file(path, file).await?;
+        let path = path.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || unzip_file(&path, file))
+            .await
+            .map_err(|error| {
+                std::io::Error::other(format!("archive extraction task failed: {error}"))
+            })??;
     } else if url.ends_with(".tar") {
-        let mut archive = tar::Archive::new(Cursor::new(file));
-        archive.unpack(path)?;
+        let path = path.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), Error> {
+            let mut archive = tar::Archive::new(Cursor::new(file));
+            archive.unpack(path)?;
+            Ok(())
+        })
+        .await
+        .map_err(|error| {
+            std::io::Error::other(format!("archive extraction task failed: {error}"))
+        })??;
     } else {
         std::fs::write(path, file)?
     }
@@ -81,7 +103,7 @@ pub async fn download_file(
     Ok(())
 }
 
-pub async fn unzip_file(path: &Path, file: Vec<u8>) -> Result<(), Error> {
+pub fn unzip_file(path: &Path, file: Vec<u8>) -> Result<(), Error> {
     let mut archive = zip::ZipArchive::new(Cursor::new(file))?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;

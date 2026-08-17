@@ -20,6 +20,7 @@ mod sound;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use chess::{BestMovesPayload, EngineProcess};
 use dashmap::DashMap;
@@ -32,7 +33,7 @@ use log::LevelFilter;
 use oauth::AuthState;
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use sysinfo::SystemExt;
+use sysinfo::{RefreshKind, SystemExt};
 use tauri::{Manager, Window};
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -80,19 +81,22 @@ pub struct AppState {
         String,
         diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::SqliteConnection>>,
     >,
-    line_cache: DashMap<(GameQuery, PathBuf), (Vec<PositionStats>, Vec<NormalizedGame>)>,
-    db_cache: Mutex<Option<MmapSearchIndex>>,
+    line_cache:
+        DashMap<(GameQuery, PathBuf, SystemTime), (Vec<PositionStats>, Vec<NormalizedGame>)>,
+    db_cache: Mutex<Option<(PathBuf, MmapSearchIndex)>>,
     #[derivative(Default(value = "Arc::new(Semaphore::new(2))"))]
     new_request: Arc<Semaphore>,
     #[derivative(Default(value = "DashMap::new()"))]
     search_collisions: DashMap<(GameQuery, PathBuf), Arc<tokio::sync::Mutex<()>>>,
-    pgn_offsets: DashMap<String, Vec<u64>>,
+    pgn_offsets: DashMap<String, pgn::PgnIndex>,
 
     engine_processes: DashMap<(String, String), Arc<tokio::sync::Mutex<EngineProcess>>>,
     analysis_cancel_flags: DashMap<String, Arc<AtomicBool>>,
     auth: AuthState,
     game_manager: GameManager,
     progress_state: ProgressStore,
+    #[derivative(Default(value = "reqwest::Client::new()"))]
+    http_client: reqwest::Client,
 }
 
 #[tauri::command]
@@ -272,6 +276,7 @@ fn is_bmi2_compatible() -> bool {
 #[tauri::command]
 #[specta::specta]
 fn memory_size() -> u32 {
-    let total_bytes = sysinfo::System::new_all().total_memory();
+    let total_bytes =
+        sysinfo::System::new_with_specifics(RefreshKind::new().with_memory()).total_memory();
     (total_bytes / 1024 / 1024) as u32
 }
