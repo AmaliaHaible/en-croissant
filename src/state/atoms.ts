@@ -107,6 +107,9 @@ export const storedEnginesDirAtom = atomWithStorage<string>("engines-dir", "", u
 export const storedPuzzlesDirAtom = atomWithStorage<string>("puzzles-dir", "", undefined, {
     getOnInit: true,
 });
+export const storedSyzygyPathAtom = atomWithStorage<string>("syzygy-path", "", undefined, {
+    getOnInit: true,
+});
 
 async function ensureParentDir(path: string): Promise<void> {
     const separator = path.includes("\\") ? "\\" : "/";

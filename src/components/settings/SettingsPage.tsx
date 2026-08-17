@@ -58,9 +58,14 @@ import {
   storedDocumentDirAtom,
   storedEnginesDirAtom,
   storedPuzzlesDirAtom,
+  storedSyzygyPathAtom,
+  enginesAtom,
   telemetryEnabledAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
+import { applySyzygyPathToAllEngines } from "@/utils/engines";
+import { notifications } from "@mantine/notifications";
+import { platform } from "@tauri-apps/plugin-os";
 import FileInput from "../common/FileInput";
 import BoardSelect from "./BoardSelect";
 import ColorControl from "./ColorControl";
@@ -170,6 +175,22 @@ export default function Page() {
   enginesDirectory = enginesDirectory || defaultEnginesDir;
   let [puzzlesDirectory, setPuzzlesDirectory] = useAtom(storedPuzzlesDirAtom);
   puzzlesDirectory = puzzlesDirectory || defaultPuzzlesDir;
+  const [syzygyPath, setSyzygyPath] = useAtom(storedSyzygyPathAtom);
+  const [, setEngines] = useAtom(enginesAtom);
+
+  const syzygySeparator = platform() === "windows" ? ";" : ":";
+  const updateSyzygyPath = (newPath: string) => {
+    setSyzygyPath(newPath);
+    setEngines(async (prev) => applySyzygyPathToAllEngines(await prev, newPath));
+    notifications.show({
+      title: t("Settings.Directories.Syzygy", { defaultValue: "Syzygy Tablebase Path" }),
+      message: newPath
+        ? t("Engines.Syzygy.AppliedToAll", {
+            defaultValue: "Applied Syzygy tablebase path to all supported engines",
+          })
+        : t("Engines.Syzygy.Cleared", { defaultValue: "Cleared global Syzygy tablebase path" }),
+    });
+  };
 
   const [moveMethod, setMoveMethod] = useAtom(moveMethodAtom);
   const [moveNotationType, setMoveNotationType] = useAtom(moveNotationTypeAtom);
@@ -611,6 +632,44 @@ export default function Page() {
           />
         ),
       },
+      {
+        id: "syzygy-directory",
+        category: "directories",
+        title: t("Settings.Directories.Syzygy", { defaultValue: "Syzygy Tablebase Path" }),
+        description: t("Settings.Directories.Syzygy.Desc", {
+          defaultValue:
+            "Global path to endgame tablebases (.rtbw/.rtbz). When configured, this path is automatically applied to all supported engines.",
+        }),
+        keywords: ["syzygy", "tablebase", "endgame", "directory", "folder", "path", "engines"],
+        render: () => (
+          <Group gap="xs" wrap="nowrap">
+            <FileInput
+              onClick={async () => {
+                const selected = await open({
+                  multiple: true,
+                  directory: true,
+                });
+                if (!selected) return;
+                const directories = Array.isArray(selected) ? selected : [selected];
+                const newPath = directories.join(syzygySeparator);
+                updateSyzygyPath(newPath);
+              }}
+              filename={syzygyPath || null}
+            />
+            {syzygyPath && (
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size="lg"
+                title={t("Common.Clear", { defaultValue: "Clear" })}
+                onClick={() => updateSyzygyPath("")}
+              >
+                <IconReload size="1.1rem" />
+              </ActionIcon>
+            )}
+          </Group>
+        ),
+      },
       // Privacy settings
       {
         id: "telemetry",
@@ -633,6 +692,8 @@ export default function Page() {
       databasesDirectory,
       enginesDirectory,
       puzzlesDirectory,
+      syzygyPath,
+      syzygySeparator,
       setMoveNotationType,
       setMoveMethod,
       setIsNative,
@@ -644,6 +705,7 @@ export default function Page() {
       setMaterialDisplay,
       practiceAutoDifficulty,
       setPracticeAutoDifficulty,
+      updateSyzygyPath,
     ],
   );
 

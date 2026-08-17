@@ -41,9 +41,11 @@ import { useTranslation } from "react-i18next";
 import useSWRImmutable from "swr/immutable";
 import { match, P } from "ts-pattern";
 import { commands } from "@/bindings";
+import { notifications } from "@mantine/notifications";
 import { Route } from "@/routes/engines";
-import { enginesAtom } from "@/state/atoms";
+import { enginesAtom, storedSyzygyPathAtom } from "@/state/atoms";
 import {
+  applySyzygyPathToAllEngines,
   type Engine,
   engineSchema,
   type LocalEngine,
@@ -271,6 +273,7 @@ function EngineSettings({
   const { t } = useTranslation();
 
   const [engines, setEngines] = useAtom(enginesAtom);
+  const [globalSyzygyPath, setGlobalSyzygyPath] = useAtom(storedSyzygyPathAtom);
   const engine = engines![selected] as LocalEngine;
   const { data: options } = useSWRImmutable(["engine-config", engine.path], async ([, path]) => {
     return unwrap(await commands.getEngineConfig(path));
@@ -301,11 +304,24 @@ function EngineSettings({
           }
         }
       }
-      if (missing.length > 0) {
+      const syzygyOption = options.options.find(
+        (option) => option.value.name.toLowerCase() === "syzygypath",
+      );
+      if (
+        syzygyOption &&
+        globalSyzygyPath &&
+        !settings.find((setting) => setting.name.toLowerCase() === "syzygypath")
+      ) {
+        settings.push({
+          name: syzygyOption.value.name,
+          value: globalSyzygyPath,
+        });
+      }
+      if (missing.length > 0 || (syzygyOption && globalSyzygyPath)) {
         setEngine({ ...engine, settings });
       }
     }
-  }, [options]);
+  }, [options, globalSyzygyPath]);
 
   const completeOptions =
     options?.options
@@ -461,31 +477,70 @@ function EngineSettings({
                 .with({ type: "string", value: P.select() }, (v: any) => {
                   if (v.name.toLowerCase() === "syzygypath") {
                     return (
-                      <Group key={v.name} align="end" wrap="nowrap">
-                        <TextInput
-                          flex={1}
-                          label={v.name}
-                          placeholder={`/path/to/tb${syzygyPathSeparator}/path/to/tb2`}
-                          value={v.value || ""}
-                          onChange={(e) => setSetting(v.name, e.currentTarget.value, v.default)}
-                        />
-                        <Button
-                          variant="default"
-                          leftSection={<IconFolder size="1rem" />}
-                          onClick={async () => {
-                            const selected = await open({
-                              multiple: true,
-                              directory: true,
-                            });
-                            if (!selected) return;
+                      <Stack key={v.name} gap="xs">
+                        <Group align="end" wrap="nowrap">
+                          <TextInput
+                            flex={1}
+                            label={v.name}
+                            placeholder={`/path/to/tb${syzygyPathSeparator}/path/to/tb2`}
+                            value={v.value || ""}
+                            onChange={(e) => setSetting(v.name, e.currentTarget.value, v.default)}
+                          />
+                          <Button
+                            variant="default"
+                            leftSection={<IconFolder size="1rem" />}
+                            onClick={async () => {
+                              const selected = await open({
+                                multiple: true,
+                                directory: true,
+                              });
+                              if (!selected) return;
 
-                            const directories = Array.isArray(selected) ? selected : [selected];
-                            setSetting(v.name, directories.join(syzygyPathSeparator), v.default);
-                          }}
-                        >
-                          {t("Common.Open")}
-                        </Button>
-                      </Group>
+                              const directories = Array.isArray(selected) ? selected : [selected];
+                              const newPath = directories.join(syzygyPathSeparator);
+                              setSetting(v.name, newPath, v.default);
+                            }}
+                          >
+                            {t("Common.Open")}
+                          </Button>
+                        </Group>
+                        <Group gap="xs">
+                          {v.value && (
+                            <Button
+                              size="xs"
+                              variant="light"
+                              onClick={() => {
+                                setGlobalSyzygyPath(v.value);
+                                setEngines(async (prev) =>
+                                  applySyzygyPathToAllEngines(await prev, v.value),
+                                );
+                                notifications.show({
+                                  title: "Syzygy Tablebase Path",
+                                  message:
+                                    "Applied tablebase path to all supported engines and saved globally",
+                                });
+                              }}
+                            >
+                              {t("Engines.Syzygy.ApplyToAll", {
+                                defaultValue: "Apply to all engines (Global)",
+                              })}
+                            </Button>
+                          )}
+                          {globalSyzygyPath && v.value !== globalSyzygyPath && (
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              onClick={() => {
+                                setSetting(v.name, globalSyzygyPath, v.default);
+                              }}
+                            >
+                              {t("Engines.Syzygy.UseGlobal", {
+                                defaultValue: `Use global path`,
+                              })}
+                            </Button>
+                          )}
+                        </Group>
+                      </Stack>
                     );
                   }
                   if (v.name.toLowerCase().includes("file")) {

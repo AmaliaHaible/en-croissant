@@ -10,6 +10,9 @@ import { usePlatform } from "@/utils/files";
 import { unwrap } from "@/utils/unwrap";
 import FileInput from "../common/FileInput";
 
+import { useAtom } from "jotai";
+import { storedSyzygyPathAtom } from "@/state/atoms";
+
 export default function EngineForm({
   onSubmit,
   form,
@@ -20,15 +23,23 @@ export default function EngineForm({
   submitLabel: string;
 }) {
   const { t } = useTranslation();
+  const [syzygyPath] = useAtom(storedSyzygyPathAtom);
 
   const { os } = usePlatform();
   const config = useRef<{ name: string; options: UciOptionConfig[] } | null>(null);
   const settings = config.current?.options
-    .filter((o) => requiredEngineSettings.includes(o.value.name))
+    .filter(
+      (o) =>
+        requiredEngineSettings.includes(o.value.name) ||
+        o.value.name.toLowerCase() === "syzygypath",
+    )
     .filter((o) => o.type !== "button")
     .map((o) => ({
       name: o.value.name,
-      value: o.value.default as string | number | boolean,
+      value:
+        o.value.name.toLowerCase() === "syzygypath" && syzygyPath
+          ? syzygyPath
+          : (o.value.default as string | number | boolean),
     }));
 
   const filters = match(os)

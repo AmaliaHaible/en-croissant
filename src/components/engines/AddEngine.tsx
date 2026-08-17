@@ -20,7 +20,7 @@ import { useAtom } from "jotai";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { commands } from "@/bindings";
-import { enginesAtom } from "@/state/atoms";
+import { enginesAtom, storedSyzygyPathAtom } from "@/state/atoms";
 import { getEnginesDir } from "@/utils/directories";
 import {
   type LocalEngine,
@@ -221,6 +221,7 @@ function EngineCard({
 
   const [inProgress, setInProgress] = useState<boolean>(false);
   const [, setEngines] = useAtom(enginesAtom);
+  const [syzygyPath] = useAtom(storedSyzygyPathAtom);
   const downloadEngine = useCallback(
     async (id: number, url: string) => {
       setInProgress(true);
@@ -237,6 +238,20 @@ function EngineCard({
       const enginePath = await join(enginesDirPath, ...engine.path.split("/"));
       await commands.setFileAsExecutable(enginePath);
       const config = unwrap(await commands.getEngineConfig(enginePath));
+      const initialSettings = config.options
+        .filter((o) => requiredEngineSettings.includes(o.value.name))
+        .map((o) => ({
+          name: o.value.name,
+          // @ts-expect-error
+          value: o.value.default,
+        }));
+      const hasSyzygy = config.options.some((o) => o.value.name.toLowerCase() === "syzygypath");
+      if (hasSyzygy && syzygyPath) {
+        initialSettings.push({
+          name: "SyzygyPath",
+          value: syzygyPath,
+        });
+      }
       setEngines(async (prev) => [
         ...(await prev),
         {
@@ -245,17 +260,11 @@ function EngineCard({
           type: "local",
           path: enginePath,
           loaded: true,
-          settings: config.options
-            .filter((o) => requiredEngineSettings.includes(o.value.name))
-            .map((o) => ({
-              name: o.value.name,
-              // @ts-expect-error
-              value: o.value.default,
-            })),
+          settings: initialSettings,
         },
       ]);
     },
-    [engine, setEngines],
+    [engine, setEngines, syzygyPath],
   );
 
   return (
