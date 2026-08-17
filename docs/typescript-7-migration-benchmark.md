@@ -8,10 +8,10 @@ stable TypeScript 7. It was recorded while migrating the project on branch
 
 ## Versions
 
-| Variant | Package | Compiler version | Command |
-| --- | --- | --- | --- |
+| Variant | Package                      | Compiler version       | Command         |
+| ------- | ---------------------------- | ---------------------- | --------------- |
 | Preview | `@typescript/native-preview` | `7.0.0-dev.20260306.1` | `tsgo --noEmit` |
-| Stable | `typescript` | `7.0.2` | `tsc --noEmit` |
+| Stable  | `typescript`                 | `7.0.2`                | `tsc --noEmit`  |
 
 Both variants used Vite 8.0.0 for the full frontend build.
 
@@ -42,16 +42,16 @@ is the highest resident-memory measurement observed across the runs.
 
 ## Results
 
-| Measurement | TS7 preview | TS7 stable | Change |
-| --- | ---: | ---: | ---: |
-| Type-check median wall time | 0.120 s | 0.110 s | 8.3% faster |
-| Type-check mean wall time | 0.122 s | 0.112 s | 8.2% faster |
-| Type-check aggregate CPU | 737.7% | 657.1% | 80.6 percentage points lower |
-| Type-check peak RSS | 338.7 MiB | 270.3 MiB | 20.2% lower |
-| Frontend-build median wall time | 5.720 s | 5.720 s | No measured change |
-| Frontend-build mean wall time | 5.737 s | 5.727 s | 0.2% faster |
-| Frontend-build aggregate CPU | 175.1% | 174.0% | 1.1 percentage points lower |
-| Frontend-build peak RSS | 1463.8 MiB | 1559.0 MiB | 6.5% higher |
+| Measurement                     | TS7 preview | TS7 stable |                       Change |
+| ------------------------------- | ----------: | ---------: | ---------------------------: |
+| Type-check median wall time     |     0.120 s |    0.110 s |                  8.3% faster |
+| Type-check mean wall time       |     0.122 s |    0.112 s |                  8.2% faster |
+| Type-check aggregate CPU        |      737.7% |     657.1% | 80.6 percentage points lower |
+| Type-check peak RSS             |   338.7 MiB |  270.3 MiB |                  20.2% lower |
+| Frontend-build median wall time |     5.720 s |    5.720 s |           No measured change |
+| Frontend-build mean wall time   |     5.737 s |    5.727 s |                  0.2% faster |
+| Frontend-build aggregate CPU    |      175.1% |     174.0% |  1.1 percentage points lower |
+| Frontend-build peak RSS         |  1463.8 MiB | 1559.0 MiB |                  6.5% higher |
 
 Stable TypeScript 7 type-checking was approximately 8% faster and used 20% less peak resident
 memory in this sample. End-to-end frontend build time was unchanged because the Vite portion
