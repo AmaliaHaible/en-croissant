@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Badge,
   Button,
   Center,
   Checkbox,
@@ -24,13 +25,16 @@ import {
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
 import {
+  IconCheck,
   IconCloud,
   IconCopy,
   IconCpu,
+  IconDatabase,
   IconFolder,
   IconPhotoPlus,
   IconPlus,
   IconSearch,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { platform } from "@tauri-apps/plugin-os";
@@ -59,6 +63,92 @@ import LocalImage from "../common/LocalImage";
 import OpenFolderButton from "../common/OpenFolderButton";
 import LinesSlider from "../panels/analysis/LinesSlider";
 import AddEngine from "./AddEngine";
+
+function GlobalTablebaseSection() {
+  const { t } = useTranslation();
+  const [syzygyPath, setSyzygyPath] = useAtom(storedSyzygyPathAtom);
+  const [engines, setEngines] = useAtom(enginesAtom);
+  const syzygyPathSeparator = platform() === "windows" ? ";" : ":";
+
+  const supportedEnginesCount = useMemo(() => {
+    return (engines ?? []).filter((e) => e.type === "local").length;
+  }, [engines]);
+
+  const selectDirectory = async () => {
+    const selected = await open({
+      multiple: true,
+      directory: true,
+    });
+    if (!selected) return;
+    const directories = Array.isArray(selected) ? selected : [selected];
+    const newPath = directories.join(syzygyPathSeparator);
+    setSyzygyPath(newPath);
+    setEngines(async (prev) => applySyzygyPathToAllEngines(await prev, newPath));
+    notifications.show({
+      title: "Syzygy Tablebase",
+      message: `Tablebase path applied across ${supportedEnginesCount} local engines.`,
+    });
+  };
+
+  const clearPath = () => {
+    setSyzygyPath("");
+    setEngines(async (prev) => applySyzygyPathToAllEngines(await prev, ""));
+    notifications.show({
+      title: "Syzygy Tablebase",
+      message: "Global tablebase path cleared.",
+    });
+  };
+
+  return (
+    <Paper withBorder radius="md" p="sm" mx="md" mb="xs">
+      <Group justify="space-between" align="center" wrap="nowrap">
+        <Group gap="md" wrap="nowrap" style={{ overflow: "hidden" }}>
+          <ThemeIcon size="lg" radius="md" variant="light" color={syzygyPath ? "teal" : "blue"}>
+            <IconDatabase size="1.2rem" />
+          </ThemeIcon>
+          <div style={{ overflow: "hidden" }}>
+            <Group gap="xs">
+              <Text fw={600} size="sm">
+                Syzygy Endgame Tablebases
+              </Text>
+              {syzygyPath ? (
+                <Badge size="xs" color="teal" variant="light">
+                  Active ({supportedEnginesCount} engines)
+                </Badge>
+              ) : (
+                <Badge size="xs" color="gray" variant="light">
+                  Not Configured
+                </Badge>
+              )}
+            </Group>
+            <Text size="xs" c="dimmed" lineClamp={1} title={syzygyPath || undefined}>
+              {syzygyPath
+                ? syzygyPath
+                : "Select a folder containing .rtbw/.rtbz files to enable 3–7 piece endgame tablebases across all supported engines."}
+            </Text>
+          </div>
+        </Group>
+        <Group gap="xs" wrap="nowrap">
+          <Button
+            size="xs"
+            variant={syzygyPath ? "default" : "filled"}
+            leftSection={<IconFolder size="0.9rem" />}
+            onClick={selectDirectory}
+          >
+            {syzygyPath ? t("Common.Change", { defaultValue: "Change" }) : t("Common.SelectFolder", { defaultValue: "Select Tablebase Folder" })}
+          </Button>
+          {syzygyPath && (
+            <Tooltip label={t("Common.Clear", { defaultValue: "Clear tablebase path" })}>
+              <ActionIcon variant="subtle" color="red" size="input-xs" onClick={clearPath}>
+                <IconTrash size="1rem" />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      </Group>
+    </Paper>
+  );
+}
 
 export default function EnginesPage() {
   const { t } = useTranslation();
@@ -105,6 +195,7 @@ export default function EnginesPage() {
         <Title>{t("Engines.Title")}</Title>
         <OpenFolderButton base="Engines" folder="engines" />
       </Group>
+      <GlobalTablebaseSection />
       <Group grow flex={1} style={{ overflow: "hidden" }} align="start" px="md" pb="md">
         <Paper withBorder style={{ borderWidth: 2 }} h="100%">
           <Stack gap={0} h="100%" style={{ overflow: "hidden" }}>
@@ -323,16 +414,27 @@ function EngineSettings({
     }
   }, [options, globalSyzygyPath]);
 
+  const syzygyOption = options?.options.find(
+    (option) => option.value.name.toLowerCase() === "syzygypath",
+  );
+  const currentEngineSyzygyPath = engine.settings?.find(
+    (s) => s.name.toLowerCase() === "syzygypath",
+  )?.value as string | undefined;
+
   const completeOptions =
     options?.options
-      .filter((option) => option.type !== "button")
+      .filter(
+        (option) =>
+          option.type !== "button" && option.value.name.toLowerCase() !== "syzygypath",
+      )
       .map((option) => {
         const setting = engine.settings?.find((setting) => setting.name === option.value.name);
+        const defaultValue = "default" in option.value ? option.value.default : null;
         return {
           ...option,
           value: {
             ...option.value,
-            value: setting?.value !== undefined ? setting.value : option.value.default,
+            value: setting?.value !== undefined ? setting.value : defaultValue,
           },
         };
       }) || [];
@@ -445,6 +547,87 @@ function EngineSettings({
           setGoMode={(v) => setEngine({ ...engine, go: v })}
         />
 
+        {syzygyOption && (
+          <>
+            <Divider variant="dashed" label="Endgame Tablebases (Syzygy)" />
+            <Paper withBorder radius="md" p="sm">
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Group gap="sm" wrap="nowrap" style={{ overflow: "hidden" }}>
+                  <ThemeIcon
+                    size="md"
+                    radius="md"
+                    variant="light"
+                    color={currentEngineSyzygyPath ? "teal" : "gray"}
+                  >
+                    <IconDatabase size="1rem" />
+                  </ThemeIcon>
+                  <div style={{ overflow: "hidden" }}>
+                    <Group gap="xs">
+                      <Text size="sm" fw={600}>
+                        Tablebase Status
+                      </Text>
+                      {currentEngineSyzygyPath ? (
+                        <Badge
+                          size="xs"
+                          color="teal"
+                          variant="light"
+                          leftSection={<IconCheck size="0.7rem" />}
+                        >
+                          {currentEngineSyzygyPath === globalSyzygyPath
+                            ? "Using Global Tablebase"
+                            : "Custom Path"}
+                        </Badge>
+                      ) : (
+                        <Badge size="xs" color="gray" variant="light">
+                          Disabled
+                        </Badge>
+                      )}
+                    </Group>
+                    <Text size="xs" c="dimmed" lineClamp={1}>
+                      {currentEngineSyzygyPath || "No tablebase path configured"}
+                    </Text>
+                  </div>
+                </Group>
+                <Group gap="xs" wrap="nowrap">
+                  {globalSyzygyPath && currentEngineSyzygyPath !== globalSyzygyPath && (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      onClick={() =>
+                        setSetting(
+                          syzygyOption.value.name,
+                          globalSyzygyPath,
+                          "default" in syzygyOption.value ? (syzygyOption.value.default as string | null) : null,
+                        )
+                      }
+                    >
+                      Sync with Global Tablebase
+                    </Button>
+                  )}
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconFolder size="0.9rem" />}
+                    onClick={async () => {
+                      const selected = await open({
+                        multiple: true,
+                        directory: true,
+                      });
+                      if (!selected) return;
+                      const directories = Array.isArray(selected) ? selected : [selected];
+                      const newPath = directories.join(syzygyPathSeparator);
+                      const defVal = "default" in syzygyOption.value ? (syzygyOption.value.default as string | null) : null;
+                      setSetting(syzygyOption.value.name, newPath, defVal);
+                    }}
+                  >
+                    {currentEngineSyzygyPath ? "Override" : "Set Path"}
+                  </Button>
+                </Group>
+              </Group>
+            </Paper>
+          </>
+        )}
+
         <Divider variant="dashed" label={t("Engines.Settings.AdvancedSettings")} />
         <SimpleGrid cols={2}>
           {completeOptions
@@ -475,74 +658,6 @@ function EngineSettings({
                   );
                 })
                 .with({ type: "string", value: P.select() }, (v: any) => {
-                  if (v.name.toLowerCase() === "syzygypath") {
-                    return (
-                      <Stack key={v.name} gap="xs">
-                        <Group align="end" wrap="nowrap">
-                          <TextInput
-                            flex={1}
-                            label={v.name}
-                            placeholder={`/path/to/tb${syzygyPathSeparator}/path/to/tb2`}
-                            value={v.value || ""}
-                            onChange={(e) => setSetting(v.name, e.currentTarget.value, v.default)}
-                          />
-                          <Button
-                            variant="default"
-                            leftSection={<IconFolder size="1rem" />}
-                            onClick={async () => {
-                              const selected = await open({
-                                multiple: true,
-                                directory: true,
-                              });
-                              if (!selected) return;
-
-                              const directories = Array.isArray(selected) ? selected : [selected];
-                              const newPath = directories.join(syzygyPathSeparator);
-                              setSetting(v.name, newPath, v.default);
-                            }}
-                          >
-                            {t("Common.Open")}
-                          </Button>
-                        </Group>
-                        <Group gap="xs">
-                          {v.value && (
-                            <Button
-                              size="xs"
-                              variant="light"
-                              onClick={() => {
-                                setGlobalSyzygyPath(v.value);
-                                setEngines(async (prev) =>
-                                  applySyzygyPathToAllEngines(await prev, v.value),
-                                );
-                                notifications.show({
-                                  title: "Syzygy Tablebase Path",
-                                  message:
-                                    "Applied tablebase path to all supported engines and saved globally",
-                                });
-                              }}
-                            >
-                              {t("Engines.Syzygy.ApplyToAll", {
-                                defaultValue: "Apply to all engines (Global)",
-                              })}
-                            </Button>
-                          )}
-                          {globalSyzygyPath && v.value !== globalSyzygyPath && (
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              onClick={() => {
-                                setSetting(v.name, globalSyzygyPath, v.default);
-                              }}
-                            >
-                              {t("Engines.Syzygy.UseGlobal", {
-                                defaultValue: `Use global path`,
-                              })}
-                            </Button>
-                          )}
-                        </Group>
-                      </Stack>
-                    );
-                  }
                   if (v.name.toLowerCase().includes("file")) {
                     const file = v.value ? new File([v.value], v.value) : null;
                     return (
@@ -588,9 +703,10 @@ function EngineSettings({
                   label={o.value.name}
                   checked={!!o.value.value}
                   disabled={o.value.name === "UCI_Chess960"}
-                  onChange={(e) =>
-                    setSetting(o.value.name, e.currentTarget.checked, o.value.default as boolean)
-                  }
+                  onChange={(e) => {
+                    const defVal = "default" in o.value ? (o.value.default as boolean) : false;
+                    setSetting(o.value.name, e.currentTarget.checked, defVal);
+                  }}
                 />
               );
             })}
