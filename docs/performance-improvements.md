@@ -53,6 +53,20 @@ This pass improves progressive loading of game panels rather than the applicatio
 preload. The frontend build completed in 4.16 seconds and the complete optimized Rust release build
 completed in 1 minute 48 seconds, but single samples are not used to claim build-speed improvements.
 
+### FIDE flag bundle reduction
+
+`FideInfo` previously used a namespace import from `mantine-flagpack` and constructed a lookup from
+every exported flag component, which caused the entire flag collection to be bundled. Replacing that
+collection with a small ISO country-code-to-Unicode-flag conversion produced:
+
+| Measurement               |    Before |    After |                  Change |
+| ------------------------- | --------: | -------: | ----------------------: |
+| `FideInfo` minified chunk | 850.70 kB | 61.80 kB | 788.91 kB (92.7%) lower |
+
+Unlike splitting an existing chunk into additional on-demand chunks, this removes approximately
+788.91 kB of minified JavaScript from the application bundle. The compressed after-size was not
+recorded, so no gzip reduction is claimed here.
+
 ## Rust release binary
 
 | Measurement |               Before |    After |                  Change |

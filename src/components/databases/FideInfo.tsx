@@ -11,17 +11,18 @@ import {
   Text,
 } from "@mantine/core";
 import { IconCloud } from "@tabler/icons-react";
-import * as Flags from "mantine-flagpack";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr/immutable";
 import { getFidePlayer } from "@/utils/lichess/api";
 
 import COUNTRIES from "./countries.json";
 
-const flags = Object.entries(Flags).map(([key, value]) => ({
-  key: key.replace("Flag", ""),
-  component: value,
-}));
+function countryCodeToFlag(countryCode: string) {
+  const code = countryCode.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return undefined;
+
+  return String.fromCodePoint(...Array.from(code, (character) => character.charCodeAt(0) + 127397));
+}
 
 function FideInfo({
   opened,
@@ -42,8 +43,7 @@ function FideInfo({
   });
 
   const country = COUNTRIES.find((c) => c.ioc === player?.federation);
-
-  const Flag = player?.federation ? flags.find((f) => f.key === country?.a2)?.component : undefined;
+  const flag = country?.a2 ? countryCodeToFlag(country.a2) : undefined;
 
   return (
     <Modal
@@ -84,9 +84,11 @@ function FideInfo({
                 </Text>
                 {player.title && <Badge>{player.title}</Badge>}
               </Group>
-              {Flag && country?.name && (
+              {flag && country?.name && (
                 <Group gap="xs">
-                  <Flag w={30} />
+                  <Text component="span" fz="xl" role="img" aria-label={`${country.name} flag`}>
+                    {flag}
+                  </Text>
                   <Text c="dimmed">{country.name}</Text>
                 </Group>
               )}

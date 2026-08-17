@@ -140,9 +140,6 @@ importers:
       mantine-datatable:
         specifier: ^8.3.13
         version: 8.3.13(@mantine/core@8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@mantine/hooks@8.3.14(react@19.2.4))(clsx@2.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      mantine-flagpack:
-        specifier: ^4.1.1
-        version: 4.1.1(@mantine/core@8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@mantine/hooks@8.3.14(react@19.2.4))(clsx@2.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       posthog-js:
         specifier: ^1.342.1
         version: 1.342.1
@@ -2979,15 +2976,6 @@ packages:
       clsx: '>=2'
       react: '>=19'
       react-dom: '>=19'
-
-  mantine-flagpack@4.1.1:
-    resolution: {integrity: sha512-+oejhfesTM2ufcONl738KgJYVgjfe6wwxWL4Zwn8O4qgCFwlsvOZTvb39gHEVYRgtfq6B+H5aTyhmkJOSjQJFw==}
-    peerDependencies:
-      '@mantine/core': '>=7.0.0'
-      '@mantine/hooks': '>=7.0.0'
-      clsx: '>=2.1.0'
-      react: '>=18.2.0'
-      react-dom: '>=18.2.0'
 
   markdown-it@14.1.1:
     resolution: {integrity: sha512-BuU2qnTti9YKgK5N+IeMubp14ZUKUUw7yeJbkjtosvHiP0AZ5c8IAgEMk79D0eC8F23r4Ac/q8cAIFdm2FtyoA==}
@@ -6549,14 +6537,6 @@ snapshots:
       react-dom: 19.2.4(react@19.2.4)
 
   mantine-datatable@8.3.13(@mantine/core@8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@mantine/hooks@8.3.14(react@19.2.4))(clsx@2.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
-    dependencies:
-      '@mantine/core': 8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@mantine/hooks': 8.3.14(react@19.2.4)
-      clsx: 2.1.0
-      react: 19.2.4
-      react-dom: 19.2.4(react@19.2.4)
-
-  mantine-flagpack@4.1.1(@mantine/core@8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@mantine/hooks@8.3.14(react@19.2.4))(clsx@2.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@mantine/core': 8.3.14(@mantine/hooks@8.3.14(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@mantine/hooks': 8.3.14(react@19.2.4)

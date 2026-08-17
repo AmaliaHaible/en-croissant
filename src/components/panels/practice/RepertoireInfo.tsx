@@ -41,6 +41,8 @@ import {
 import { getNodeAtPath, getTreeStructureHash, type TreeNode } from "@/utils/treeReducer";
 import classes from "./RepertoireInfo.module.css";
 
+const EMPTY_PATH: number[] = [];
+
 function formatMoveNotation(halfMoves: number, san: string): string {
   const moveNum = Math.ceil(halfMoves / 2);
   const isWhite = halfMoves % 2 === 1;
@@ -115,7 +117,7 @@ function RepertoireInfo() {
   const [coverageLoading, setCoverageLoading] = useState(false);
   const coverageVersionRef = useRef(0);
 
-  const startPath = headers.start || [];
+  const startPath = headers.start || EMPTY_PATH;
   const startPathKey = startPath.join(",");
   const hasStart = headers.start != null && headers.start.length > 0;
   const isBeforeStart =
