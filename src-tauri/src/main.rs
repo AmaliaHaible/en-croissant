@@ -32,7 +32,8 @@ use log::LevelFilter;
 use oauth::AuthState;
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use sysinfo::{RefreshKind, SystemExt};
+use serde::Serialize;
+use sysinfo::{CpuExt, RefreshKind, SystemExt};
 use tauri::{Manager, Window};
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -171,7 +172,8 @@ fn main() {
             preload_reference_db,
             get_progress,
             clear_progress,
-            get_sound_server_port
+            get_sound_server_port,
+            get_hardware_info
         ))
         .events(tauri_specta::collect_events!(
             BestMovesPayload,
@@ -279,3 +281,93 @@ fn memory_size() -> u32 {
         sysinfo::System::new_with_specifics(RefreshKind::new().with_memory()).total_memory();
     (total_bytes / 1024 / 1024) as u32
 }
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareInfo {
+    pub cpu_brand: String,
+    pub physical_cores: usize,
+    pub logical_cores: usize,
+    pub total_memory_mb: u32,
+    pub available_memory_mb: u32,
+    pub os_name: String,
+    pub os_version: String,
+    pub arch: String,
+    pub is_bmi2: bool,
+    pub is_avx2: bool,
+    pub recommended_threads: usize,
+    pub recommended_hash_mb: u32,
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_hardware_info() -> HardwareInfo {
+    let mut sys = sysinfo::System::new_with_specifics(
+        sysinfo::RefreshKind::new()
+            .with_cpu(sysinfo::CpuRefreshKind::everything())
+            .with_memory(),
+    );
+    sys.refresh_cpu();
+    sys.refresh_memory();
+
+    let cpu_brand = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Unknown CPU".to_string());
+
+    let logical_cores = sys.cpus().len().max(1);
+    let physical_cores = sys.physical_core_count().unwrap_or(logical_cores);
+    let total_memory_mb = (sys.total_memory() / 1024 / 1024) as u32;
+    let available_memory_mb = (sys.available_memory() / 1024 / 1024) as u32;
+
+    let is_bmi2 = {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            is_x86_feature_detected!("bmi2")
+        }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            false
+        }
+    };
+
+    let is_avx2 = {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            is_x86_feature_detected!("avx2")
+        }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            false
+        }
+    };
+
+    let os_name = sys.name().unwrap_or_else(|| std::env::consts::OS.to_string());
+    let os_version = sys.os_version().unwrap_or_default();
+    let arch = std::env::consts::ARCH.to_string();
+
+    let recommended_threads = if logical_cores > 2 {
+        logical_cores - 1
+    } else {
+        1
+    };
+    let recommended_hash_mb = (total_memory_mb / 4).clamp(16, 4096);
+
+    HardwareInfo {
+        cpu_brand,
+        physical_cores,
+        logical_cores,
+        total_memory_mb,
+        available_memory_mb,
+        os_name,
+        os_version,
+        arch,
+        is_bmi2,
+        is_avx2,
+        recommended_threads,
+        recommended_hash_mb,
+    }
+}
+

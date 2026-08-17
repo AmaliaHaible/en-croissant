@@ -14,7 +14,7 @@ import {
   Text,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconAlertCircle, IconDatabase, IconTrophy } from "@tabler/icons-react";
+import { IconAlertCircle, IconCpu, IconDatabase, IconTrophy } from "@tabler/icons-react";
 import { join, resolve } from "@tauri-apps/api/path";
 import { useAtom } from "jotai";
 import { useCallback, useState } from "react";
@@ -30,6 +30,7 @@ import {
 } from "@/utils/engines";
 import { usePlatform } from "@/utils/files";
 import { formatBytes } from "@/utils/format";
+import { useHardwareInfo } from "@/utils/hardware";
 import { unwrap } from "@/utils/unwrap";
 import ProgressButton from "../common/ProgressButton";
 import EngineForm from "./EngineForm";
@@ -47,6 +48,7 @@ function AddEngine({
   const engines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
 
   const { os } = usePlatform();
+  const { hardware } = useHardwareInfo();
 
   const { defaultEngines, error, isLoading } = useDefaultEngines(os, opened);
 
@@ -86,6 +88,21 @@ function AddEngine({
           <Tabs.Tab value="local">{t("Common.Local")}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="download" pt="xs">
+          {hardware && (
+            <Alert
+              icon={<IconCpu size="1.2rem" />}
+              title="System Hardware Detected"
+              color="blue"
+              mb="sm"
+            >
+              <Text size="xs">
+                <strong>CPU:</strong> {hardware.cpuBrand} ({hardware.logicalCores} threads / {hardware.physicalCores} physical cores) •{" "}
+                <strong>RAM:</strong> {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} •{" "}
+                <strong>Architecture:</strong> {hardware.arch} ({hardware.isBmi2 ? "BMI2 Supported" : "Standard"}) •{" "}
+                <strong>Optimal Engine Defaults:</strong> {hardware.recommendedThreads} threads, {hardware.recommendedHashMb} MB hash
+              </Text>
+            </Alert>
+          )}
           {isLoading && (
             <Center>
               <Loader />
