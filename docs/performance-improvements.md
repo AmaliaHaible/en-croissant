@@ -205,9 +205,40 @@ Run the benchmark with:
 NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npx vitest run src/utils/tests/tree_hash.test.ts
 ```
 
+### Hardware detection and auto-configuration
+
+To eliminate runtime latency and ensure engines utilize host resources effectively, an immediate native hardware discovery pipeline was introduced:
+
+- **Rust Backend**: Added `get_hardware_info` command returning physical/logical core counts, total/available memory, architecture, and instruction extensions (`BMI2`, `AVX2`). Automatically calculates recommended engine threads (`logical_cores - 1`) and optimal hash table size (`total_memory / 4`).
+- **Frontend**: Added `useHardwareInfo` hook and `hardwareInfoAtom` in `src/utils/hardware.ts`.
+- **Add Engine UI**: Renders an immediate hardware profile status banner with detected CPU model, memory, instruction set compatibility, and optimal default settings.
+
+### Package upgrades and bundle impact
+
+Upgraded the frontend toolchain, Tauri plugins, and runtime dependencies to their latest compatible releases, and refreshed all Cargo dependencies:
+
+- **Tauri Ecosystem**: `@tauri-apps/api` 2.11.1, `@tauri-apps/cli` 2.11.4, `@tauri-apps/plugin-*` 2.7–2.9.
+- **Frontend Framework**: React 19.2.8, TanStack Router 1.170.29, Vite 8.2.1, Jotai 2.20.2, Zustand 5.0.15, SWR 2.5.1, TipTap 3.30.1.
+- **Linters & Tooling**: Vitest 4.1.10, oxlint 1.78.0, oxfmt 0.63.0, jsdom 30.0.1.
+- **Removed**: Unused `@types/lodash`.
+
+| Measurement | Before upgrade pass | After upgrade pass | Change |
+| ----------- | ------------------: | -----------------: | -----: |
+| Entry JavaScript bundle (`index.js`) | 911.22 kB | 750.75 kB | **160.47 kB (17.6%) lower** |
+| Entry JavaScript bundle (gzip) | 239.49 kB | 188.74 kB | **50.75 kB (21.2%) lower** |
+| Production frontend build time | 4.24s | 4.13s | 2.6% faster |
+
+### Development environment isolation
+
+To allow testing development builds concurrently with installed production releases of En Croissant without data collision or process interference:
+- Configured unique development identifier: `org.encroissant.dev` in `src-tauri/tauri.conf.json`.
+- Configured binary & product name: `en-croissant-dev`.
+- Sandboxes all user cache and application stores (`~/.local/share/org.encroissant.dev`).
+
 ## Validation
 
-- `npm run build-vite`: passed (built in 4.17s).
+- `npm run lint`: passed with 0 errors.
 - `NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npm test`: 6 test files, 42 tests passed.
-- `cargo check --manifest-path src-tauri/Cargo.toml`: passed with `mimalloc` global allocator and SQLite connection pragmas.
+- `npm run build-vite`: passed (built in 4.13s).
+- `cargo check --manifest-path src-tauri/Cargo.toml`: passed cleanly with updated dependencies.
 
