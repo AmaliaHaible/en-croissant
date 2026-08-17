@@ -1,4 +1,3 @@
-import { minMax } from "@tiptap/react";
 import type { Color } from "chessops";
 import { match } from "ts-pattern";
 import type { BestMoves, Score, ScoreValue } from "@/bindings";
@@ -13,6 +12,10 @@ export const INITIAL_SCORE: Score = {
 };
 
 const CP_CEILING = 1000;
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
+}
 
 export function formatScore(score: ScoreValue, precision = 2): string {
     let scoreText = match(score.type)
@@ -43,7 +46,7 @@ export function normalizeScore(score: ScoreValue, color: Color): number {
     if (score.type === "mate") {
         cp = CP_CEILING * Math.sign(cp);
     }
-    return minMax(cp, -CP_CEILING, CP_CEILING);
+    return clamp(cp, -CP_CEILING, CP_CEILING);
 }
 
 function normalizeScores(
@@ -59,7 +62,7 @@ function normalizeScores(
 
 export function getAccuracy(prev: ScoreValue, next: ScoreValue, color: Color): number {
     const { prevCP, nextCP } = normalizeScores(prev, next, color);
-    return minMax(
+    return clamp(
         103.1668 * Math.exp(-0.04354 * (getWinChance(prevCP) - getWinChance(nextCP))) - 3.1669 + 1,
         0,
         100,

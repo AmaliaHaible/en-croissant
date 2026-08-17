@@ -15,7 +15,6 @@ import { listen } from "@tauri-apps/api/event";
 import { attachConsole, error, info, warn } from "@tauri-apps/plugin-log";
 import { getDefaultStore, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { ContextMenuProvider } from "mantine-contextmenu";
-import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -164,6 +163,7 @@ function useAppStartup() {
       const store = getDefaultStore();
       const telemetryEnabled = store.get(telemetryEnabledAtom);
 
+      const { default: posthog } = await import("posthog-js");
       posthog.init("phc_kgEBtifs0EgWlrl4ROYEbnsQ1b7BS2W5BKLNyXe7f8z", {
         api_host: "https://app.posthog.com",
         autocapture: false,
