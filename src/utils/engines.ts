@@ -112,14 +112,9 @@ export function useDefaultEngines(os: Platform | undefined, opened: boolean) {
     };
 }
 
-export function applySyzygyPathToEngine(
-    engine: LocalEngine,
-    syzygyPath: string,
-): LocalEngine {
+export function applySyzygyPathToEngine(engine: LocalEngine, syzygyPath: string): LocalEngine {
     const settings = [...(engine.settings || [])];
-    const syzygyIndex = settings.findIndex(
-        (s) => s.name.toLowerCase() === "syzygypath",
-    );
+    const syzygyIndex = settings.findIndex((s) => s.name.toLowerCase() === "syzygypath");
     if (syzygyIndex >= 0) {
         settings[syzygyIndex] = {
             ...settings[syzygyIndex],
@@ -137,13 +132,9 @@ export function applySyzygyPathToEngine(
     };
 }
 
-export function applySyzygyPathToAllEngines(
-    engines: Engine[],
-    syzygyPath: string,
-): Engine[] {
+export function applySyzygyPathToAllEngines(engines: Engine[], syzygyPath: string): Engine[] {
     return engines.map((engine) => {
         if (engine.type !== "local") return engine;
         return applySyzygyPathToEngine(engine, syzygyPath);
     });
 }
-

@@ -34,7 +34,10 @@ export async function computeTreeCoverage(
     const missingGamesMap = new Map<string, number>();
     const fenCoverageCache = new Map<string, Promise<number>>();
     const fenMissingCache = new Map<string, number>();
-    const dbMovesCache = new Map<string, Promise<{ moves: { move: string; games: number }[]; total: number }>>();
+    const dbMovesCache = new Map<
+        string,
+        Promise<{ moves: { move: string; games: number }[]; total: number }>
+    >();
 
     function getDbMoves(
         fen: string,

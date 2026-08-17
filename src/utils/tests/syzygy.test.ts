@@ -17,9 +17,7 @@ describe("Syzygy tablebase engine configuration", () => {
             settings: [],
         };
         const updated = applySyzygyPathToEngine(engine, "/tablebases/syzygy");
-        expect(updated.settings).toEqual([
-            { name: "SyzygyPath", value: "/tablebases/syzygy" },
-        ]);
+        expect(updated.settings).toEqual([{ name: "SyzygyPath", value: "/tablebases/syzygy" }]);
     });
 
     it("updates existing syzygypath setting case-insensitively", () => {
@@ -73,8 +71,6 @@ describe("Syzygy tablebase engine configuration", () => {
             { name: "SyzygyPath", value: "/global/syzygy" },
         ]);
         expect(updated[1]).toEqual(engines[1]); // Cloud engine untouched
-        expect(updated[2].settings).toEqual([
-            { name: "SyzygyPath", value: "/global/syzygy" },
-        ]);
+        expect(updated[2].settings).toEqual([{ name: "SyzygyPath", value: "/global/syzygy" }]);
     });
 });

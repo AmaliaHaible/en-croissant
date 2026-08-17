@@ -96,10 +96,12 @@ function AddEngine({
               mb="sm"
             >
               <Text size="xs">
-                <strong>CPU:</strong> {hardware.cpuBrand} ({hardware.logicalCores} threads / {hardware.physicalCores} physical cores) •{" "}
-                <strong>RAM:</strong> {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} •{" "}
-                <strong>Architecture:</strong> {hardware.arch} ({hardware.isBmi2 ? "BMI2 Supported" : "Standard"}) •{" "}
-                <strong>Optimal Engine Defaults:</strong> {hardware.recommendedThreads} threads, {hardware.recommendedHashMb} MB hash
+                <strong>CPU:</strong> {hardware.cpuBrand} ({hardware.logicalCores} threads /{" "}
+                {hardware.physicalCores} physical cores) • <strong>RAM:</strong>{" "}
+                {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} • <strong>Architecture:</strong>{" "}
+                {hardware.arch} ({hardware.isBmi2 ? "BMI2 Supported" : "Standard"}) •{" "}
+                <strong>Optimal Engine Defaults:</strong> {hardware.recommendedThreads} threads,{" "}
+                {hardware.recommendedHashMb} MB hash
               </Text>
             </Alert>
           )}

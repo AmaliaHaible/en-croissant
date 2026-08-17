@@ -135,7 +135,9 @@ function GlobalTablebaseSection() {
             leftSection={<IconFolder size="0.9rem" />}
             onClick={selectDirectory}
           >
-            {syzygyPath ? t("Common.Change", { defaultValue: "Change" }) : t("Common.SelectFolder", { defaultValue: "Select Tablebase Folder" })}
+            {syzygyPath
+              ? t("Common.Change", { defaultValue: "Change" })
+              : t("Common.SelectFolder", { defaultValue: "Select Tablebase Folder" })}
           </Button>
           {syzygyPath && (
             <Tooltip label={t("Common.Clear", { defaultValue: "Clear tablebase path" })}>
@@ -364,7 +366,7 @@ function EngineSettings({
   const { t } = useTranslation();
 
   const [engines, setEngines] = useAtom(enginesAtom);
-  const [globalSyzygyPath, setGlobalSyzygyPath] = useAtom(storedSyzygyPathAtom);
+  const [globalSyzygyPath] = useAtom(storedSyzygyPathAtom);
   const engine = engines![selected] as LocalEngine;
   const { data: options } = useSWRImmutable(["engine-config", engine.path], async ([, path]) => {
     return unwrap(await commands.getEngineConfig(path));
@@ -424,8 +426,7 @@ function EngineSettings({
   const completeOptions =
     options?.options
       .filter(
-        (option) =>
-          option.type !== "button" && option.value.name.toLowerCase() !== "syzygypath",
+        (option) => option.type !== "button" && option.value.name.toLowerCase() !== "syzygypath",
       )
       .map((option) => {
         const setting = engine.settings?.find((setting) => setting.name === option.value.name);
@@ -597,7 +598,9 @@ function EngineSettings({
                         setSetting(
                           syzygyOption.value.name,
                           globalSyzygyPath,
-                          "default" in syzygyOption.value ? (syzygyOption.value.default as string | null) : null,
+                          "default" in syzygyOption.value
+                            ? (syzygyOption.value.default as string | null)
+                            : null,
                         )
                       }
                     >
@@ -616,7 +619,10 @@ function EngineSettings({
                       if (!selected) return;
                       const directories = Array.isArray(selected) ? selected : [selected];
                       const newPath = directories.join(syzygyPathSeparator);
-                      const defVal = "default" in syzygyOption.value ? (syzygyOption.value.default as string | null) : null;
+                      const defVal =
+                        "default" in syzygyOption.value
+                          ? (syzygyOption.value.default as string | null)
+                          : null;
                       setSetting(syzygyOption.value.name, newPath, defVal);
                     }}
                   >

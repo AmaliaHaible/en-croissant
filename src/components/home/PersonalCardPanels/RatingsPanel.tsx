@@ -189,7 +189,9 @@ function RatingsPanel({
               <Tooltip
                 contentStyle={tooltipContentStyle}
                 cursor={tooltipCursorStyle}
-                labelFormatter={(label) => (label ? new Date(Number(label)).toLocaleDateString() : "")}
+                labelFormatter={(label) =>
+                  label ? new Date(Number(label)).toLocaleDateString() : ""
+                }
               />
               <Area
                 name="Rating"

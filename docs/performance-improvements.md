@@ -185,22 +185,23 @@ is not treated as a regression.
 
 A subsequent pass introduced zero-allocation state algorithms, query deduplication, and backend memory allocator upgrades:
 
-| Optimization | Scope | Change |
-| ------------ | ----- | ------ |
-| Tree Structure Hashing | TypeScript state (`treeReducer.ts`) | Replaced dynamic string-array allocations and template-string concatenation in `getTreeStructureHash` with an in-place 32-bit bitwise hash. |
-| Repertoire Position Caching | TypeScript repertoire (`repertoire.ts`) | Cached in-flight and resolved position queries in `computeTreeCoverage` to eliminate duplicate IPC queries across opening transpositions. |
-| Global Allocator | Rust backend (`main.rs`) | Replaced default system allocator with `mimalloc` to reduce thread contention and memory fragmentation in parallel Rayon and SQLite workloads. |
-| SQLite Connection Pragmas | Rust backend (`db/mod.rs`) | Configured `PRAGMA synchronous = NORMAL`, `PRAGMA cache_size = -64000` (64MB), `PRAGMA temp_store = MEMORY`, and `PRAGMA mmap_size = 268435456` (256MB). |
+| Optimization                | Scope                                   | Change                                                                                                                                                   |
+| --------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tree Structure Hashing      | TypeScript state (`treeReducer.ts`)     | Replaced dynamic string-array allocations and template-string concatenation in `getTreeStructureHash` with an in-place 32-bit bitwise hash.              |
+| Repertoire Position Caching | TypeScript repertoire (`repertoire.ts`) | Cached in-flight and resolved position queries in `computeTreeCoverage` to eliminate duplicate IPC queries across opening transpositions.                |
+| Global Allocator            | Rust backend (`main.rs`)                | Replaced default system allocator with `mimalloc` to reduce thread contention and memory fragmentation in parallel Rayon and SQLite workloads.           |
+| SQLite Connection Pragmas   | Rust backend (`db/mod.rs`)              | Configured `PRAGMA synchronous = NORMAL`, `PRAGMA cache_size = -64000` (64MB), `PRAGMA temp_store = MEMORY`, and `PRAGMA mmap_size = 268435456` (256MB). |
 
 ### Data processing microbenchmarks
 
 Tested on Linux 7.0.0, AMD Ryzen 7 9800X3D (8 cores / 16 threads), with Node.js 26 and Vitest:
 
-| Benchmark | Input | Iterations | Before median | After median | Change |
-| --------- | ----- | ---------: | ------------: | -----------: | -----: |
-| `getTreeStructureHash` | 3,280-node repertoire tree | 500 | 177.76 µs/op (88.88 ms) | 131.40 µs/op (65.70 ms) | **26.1% faster** (0 heap string allocations) |
+| Benchmark              | Input                      | Iterations |           Before median |            After median |                                       Change |
+| ---------------------- | -------------------------- | ---------: | ----------------------: | ----------------------: | -------------------------------------------: |
+| `getTreeStructureHash` | 3,280-node repertoire tree |        500 | 177.76 µs/op (88.88 ms) | 131.40 µs/op (65.70 ms) | **26.1% faster** (0 heap string allocations) |
 
 Run the benchmark with:
+
 ```bash
 NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npx vitest run src/utils/tests/tree_hash.test.ts
 ```
@@ -222,15 +223,16 @@ Upgraded the frontend toolchain, Tauri plugins, and runtime dependencies to thei
 - **Linters & Tooling**: Vitest 4.1.10, oxlint 1.78.0, oxfmt 0.63.0, jsdom 30.0.1.
 - **Removed**: Unused `@types/lodash`.
 
-| Measurement | Before upgrade pass | After upgrade pass | Change |
-| ----------- | ------------------: | -----------------: | -----: |
-| Entry JavaScript bundle (`index.js`) | 911.22 kB | 750.75 kB | **160.47 kB (17.6%) lower** |
-| Entry JavaScript bundle (gzip) | 239.49 kB | 188.74 kB | **50.75 kB (21.2%) lower** |
-| Production frontend build time | 4.24s | 4.13s | 2.6% faster |
+| Measurement                          | Before upgrade pass | After upgrade pass |                      Change |
+| ------------------------------------ | ------------------: | -----------------: | --------------------------: |
+| Entry JavaScript bundle (`index.js`) |           911.22 kB |          750.75 kB | **160.47 kB (17.6%) lower** |
+| Entry JavaScript bundle (gzip)       |           239.49 kB |          188.74 kB |  **50.75 kB (21.2%) lower** |
+| Production frontend build time       |               4.24s |              4.13s |                 2.6% faster |
 
 ### Development environment isolation
 
 To allow testing development builds concurrently with installed production releases of En Croissant without data collision or process interference:
+
 - Configured unique development identifier: `org.encroissant.dev` in `src-tauri/tauri.conf.json`.
 - Configured binary & product name: `en-croissant-dev`.
 - Sandboxes all user cache and application stores (`~/.local/share/org.encroissant.dev`).
@@ -241,4 +243,3 @@ To allow testing development builds concurrently with installed production relea
 - `NODE_OPTIONS=--localstorage-file=/tmp/en-croissant-localstorage.json npm test`: 6 test files, 42 tests passed.
 - `npm run build-vite`: passed (built in 4.13s).
 - `cargo check --manifest-path src-tauri/Cargo.toml`: passed cleanly with updated dependencies.
-
