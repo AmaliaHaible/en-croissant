@@ -2,7 +2,7 @@ import { atom } from "jotai";
 import useSWRImmutable from "swr/immutable";
 import { commands, type HardwareInfo } from "@/bindings";
 
-export const hardwareInfoAtom = atom<Promise<HardwareInfo> | HardwareInfo>(async () => {
+export const hardwareInfoAtom = atom(async (): Promise<HardwareInfo> => {
     try {
         return await commands.getHardwareInfo();
     } catch {

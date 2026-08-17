@@ -286,8 +286,8 @@ fn memory_size() -> u32 {
 #[serde(rename_all = "camelCase")]
 pub struct HardwareInfo {
     pub cpu_brand: String,
-    pub physical_cores: usize,
-    pub logical_cores: usize,
+    pub physical_cores: u32,
+    pub logical_cores: u32,
     pub total_memory_mb: u32,
     pub available_memory_mb: u32,
     pub os_name: String,
@@ -295,7 +295,7 @@ pub struct HardwareInfo {
     pub arch: String,
     pub is_bmi2: bool,
     pub is_avx2: bool,
-    pub recommended_threads: usize,
+    pub recommended_threads: u32,
     pub recommended_hash_mb: u32,
 }
 
@@ -317,8 +317,8 @@ fn get_hardware_info() -> HardwareInfo {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Unknown CPU".to_string());
 
-    let logical_cores = sys.cpus().len().max(1);
-    let physical_cores = sys.physical_core_count().unwrap_or(logical_cores);
+    let logical_cores = sys.cpus().len().max(1) as u32;
+    let physical_cores = sys.physical_core_count().unwrap_or(logical_cores as usize) as u32;
     let total_memory_mb = (sys.total_memory() / 1024 / 1024) as u32;
     let available_memory_mb = (sys.available_memory() / 1024 / 1024) as u32;
 
