@@ -2,9 +2,9 @@
 
 Date: 2026-08-17
 
-This report records measurements from branch `performance-improvements` on Linux using a release
-Tauri build. Values are local samples and should be compared on the same machine when the work is
-repeated.
+This report records measurements from branch `performance-improvements` on Ubuntu 26.04 using a
+release Tauri build. Values are local samples and should be compared on the same machine when the
+work is repeated.
 
 ## Changes
 
