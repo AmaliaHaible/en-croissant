@@ -30,7 +30,6 @@ import { useLoaderData } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAtom } from "jotai";
 import { RESET } from "jotai/utils";
-import posthog from "posthog-js";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -70,6 +69,7 @@ import KeybindInput from "./KeybindInput";
 import PiecesSelect from "./PiecesSelect";
 import RepertoireMinGamesSetting from "./RepertoireMinGamesSetting";
 import classes from "./SettingsPage.module.css";
+import { setTelemetryEnabled } from "@/utils/telemetry";
 import SettingsSwitch from "./SettingsSwitch";
 import SoundSelect from "./SoundSelect";
 import ThemeButton from "./ThemeButton";
@@ -137,11 +137,7 @@ function TelemetrySwitch() {
       onChange={(event) => {
         const newValue = event.currentTarget.checked;
         setEnabled(newValue);
-        if (newValue) {
-          posthog.opt_in_capturing();
-        } else {
-          posthog.opt_out_capturing();
-        }
+        void setTelemetryEnabled(newValue);
       }}
       styles={{
         track: { cursor: "pointer" },

@@ -62,6 +62,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import ErrorComponent from "@/components/ErrorComponent";
 import { getDatabasesDir, getDocumentDir, getEnginesDir, getPuzzlesDir } from "@/utils/directories";
 import { initUserAgent } from "@/utils/http";
+import { getPostHog } from "@/utils/telemetry";
 import { routeTree } from "./routeTree.gen";
 
 export type Dirs = {
@@ -78,10 +79,12 @@ const router = createRouter({
     loadDirs: async () => {
       const store = getDefaultStore();
 
-      const documentDir = await getDocumentDir();
-      const databasesDir = await getDatabasesDir();
-      const enginesDir = await getEnginesDir();
-      const puzzlesDir = await getPuzzlesDir();
+      const [documentDir, databasesDir, enginesDir, puzzlesDir] = await Promise.all([
+        getDocumentDir(),
+        getDatabasesDir(),
+        getEnginesDir(),
+        getPuzzlesDir(),
+      ]);
 
       if (!store.get(storedDocumentDirAtom)) {
         store.set(storedDocumentDirAtom, documentDir);
@@ -163,16 +166,8 @@ function useAppStartup() {
       const store = getDefaultStore();
       const telemetryEnabled = store.get(telemetryEnabledAtom);
 
-      const { default: posthog } = await import("posthog-js");
-      posthog.init("phc_kgEBtifs0EgWlrl4ROYEbnsQ1b7BS2W5BKLNyXe7f8z", {
-        api_host: "https://app.posthog.com",
-        autocapture: false,
-        capture_pageview: false,
-        capture_pageleave: false,
-        disable_session_recording: true,
-      });
-
       if (telemetryEnabled) {
+        const posthog = await getPostHog();
         posthog.capture("app_started", { version: await getVersion() });
       }
       try {

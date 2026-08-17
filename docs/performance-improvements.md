@@ -26,6 +26,33 @@ The after value includes the entry module and every module-preload referenced by
 Route-specific code remains in on-demand chunks, so total application JavaScript is not expected to
 fall by the same amount.
 
+### Second-pass deferred loading
+
+A second pass added lazy boundaries around the TipTap annotation editor and evaluation chart,
+parallelized the four independent startup directory IPC requests, and avoided loading PostHog when
+telemetry is disabled.
+
+The initial HTML module graph remained effectively unchanged:
+
+| Measurement                  | Before second pass | After second pass |             Change |
+| ---------------------------- | -----------------: | ----------------: | -----------------: |
+| Initial JavaScript, gzip     |         393.43 KiB |        394.38 KiB | +0.95 KiB (+0.24%) |
+| Initial JavaScript, minified |       1,392.49 KiB |      1,393.70 KiB | +1.21 KiB (+0.09%) |
+
+The small increase is code-splitting overhead and is not a meaningful initial-load improvement. The
+benefit is finer-grained deferred loading after startup:
+
+- The shared `routes` chunk decreased from 985.31 KiB to 501.73 KiB, a 49.1% reduction.
+- The TipTap annotation editor moved into a separate 456.51 KiB on-demand chunk.
+- The evaluation chart implementation moved into a separate 29.10 KiB on-demand chunk, with its
+  chart dependencies split more granularly.
+- The four independent directory IPC requests now run concurrently.
+- PostHog is not loaded when telemetry is disabled.
+
+This pass improves progressive loading of game panels rather than the application's initial HTML
+preload. The frontend build completed in 4.16 seconds and the complete optimized Rust release build
+completed in 1 minute 48 seconds, but single samples are not used to claim build-speed improvements.
+
 ## Rust release binary
 
 | Measurement |               Before |    After |                  Change |

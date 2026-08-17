@@ -3,11 +3,10 @@ import { IconZoomCheck } from "@tabler/icons-react";
 import cx from "clsx";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
-import React, { memo, useCallback, useContext, useMemo } from "react";
+import React, { lazy, memo, Suspense, useCallback, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { commands } from "@/bindings";
-import EvalChart from "@/components/common/EvalChart";
 import ProgressButton from "@/components/common/ProgressButton";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import { activeTabAtom, currentReportModalOpenAtom } from "@/state/atoms";
@@ -15,6 +14,8 @@ import { ANNOTATION_INFO, isBasicAnnotation } from "@/utils/annotation";
 import { getGameStats, getMainLine } from "@/utils/chess";
 import classes from "./AnalysisPanel.module.css";
 import ReportModal from "./ReportModal";
+
+const EvalChart = lazy(() => import("@/components/common/EvalChart"));
 
 function ReportPanel() {
   const { t } = useTranslation();
@@ -86,7 +87,9 @@ function ReportPanel() {
         )}
 
         <Paper withBorder p="md">
-          <EvalChart isAnalysing={inProgress} startAnalysis={openReportingMode} />
+          <Suspense fallback={null}>
+            <EvalChart isAnalysing={inProgress} startAnalysis={openReportingMode} />
+          </Suspense>
         </Paper>
 
         <GameStats {...stats} />

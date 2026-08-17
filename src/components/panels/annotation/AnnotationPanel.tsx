@@ -11,13 +11,14 @@ import {
 } from "@mantine/core";
 import { IconChevronDown } from "@tabler/icons-react";
 import { atom, useAtom } from "jotai";
-import { memo, useContext } from "react";
+import { lazy, memo, Suspense, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import { ANNOTATION_INFO, type Annotation, isBasicAnnotation } from "@/utils/annotation";
 import { getNodeAtPath } from "@/utils/treeReducer";
-import AnnotationEditor from "./AnnotationEditor";
+
+const AnnotationEditor = lazy(() => import("./AnnotationEditor"));
 
 const SymbolButton = memo(function SymbolButton({
   curAnnotations,
@@ -114,7 +115,9 @@ function AnnotationPanel() {
       </Collapse>
 
       <ScrollArea offsetScrollbars pl="sm">
-        <AnnotationEditor />
+        <Suspense fallback={null}>
+          <AnnotationEditor />
+        </Suspense>
       </ScrollArea>
     </Stack>
   );
