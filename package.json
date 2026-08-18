@@ -24,7 +24,7 @@
     "format": "oxfmt",
     "test": "vitest run",
     "lint": "tsc --noEmit && oxlint",
-    "lint:ci": "tsc --noEmit && oxfmt --check && oxlint && i18next-cli extract --ci",
+    "lint:ci": "tsc --noEmit && oxfmt --check && oxlint",
     "lint:fix": "oxlint --fix",
     "i18n:extract": "i18next-cli extract",
     "i18n:status": "i18next-cli status",

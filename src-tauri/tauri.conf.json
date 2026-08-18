@@ -39,7 +39,7 @@
     "targets": "all"
   },
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build-vite",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
