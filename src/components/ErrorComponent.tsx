@@ -43,7 +43,7 @@ export default function ErrorComponent({ error }: { error: unknown }) {
           components={{
             github: (
               <Anchor
-                href="https://github.com/franciscoBSalgueiro/en-croissant/issues/new?assignees=&labels=bug&projects=&template=bug.yml"
+                href="https://github.com/jaipkapoor99/en-croissant/issues/new?assignees=&labels=bug&projects=&template=bug.yml"
                 target="_blank"
               />
             ),

@@ -48,7 +48,10 @@
                 "https://lichess.org/**",
                 "https://explorer.lichess.org/**",
                 "https://tablebase.lichess.org/**",
-                "https://www.chessdb.cn/**"
+                "https://www.chessdb.cn/**",
+                "https://github.com/**",
+                "https://api.github.com/**",
+                "https://raw.githubusercontent.com/**"
             ]
         }
     ]

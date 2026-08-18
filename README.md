@@ -47,6 +47,22 @@
 
 ---
 
+## 💾 Syzygy Endgame Tablebases (Download & Setup)
+
+To enable offline, instant, and perfect endgame evaluations up to 7 pieces, you can download the Syzygy tablebases using the open-source **[Syzygy-Tablebase-Downloader](https://github.com/jj-jaguar/Syzygy-Tablebase-Downloader)**.
+
+> **Beginners Guide**: If you are just getting started, download the **3-4-5 piece tablebases** (approx. 1 GB total)—this covers the vast majority of practical endgame positions without taking up heavy disk space (6-piece is ~150 GB, 7-piece is ~18 TB).
+
+> ⚡ **Faster Download**: In the downloader tool, make sure to select the **`sesse`** mirror option, as it is significantly faster and provides superior throughput compared to standard mirrors.
+
+### Setting Up in En Croissant 2.0:
+
+1. Open **En Croissant 2.0** and navigate to the **Engines** page.
+2. Under the **Syzygy Endgame Tablebases** section at the top, click **Select Folder** and choose the directory containing your downloaded tablebase files (`.rtbw` / `.rtbz`).
+3. En Croissant 2.0 will automatically configure and link your tablebases to all supported engines (Stockfish, Berserk, Koivisto, etc.) in a single click!
+
+---
+
 ## 🛠️ Building from Source
 
 ### Prerequisites
