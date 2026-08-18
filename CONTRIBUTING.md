@@ -66,8 +66,13 @@ The following steps will get you setup to contribute changes to this repo:
 - Implement your contributions (see the [Development](#development) section for more information)
 - Before submitting a PR, first build the app using `pnpm build` and check every feature you've contributed to.
 - Format and lint your code using `pnpm format` followed by `pnpm lint:fix`. If you added or changed any translation keys, run `pnpm i18n:extract` to update the translation files.
-- Go to [the comparison page](https://github.com/franciscoBSalgueiro/en-croissant/compare) and select the branch you just pushed in the `compare:` dropdown
+- Go to [the comparison page](https://github.com/jaipkapoor99/en-croissant/compare) and select the branch you just pushed in the `compare:` dropdown
 - Submit the new PR. The maintainers will follow up ASAP.
+
+## Contributing for UI/UX Designers & Performance Enthusiasts
+
+- **Designers**: You don't need to write code to contribute! Feel free to open GitHub issues with Figma links, wireframes, component mockups, design critique, or color palette concepts.
+- **Performance Engineers**: When submitting optimization PRs, please include benchmark comparisons (before/after metrics) in your PR description.
 
 ## Extra Notes
 

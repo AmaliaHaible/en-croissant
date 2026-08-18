@@ -92,6 +92,23 @@ pnpm format
 
 ---
 
+## 🤝 Call for Contributors & UI/UX Designers
+
+En Croissant 2.0 is actively seeking passionate contributors to help build the future of open-source chess software!
+
+While we have significantly overhauled the core performance, data structures, backend memory allocators, and tablebase infrastructure, **there remains immense scope for further optimization, design modernization, and polish**.
+
+We especially invite:
+
+- 🎨 **UI / UX Designers**: Modernizing application themes, board styling, evaluation indicators, mobile/responsive layout improvements, and design system harmonization.
+- ⚡ **Performance Engineers & Rust Developers**: Low-level UCI optimizations, lock-free concurrency, database search speedups, and SIMD-accelerated chess data processing.
+- 💻 **Frontend Developers (React / TypeScript / Vite / Mantine)**: Panel ergonomics, keybinding customization, analysis tooling, and accessibility improvements.
+- 🌍 **Translators & Localization Specialists**: Expanding and perfecting internationalization coverage across all supported languages.
+
+If you are interested in contributing, check out the [Contributing Guide](./CONTRIBUTING.md) or open an [Issue / Discussion](https://github.com/jaipkapoor99/en-croissant/issues) to share ideas, mockups, or PRs!
+
+---
+
 ## 👤 Author & Maintainer
 
 **Jai Kapoor**
