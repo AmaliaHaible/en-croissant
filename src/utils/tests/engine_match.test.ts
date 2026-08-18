@@ -142,4 +142,46 @@ describe("Engine Match Series & Multi-Game Logic", () => {
         expect(savedCompletedGames[1].round).toBe(2);
         expect(savedCompletedGames.some((g) => g.result === "*")).toBe(false);
     });
+
+    it("generates timestamped filename with custom tournament name and tournament category", () => {
+        function generateMatchFileName(options: {
+            p1: string;
+            p2: string;
+            gameCount: number;
+            customTournament?: string;
+            timestamp: string;
+        }): { fileName: string; category: "tournament" | "game" } {
+            const p1Clean = options.p1.replace(/[^a-zA-Z0-9_-]/g, "_");
+            const p2Clean = options.p2.replace(/[^a-zA-Z0-9_-]/g, "_");
+            const custom = options.customTournament?.trim();
+            const prefix = custom
+                ? custom.replace(/[^a-zA-Z0-9_-]/g, "_")
+                : `${p1Clean}_vs_${p2Clean}_series_${options.gameCount}games`;
+            const isTournament = options.gameCount > 1 || Boolean(custom);
+
+            return {
+                fileName: `${prefix}_${options.timestamp}.pgn`,
+                category: isTournament ? "tournament" : "game",
+            };
+        }
+
+        const t1 = generateMatchFileName({
+            p1: "Stockfish 17",
+            p2: "Lc0",
+            gameCount: 12,
+            customTournament: "TCEC Season 2026",
+            timestamp: "2026-08-18_22-55-00",
+        });
+        expect(t1.fileName).toBe("TCEC_Season_2026_2026-08-18_22-55-00.pgn");
+        expect(t1.category).toBe("tournament");
+
+        const t2 = generateMatchFileName({
+            p1: "Stockfish 17",
+            p2: "Lc0",
+            gameCount: 10,
+            timestamp: "2026-08-18_22-55-00",
+        });
+        expect(t2.fileName).toBe("Stockfish_17_vs_Lc0_series_10games_2026-08-18_22-55-00.pgn");
+        expect(t2.category).toBe("tournament");
+    });
 });

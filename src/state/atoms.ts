@@ -341,6 +341,10 @@ export const gameOpeningBookEnabledAtom = atomWithStorage<boolean>(
 export const gameOpeningBookMaxPlyAtom = atomWithStorage<number>("game-opening-book-max-ply", 40);
 
 export const gameMatchGameCountAtom = atomWithStorage<number>("game-match-game-count", 2);
+export const gameMatchTournamentNameAtom = atomWithStorage<string>(
+    "game-match-tournament-name",
+    "",
+);
 export const gameMatchAlternateColorsAtom = atomWithStorage<boolean>(
     "game-match-alternate-colors",
     true,

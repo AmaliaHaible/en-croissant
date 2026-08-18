@@ -13,6 +13,7 @@ import {
   SegmentedControl,
   Stack,
   Text,
+  TextInput,
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -30,6 +31,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
 import { makeUci, parseUci } from "chessops";
 import { INITIAL_FEN } from "chessops/fen";
+import dayjs from "dayjs";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -58,6 +60,7 @@ import {
   gameMatchAutoSaveAtom,
   gameMatchGameCountAtom,
   gameMatchSavePathAtom,
+  gameMatchTournamentNameAtom,
   gameOpeningBookEnabledAtom,
   gameOpeningBookMaxPlyAtom,
   gameOpeningBookPathAtom,
@@ -158,6 +161,7 @@ function BoardGame() {
   const [gameId, setGameId] = useAtom(currentGameIdAtom);
 
   const [matchGameCount, setMatchGameCount] = useAtom(gameMatchGameCountAtom);
+  const [matchTournamentName, setMatchTournamentName] = useAtom(gameMatchTournamentNameAtom);
   const [matchAlternateColors, setMatchAlternateColors] = useAtom(gameMatchAlternateColorsAtom);
   const [matchAutoSave, setMatchAutoSave] = useAtom(gameMatchAutoSaveAtom);
   const [matchSavePath, setMatchSavePath] = useAtom(gameMatchSavePathAtom);
@@ -289,7 +293,15 @@ function BoardGame() {
       const docDir = await getDocumentDir();
       const whiteName = (currentHeaders.white || "White").replace(/[^a-zA-Z0-9_-]/g, "_");
       const blackName = (currentHeaders.black || "Black").replace(/[^a-zA-Z0-9_-]/g, "_");
-      const defaultFileName = `${whiteName}_vs_${blackName}.pgn`;
+      const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+
+      let defaultFileName = `${whiteName}_vs_${blackName}_${timestamp}.pgn`;
+      if (matchScores.active || matchTournamentName.trim()) {
+        const customPrefix = matchTournamentName.trim()
+          ? matchTournamentName.trim().replace(/[^a-zA-Z0-9_-]/g, "_")
+          : `${whiteName}_vs_${blackName}_series_${matchScores.totalGames || matchGameCount}games`;
+        defaultFileName = `${customPrefix}_${timestamp}.pgn`;
+      }
 
       let targetPath = filePathOverride || matchSavePath;
       if (!targetPath) {
@@ -308,21 +320,23 @@ function BoardGame() {
         await writeTextFile(targetPath, updated);
 
         const fileName = targetPath.split(/[/\\]/).pop() || defaultFileName;
+        const isTournament =
+          matchScores.active || matchGameCount > 1 || Boolean(matchTournamentName.trim());
         addRecentFile({
           name: fileName,
           path: targetPath,
-          type: "game",
+          type: isTournament ? "tournament" : "game",
         });
 
         if (isFinalSeries) {
           notifications.show({
-            title: "Match Series Complete",
-            message: `All games saved to series file: ${fileName}`,
+            title: "Tournament Match Complete",
+            message: `All games saved under Tournaments: ${fileName}`,
             color: "teal",
           });
         } else if (!matchScores.active) {
           notifications.show({
-            title: "Game Saved to App Library",
+            title: isTournament ? "Tournament Game Saved" : "Game Saved to App Library",
             message: `Saved to ${fileName}`,
             color: "teal",
           });
@@ -336,7 +350,16 @@ function BoardGame() {
         });
       }
     },
-    [addRecentFile, matchSavePath, matchScores.active, setMatchSavePath, store],
+    [
+      addRecentFile,
+      matchGameCount,
+      matchSavePath,
+      matchScores.active,
+      matchScores.totalGames,
+      matchTournamentName,
+      setMatchSavePath,
+      store,
+    ],
   );
 
   function changeToAnalysisMode() {
@@ -410,10 +433,15 @@ function BoardGame() {
       getDocumentDir().then(async (docDir) => {
         const p1Name = getPlayerDisplayName(playerSettings.white).replace(/[^a-zA-Z0-9_-]/g, "_");
         const p2Name = getPlayerDisplayName(playerSettings.black).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+        const customTournament = matchTournamentName.trim();
+        const customPrefix = customTournament
+          ? customTournament.replace(/[^a-zA-Z0-9_-]/g, "_")
+          : `${p1Name}_vs_${p2Name}_series_${matchGameCount}games`;
         const seriesFileName =
           matchGameCount > 1
-            ? `${p1Name}_vs_${p2Name}_series_${matchGameCount}games.pgn`
-            : `${p1Name}_vs_${p2Name}.pgn`;
+            ? `${customPrefix}_${timestamp}.pgn`
+            : `${p1Name}_vs_${p2Name}_${timestamp}.pgn`;
         const defaultMatchFile = await resolve(docDir, seriesFileName);
         setMatchSavePath(defaultMatchFile);
       });
@@ -476,14 +504,19 @@ function BoardGame() {
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ".");
       const timeStr = now.toISOString().slice(11, 19);
 
+      const customTournament = matchTournamentName.trim();
       let eventStr = "Casual Game";
-      if (whiteIsEngine && blackIsEngine) {
+      if (customTournament) {
+        eventStr = customTournament;
+      } else if (whiteIsEngine && blackIsEngine) {
         eventStr = matchGameCount > 1 ? `Engine Match (${matchGameCount} games)` : "Engine Match";
       } else if (whiteIsEngine || blackIsEngine) {
         eventStr = "Player vs Engine";
       } else {
         eventStr = "Player Match";
       }
+
+      const isTournament = isEngineMatch || matchGameCount > 1 || Boolean(customTournament);
 
       const formatTimeControl = (settings: OpponentSettings): string => {
         if (!settings.timeControl) return "-";
@@ -500,9 +533,10 @@ function BoardGame() {
         white: state.whitePlayer,
         black: state.blackPlayer,
         event: eventStr,
-        site: "En Croissant",
+        site: isTournament ? "En Croissant Tournament" : "En Croissant",
         date: dateStr,
         time: timeStr,
+        round: isTournament ? String(matchScores.currentGame) : undefined,
         time_control: undefined,
         orientation: boardOrientation,
       };
@@ -948,6 +982,13 @@ function BoardGame() {
                                       Engine Match Series
                                     </Text>
                                   </Group>
+                                  <TextInput
+                                    label="Tournament / Series Name (Optional)"
+                                    description="Categorized under Tournaments with custom PGN event header."
+                                    placeholder="e.g. TCEC Season 2026, World Computer Chess"
+                                    value={matchTournamentName}
+                                    onChange={(e) => setMatchTournamentName(e.currentTarget.value)}
+                                  />
                                   <NumberInput
                                     label="Number of Games"
                                     description="Even number of games (2 to 100) recommended for equal White/Black rounds."
