@@ -1,6 +1,6 @@
 import { Select } from "@mantine/core";
 import { useAtomValue } from "jotai";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { enginesAtom } from "@/state/atoms";
 import type { LocalEngine } from "@/utils/engines";
 
@@ -12,7 +12,16 @@ export function EnginesSelect({
   setEngine: (engine: LocalEngine | null) => void;
 }) {
   const allEngines = useAtomValue(enginesAtom);
-  const engines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
+  const rawEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
+
+  const engines = useMemo(() => {
+    const seen = new Set<string>();
+    return rawEngines.filter((e) => {
+      if (!e || !e.id || seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+  }, [rawEngines]);
 
   useEffect(() => {
     if (engines.length === 0) return;
@@ -29,9 +38,9 @@ export function EnginesSelect({
   return (
     <Select
       allowDeselect={false}
-      data={engines?.map((engine) => ({
-        label: engine.name,
-        value: engine.id,
+      data={engines.map((e) => ({
+        label: e.name,
+        value: e.id,
       }))}
       value={engine?.id ?? ""}
       onChange={(e) => {

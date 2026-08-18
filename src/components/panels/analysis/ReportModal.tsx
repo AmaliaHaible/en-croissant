@@ -37,10 +37,16 @@ function ReportModal({
 
   const referenceDb = useAtomValue(referenceDbAtom);
   const engines = useAtomValue(enginesAtom);
-  const localEngines = useMemo(
-    () => (engines ?? []).filter((e): e is LocalEngine => e.type === "local"),
-    [engines],
-  );
+  const localEngines = useMemo(() => {
+    const seen = new Set<string>();
+    return (engines ?? [])
+      .filter((e): e is LocalEngine => e.type === "local")
+      .filter((e) => {
+        if (!e || !e.id || seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      });
+  }, [engines]);
   const store = useContext(TreeStateContext)!;
   const addAnalysis = useStore(store, (s) => s.addAnalysis);
 

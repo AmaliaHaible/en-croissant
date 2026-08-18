@@ -1,6 +1,6 @@
 use log::info;
-use serde::{Deserialize, Serialize};
-use shakmaty::{fen::Fen, san::San, Chess, EnPassantMode, Position, Setup};
+use serde::Serialize;
+use shakmaty::{fen::Fen, Setup};
 use std::collections::HashMap;
 
 use lazy_static::lazy_static;
@@ -23,27 +23,86 @@ pub struct OutOpening {
     fen: String,
 }
 
-#[derive(Deserialize)]
-struct OpeningRecord {
+const OPENINGS_BINARY_DATA: &[u8] = include_bytes!("../data/openings.bin.zst");
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+struct BinaryOpeningRecord {
     eco: String,
     name: String,
+    fen: String,
     pgn: String,
 }
 
-const TSV_DATA: [&[u8]; 5] = [
-    include_bytes!("../data/a.tsv"),
-    include_bytes!("../data/b.tsv"),
-    include_bytes!("../data/c.tsv"),
-    include_bytes!("../data/d.tsv"),
-    include_bytes!("../data/e.tsv"),
-];
+/// Generates the Chess960 (FRC) back rank piece layout for a given index (0..959).
+pub fn chess960_backrank(n: u16) -> [char; 8] {
+    let mut rank = [' '; 8];
 
-const FISCHER_RANDOM_DATA: &[u8] = include_bytes!("../data/frc.tsv");
+    // 1. Light-squared bishop (file 1, 3, 5, 7)
+    let b1 = (n % 4) as usize;
+    rank[2 * b1 + 1] = 'B';
+    let n1 = n / 4;
 
-#[derive(Deserialize)]
-struct FischerRandomRecord {
-    name: String,
-    fen: String,
+    // 2. Dark-squared bishop (file 0, 2, 4, 6)
+    let b2 = (n1 % 4) as usize;
+    rank[2 * b2] = 'B';
+    let n2 = n1 / 4;
+
+    // 3. Queen placement on q-th remaining empty square (0..5)
+    let q = (n2 % 6) as usize;
+    let n3 = (n2 / 6) as usize;
+    let mut empty_count = 0;
+    for slot in rank.iter_mut() {
+        if *slot == ' ' {
+            if empty_count == q {
+                *slot = 'Q';
+                break;
+            }
+            empty_count += 1;
+        }
+    }
+
+    // 4. Knight placements from the 10 combination pairs of 5 remaining squares
+    const KNIGHT_PAIRS: [(usize, usize); 10] = [
+        (0, 1),
+        (0, 2),
+        (0, 3),
+        (0, 4),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (2, 3),
+        (2, 4),
+        (3, 4),
+    ];
+    let (k1, k2) = KNIGHT_PAIRS[n3];
+    let mut empty_indices = [0; 5];
+    let mut idx = 0;
+    for (i, &slot) in rank.iter().enumerate() {
+        if slot == ' ' {
+            empty_indices[idx] = i;
+            idx += 1;
+        }
+    }
+    rank[empty_indices[k1]] = 'N';
+    rank[empty_indices[k2]] = 'N';
+
+    // 5. Remaining 3 empty squares are strictly Rook, King, Rook
+    let mut rkr = ['R', 'K', 'R'].into_iter();
+    for slot in rank.iter_mut() {
+        if *slot == ' ' {
+            *slot = rkr.next().unwrap();
+        }
+    }
+
+    rank
+}
+
+/// Formats the complete initial FEN string for a Chess960 position index (0..959).
+pub fn chess960_fen(n: u16) -> String {
+    let backrank = chess960_backrank(n);
+    let white_pieces: String = backrank.iter().collect();
+    let black_pieces: String = backrank.iter().map(|c| c.to_ascii_lowercase()).collect();
+    format!("{black_pieces}/pppppppp/8/8/8/8/PPPPPPPP/{white_pieces} w KQkq - 0 1")
 }
 
 #[tauri::command]
@@ -117,50 +176,42 @@ pub async fn search_opening_name(query: String) -> Result<Vec<OutOpening>, Error
 
 lazy_static! {
     static ref OPENINGS: Vec<Opening> = {
-        info!("Initializing openings table...");
+        info!("Initializing openings table from compressed binary database...");
 
-        let mut positions = vec![
-            Opening {
-                _eco: "Extra".to_string(),
-                name: "Starting Position".to_string(),
-                setup: Setup::default(),
-                pgn: None,
-            },
-            Opening {
-                _eco: "Extra".to_string(),
-                name: "Empty Board".to_string(),
-                setup: Setup::empty(),
-                pgn: None,
-            },
-        ];
+        let uncompressed = zstd::decode_all(OPENINGS_BINARY_DATA)
+            .expect("Failed to decompress embedded openings database");
+        let compiled: Vec<BinaryOpeningRecord> = serde_json::from_slice(&uncompressed)
+            .expect("Failed to parse embedded openings database");
 
-        for tsv in TSV_DATA {
-            let mut rdr = csv::ReaderBuilder::new().delimiter(b'\t').from_reader(tsv);
-            for result in rdr.deserialize() {
-                let record: OpeningRecord = result.expect("Failed to deserialize opening");
-                let mut pos = Chess::default();
-                for token in record.pgn.split_whitespace() {
-                    if let Ok(san) = token.parse::<San>() {
-                        pos.play_unchecked(&san.to_move(&pos).expect("legal move"));
-                    }
-                }
-                positions.push(Opening {
-                    _eco: record.eco,
-                    name: record.name,
-                    setup: pos.into_setup(EnPassantMode::Legal),
-                    pgn: Some(record.pgn),
-                });
-            }
+        let mut positions = Vec::with_capacity(compiled.len() + 962);
+        positions.push(Opening {
+            _eco: "Extra".to_string(),
+            name: "Starting Position".to_string(),
+            setup: Setup::default(),
+            pgn: None,
+        });
+        positions.push(Opening {
+            _eco: "Extra".to_string(),
+            name: "Empty Board".to_string(),
+            setup: Setup::empty(),
+            pgn: None,
+        });
+
+        for record in compiled {
+            let fen: Fen = record.fen.parse().expect("Failed to parse opening fen");
+            positions.push(Opening {
+                _eco: record.eco,
+                name: record.name,
+                setup: fen.into_setup(),
+                pgn: Some(record.pgn),
+            });
         }
-        let mut rdr = csv::ReaderBuilder::new()
-            .delimiter(b'\t')
-            .from_reader(FISCHER_RANDOM_DATA);
-        for result in rdr.deserialize() {
-            let record: FischerRandomRecord = result.expect("Failed to deserialize opening");
-            let fen: Fen = record.fen.parse().expect("Failed to parse fen");
+        for i in 0..960 {
+            let fen_str = chess960_fen(i);
+            let fen: Fen = fen_str.parse().expect("Failed to parse generated chess960 fen");
             positions.push(Opening {
                 _eco: "FRC".to_string(),
-                name: record.name,
+                name: format!("Fischer Random {i}"),
                 setup: fen.into_setup(),
                 pgn: None,
             });
@@ -186,6 +237,38 @@ mod tests {
             get_opening_from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPPKPPP/RNBQ1BNR b kq - 1 2")
                 .unwrap();
         assert_eq!(opening, "Bongcloud Attack");
+    }
+
+    #[test]
+    fn test_chess960_generation() {
+        assert_eq!(
+            chess960_fen(0),
+            "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1"
+        );
+        assert_eq!(
+            chess960_fen(518),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        );
+        // Verify all 960 positions generate valid FENs and King is between Rooks
+        for i in 0..960 {
+            let backrank = chess960_backrank(i);
+            let mut r1 = None;
+            let mut k = None;
+            let mut r2 = None;
+            for (idx, &p) in backrank.iter().enumerate() {
+                if p == 'R' {
+                    if r1.is_none() {
+                        r1 = Some(idx);
+                    } else {
+                        r2 = Some(idx);
+                    }
+                } else if p == 'K' {
+                    k = Some(idx);
+                }
+            }
+            assert!(r1.is_some() && k.is_some() && r2.is_some());
+            assert!(r1.unwrap() < k.unwrap() && k.unwrap() < r2.unwrap());
+        }
     }
 
     #[test]

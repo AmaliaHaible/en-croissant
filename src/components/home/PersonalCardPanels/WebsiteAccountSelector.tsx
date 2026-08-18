@@ -41,16 +41,20 @@ const WebsiteAccountSelector = ({
     onAccountChange(account);
   }, [account]);
 
-  const accounts = ["All accounts"].concat(
-    sessions
-      .filter(
-        (s) =>
-          s.player === playerName &&
-          ((website === "Chess.com" && s.chessCom?.username) ||
-            (website === "Lichess" && s.lichess?.username)),
-      )
-      .map((s) => s.chessCom?.username || s.lichess?.username)
-      .filter((username): username is string => username !== undefined && username !== null),
+  const accounts = Array.from(
+    new Set(
+      ["All accounts"].concat(
+        sessions
+          .filter(
+            (s) =>
+              s.player === playerName &&
+              ((website === "Chess.com" && s.chessCom?.username) ||
+                (website === "Lichess" && s.lichess?.username)),
+          )
+          .map((s) => s.chessCom?.username || s.lichess?.username)
+          .filter((username): username is string => username !== undefined && username !== null),
+      ),
+    ),
   );
 
   return (

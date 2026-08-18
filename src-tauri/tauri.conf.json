@@ -39,14 +39,14 @@
     "targets": "all"
   },
   "build": {
-    "beforeDevCommand": "pnpm start-vite",
+    "beforeDevCommand": "",
     "beforeBuildCommand": "pnpm build-vite",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
   "version": "2.0.0",
   "productName": "En Croissant 2.0",
-  "mainBinaryName": "en-croissant",
+  "mainBinaryName": "en-croissant-2",
   "identifier": "org.encroissant.v2",
   "plugins": {
     "cli": {

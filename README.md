@@ -29,8 +29,12 @@
 ## ⚡ What's New in Version 2.0
 
 - 🏎️ **Zero-Allocation Bitwise Tree Hashing**: Custom fast 32-bit state hashing with 0 heap string allocations—delivering **26.1% faster repertoire and tree operations**.
-- 🚀 **Automated Hardware Auto-Discovery**: Immediate CPU topology detection (physical & logical core counts), total RAM, and instruction set capabilities (AVX2, BMI2) with one-click optimal engine thread and hash allocation.
-- 💾 **Unified Global Syzygy Tablebases**: Configure your 3–7 piece Syzygy endgame tablebase directory once; En Croissant 2.0 automatically propagates and wires it to all supported UCI engines.
+- 🖥️ **Live System Hardware Configs & Auto-Discovery**: Real-time detection of CPU (cores and threads), GPU model, VRAM, and total/available system RAM with automatic optimal thread and hash sizing.
+- 📁 **Zero-Friction App Directory Storage**: All saved games, engine match series, imported engine binaries, and avatars are automatically mirrored and organized within the app directory—no annoying file-picker save dialogs.
+- ⚔️ **Consolidated Engine Match Series**: Play multi-game engine matches (up to 100 games) saved as unified multi-game PGN series files, with graceful match abortion that preserves only completed rounds.
+- 📚 **Precompiled High-Density Binary Opening Database**: Replaced legacy loose TSV tables with an ultra-compact zstd-compressed binary opening book (3,641 lines in 78 KB) with sub-millisecond lookup and zero build-time overhead.
+- 🎲 **Algorithmic Fischer Random (Chess960)**: Mathematical FRC position generator supporting all 960 positions with zero static lookup tables.
+- 💾 **Unified Global Syzygy Tablebases**: Configure your 3–7 piece Syzygy endgame tablebase directory once; En Croissant 2.0 automatically propagates and wires it to all supported UCI engines with single-click master toggling.
 - 🧠 **High-Performance Memory & Database Layer**: Integrated `mimalloc` high-performance global memory allocator in Rust and tuned SQLite database pragmas for ultra-responsive games indexing.
 - 📦 **Modernized 2026 Tech Stack**: Upgraded to **React 19**, **Vite 8**, **Tauri 2.11**, **TanStack Router 1.170**, **Jotai 2.20**, and **Zustand 5**, trimming client entry bundle size by **17.6%**.
 

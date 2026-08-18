@@ -17,6 +17,7 @@ import {
   SimpleGrid,
   Space,
   Stack,
+  Switch,
   Text,
   TextInput,
   ThemeIcon,
@@ -30,10 +31,12 @@ import {
   IconCopy,
   IconCpu,
   IconDatabase,
+  IconDeviceDesktopAnalytics,
   IconFolder,
   IconPhotoPlus,
   IconPlus,
   IconSearch,
+  IconServer,
   IconTrash,
 } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -44,8 +47,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWRImmutable from "swr/immutable";
 import { match, P } from "ts-pattern";
-import { commands } from "@/bindings";
+import { commands, type UciOptionConfig } from "@/bindings";
 import { notifications } from "@mantine/notifications";
+import { resolve } from "@tauri-apps/api/path";
+import { copyFile, exists } from "@tauri-apps/plugin-fs";
+import { getEnginesDir } from "@/utils/directories";
 import { Route } from "@/routes/engines";
 import { enginesAtom, storedSyzygyPathAtom } from "@/state/atoms";
 import {
@@ -55,6 +61,8 @@ import {
   type LocalEngine,
   requiredEngineSettings,
 } from "@/utils/engines";
+import { formatBytes } from "@/utils/format";
+import { useHardwareInfo } from "@/utils/hardware";
 import { unwrap } from "@/utils/unwrap";
 import ConfirmModal from "../common/ConfirmModal";
 import GenericCard from "../common/GenericCard";
@@ -63,6 +71,74 @@ import LocalImage from "../common/LocalImage";
 import OpenFolderButton from "../common/OpenFolderButton";
 import LinesSlider from "../panels/analysis/LinesSlider";
 import AddEngine from "./AddEngine";
+
+function HardwareConfigBanner() {
+  const { hardware, isLoading } = useHardwareInfo();
+  if (isLoading || !hardware) return null;
+
+  return (
+    <Paper withBorder radius="md" p="sm" mx="md" mb="xs">
+      <Group justify="space-between" align="center" wrap="wrap" gap="md">
+        <Group gap="xl" wrap="wrap">
+          {/* CPU: Cores & Threads */}
+          <Group gap="xs" wrap="nowrap">
+            <ThemeIcon size="lg" radius="md" variant="light" color="blue">
+              <IconCpu size="1.2rem" />
+            </ThemeIcon>
+            <div>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                CPU ({hardware.physicalCores} Cores / {hardware.logicalCores} Threads)
+              </Text>
+              <Text size="xs" fw={700} lineClamp={1}>
+                {hardware.cpuBrand}
+              </Text>
+            </div>
+          </Group>
+
+          {/* GPU & VRAM */}
+          <Group gap="xs" wrap="nowrap">
+            <ThemeIcon size="lg" radius="md" variant="light" color="grape">
+              <IconDeviceDesktopAnalytics size="1.2rem" />
+            </ThemeIcon>
+            <div>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                GPU {hardware.vramMb ? `(${formatBytes(hardware.vramMb * 1024 * 1024)} VRAM)` : ""}
+              </Text>
+              <Text size="xs" fw={700} lineClamp={1}>
+                {hardware.gpuBrand}
+              </Text>
+            </div>
+          </Group>
+
+          {/* RAM */}
+          <Group gap="xs" wrap="nowrap">
+            <ThemeIcon size="lg" radius="md" variant="light" color="teal">
+              <IconServer size="1.2rem" />
+            </ThemeIcon>
+            <div>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                System Memory
+              </Text>
+              <Text size="xs" fw={700}>
+                {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} RAM ({formatBytes(hardware.availableMemoryMb * 1024 * 1024)} Free)
+              </Text>
+            </div>
+          </Group>
+        </Group>
+
+        {/* Engine Recommendations */}
+        <Group gap="xs">
+          <Badge size="sm" variant="light" color="blue">
+            Recommended: {hardware.recommendedThreads} Threads
+          </Badge>
+          <Badge size="sm" variant="light" color="teal">
+            {hardware.recommendedHashMb} MB Hash
+          </Badge>
+        </Group>
+      </Group>
+    </Paper>
+  );
+}
 
 function GlobalTablebaseSection() {
   const { t } = useTranslation();
@@ -197,6 +273,7 @@ export default function EnginesPage() {
         <Title>{t("Engines.Title")}</Title>
         <OpenFolderButton base="Engines" folder="engines" />
       </Group>
+      <HardwareConfigBanner />
       <GlobalTablebaseSection />
       <Group grow flex={1} style={{ overflow: "hidden" }} align="start" px="md" pb="md">
         <Paper withBorder style={{ borderWidth: 2 }} h="100%">
@@ -443,9 +520,23 @@ function EngineSettings({
   function changeImage() {
     open({
       title: "Select image",
-    }).then((res) => {
+      filters: [{ name: "Image", extensions: ["png", "jpeg", "jpg", "svg", "webp"] }],
+    }).then(async (res) => {
       if (typeof res === "string") {
-        setEngine({ ...engine, image: res });
+        const enginesDir = await getEnginesDir();
+        const imageName = res.split(/[/\\]/).pop() || "engine_image.png";
+        const destPath = await resolve(enginesDir, imageName);
+
+        if (res !== destPath) {
+          try {
+            await copyFile(res, destPath);
+          } catch (e) {
+            console.error("Failed to copy image to engines directory:", e);
+          }
+        }
+
+        const targetImagePath = (await exists(destPath)) ? destPath : res;
+        setEngine({ ...engine, image: targetImagePath });
       }
     });
   }
@@ -563,72 +654,30 @@ function EngineSettings({
                     <IconDatabase size="1rem" />
                   </ThemeIcon>
                   <div style={{ overflow: "hidden" }}>
-                    <Group gap="xs">
-                      <Text size="sm" fw={600}>
-                        Tablebase Status
-                      </Text>
-                      {currentEngineSyzygyPath ? (
-                        <Badge
-                          size="xs"
-                          color="teal"
-                          variant="light"
-                          leftSection={<IconCheck size="0.7rem" />}
-                        >
-                          {currentEngineSyzygyPath === globalSyzygyPath
-                            ? "Using Global Tablebase"
-                            : "Custom Path"}
-                        </Badge>
-                      ) : (
-                        <Badge size="xs" color="gray" variant="light">
-                          Disabled
-                        </Badge>
-                      )}
-                    </Group>
+                    <Text size="sm" fw={600}>
+                      Syzygy Endgame Tablebases
+                    </Text>
                     <Text size="xs" c="dimmed" lineClamp={1}>
-                      {currentEngineSyzygyPath || "No tablebase path configured"}
+                      {globalSyzygyPath
+                        ? `Using global path: ${globalSyzygyPath}`
+                        : "No global tablebase path set (configure in Settings)"}
                     </Text>
                   </div>
                 </Group>
-                <Group gap="xs" wrap="nowrap">
-                  {globalSyzygyPath && currentEngineSyzygyPath !== globalSyzygyPath && (
-                    <Button
-                      size="xs"
-                      variant="light"
-                      onClick={() =>
-                        setSetting(
-                          syzygyOption.value.name,
-                          globalSyzygyPath,
-                          "default" in syzygyOption.value
-                            ? (syzygyOption.value.default as string | null)
-                            : null,
-                        )
-                      }
-                    >
-                      Sync with Global Tablebase
-                    </Button>
-                  )}
-                  <Button
-                    size="xs"
-                    variant="default"
-                    leftSection={<IconFolder size="0.9rem" />}
-                    onClick={async () => {
-                      const selected = await open({
-                        multiple: true,
-                        directory: true,
-                      });
-                      if (!selected) return;
-                      const directories = Array.isArray(selected) ? selected : [selected];
-                      const newPath = directories.join(syzygyPathSeparator);
-                      const defVal =
-                        "default" in syzygyOption.value
-                          ? (syzygyOption.value.default as string | null)
-                          : null;
-                      setSetting(syzygyOption.value.name, newPath, defVal);
-                    }}
-                  >
-                    {currentEngineSyzygyPath ? "Override" : "Set Path"}
-                  </Button>
-                </Group>
+                <Switch
+                  size="md"
+                  checked={Boolean(currentEngineSyzygyPath)}
+                  onChange={(e) => {
+                    const enabled = e.currentTarget.checked;
+                    setSetting(
+                      syzygyOption.value.name,
+                      enabled ? (globalSyzygyPath || "default") : "",
+                      "default" in syzygyOption.value
+                        ? (syzygyOption.value.default as string | null)
+                        : null,
+                    );
+                  }}
+                />
               </Group>
             </Paper>
           </>
@@ -657,7 +706,7 @@ function EngineSettings({
                     <Select
                       key={v.name}
                       label={v.name}
-                      data={v.var}
+                      data={Array.from(new Set(v.var ?? []))}
                       value={v.value}
                       onChange={(e) => setSetting(v.name, e, v.default)}
                     />

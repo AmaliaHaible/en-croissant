@@ -10,9 +10,15 @@ import EngineLogsView from "../../common/EngineLogsView";
 
 export default function LogsPanel() {
   const engines = useAtomValue(enginesAtom);
+  const seen = new Set<string>();
   const localEngines = (engines ?? [])
     .filter((e): e is LocalEngine => e.type === "local")
-    .filter((e) => e.loaded);
+    .filter((e) => e.loaded)
+    .filter((e) => {
+      if (!e || !e.id || seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
   const [engine, setEngine] = useState<LocalEngine | undefined>(localEngines[0]);
 
   const activeTab = useAtomValue(activeTabAtom);

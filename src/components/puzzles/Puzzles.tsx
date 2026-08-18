@@ -338,12 +338,17 @@ function Puzzles({ id }: { id: string }) {
           <Group justify="space-between" pb="sm">
             <Select
               style={{ flex: 1 }}
-              data={puzzleDbs
-                .map((p) => ({
-                  label: p.title.split(".db3")[0],
-                  value: p.path,
-                }))
-                .concat({ label: `+ ${t("Common.AddNew")}`, value: "add" })}
+              data={Array.from(
+                new Map(
+                  puzzleDbs.map((p) => [
+                    p.path,
+                    {
+                      label: p.title.split(".db3")[0],
+                      value: p.path,
+                    },
+                  ]),
+                ).values(),
+              ).concat({ label: `+ ${t("Common.AddNew")}`, value: "add" })}
               value={selectedDb}
               clearable={false}
               placeholder={t("Puzzle.SelectDatabase")}
@@ -410,7 +415,7 @@ function Puzzles({ id }: { id: string }) {
                   <Select
                     label="Theme"
                     placeholder="All themes"
-                    data={availableThemes.map((theme) => ({
+                    data={Array.from(new Set(availableThemes)).map((theme) => ({
                       label: formatThemeLabel(theme),
                       value: theme,
                     }))}

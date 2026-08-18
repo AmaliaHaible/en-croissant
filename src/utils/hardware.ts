@@ -12,6 +12,8 @@ export const hardwareInfoAtom = atom(async (): Promise<HardwareInfo> => {
             logicalCores: navigator.hardwareConcurrency || 4,
             totalMemoryMb: 8192,
             availableMemoryMb: 4096,
+            gpuBrand: "Dedicated / Integrated GPU",
+            vramMb: null,
             osName: "Unknown",
             osVersion: "",
             arch: "x86_64",

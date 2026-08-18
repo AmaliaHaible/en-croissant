@@ -241,6 +241,12 @@ fn main() {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_cli::init())?;
 
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon() {
+                    let _ = window.set_icon(icon.clone());
+                }
+            }
+
             log::info!("Finished rust initialization");
 
             Ok(())
@@ -286,6 +292,8 @@ pub struct HardwareInfo {
     pub logical_cores: u32,
     pub total_memory_mb: u32,
     pub available_memory_mb: u32,
+    pub gpu_brand: String,
+    pub vram_mb: Option<u32>,
     pub os_name: String,
     pub os_version: String,
     pub arch: String,
@@ -293,6 +301,98 @@ pub struct HardwareInfo {
     pub is_avx2: bool,
     pub recommended_threads: u32,
     pub recommended_hash_mb: u32,
+}
+
+fn detect_gpu_and_vram() -> (String, Option<u32>) {
+    // 1. Try nvidia-smi
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                if let Some(line) = text.lines().next() {
+                    let parts: Vec<&str> = line.split(',').collect();
+                    if parts.len() >= 2 {
+                        let name = parts[0].trim().to_string();
+                        let vram = parts[1].trim().parse::<u32>().ok();
+                        return (name, vram);
+                    } else if !parts.is_empty() && !parts[0].trim().is_empty() {
+                        return (parts[0].trim().to_string(), None);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. On Linux, try lspci
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(output) = std::process::Command::new("lspci").output() {
+            if output.status.success() {
+                if let Ok(text) = String::from_utf8(output.stdout) {
+                    for line in text.lines() {
+                        let lower = line.to_lowercase();
+                        if lower.contains("vga compatible controller")
+                            || lower.contains("3d controller")
+                            || lower.contains("display controller")
+                        {
+                            if let Some(pos) = line.find(": ") {
+                                let name = line[pos + 2..].trim().to_string();
+                                return (name, None);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. On Windows, try PowerShell WMI
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("powershell")
+            .args(["-Command", "Get-CimInstance Win32_VideoController | Select-Object -Property Name,AdapterRAM | ConvertTo-Json"])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(text) = String::from_utf8(output.stdout) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                        let item = if val.is_array() { val.get(0) } else { Some(&val) };
+                        if let Some(obj) = item {
+                            let name = obj.get("Name").and_then(|v| v.as_str()).unwrap_or("Discrete GPU").to_string();
+                            let vram = obj.get("AdapterRAM").and_then(|v| v.as_u64()).map(|b| (b / 1024 / 1024) as u32);
+                            return (name, vram);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. On macOS, try system_profiler
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("system_profiler")
+            .args(["SPDisplaysDataType", "-json"])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(text) = String::from_utf8(output.stdout) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(displays) = val.get("SPDisplaysDataType").and_then(|v| v.as_array()) {
+                            if let Some(first) = displays.first() {
+                                let name = first.get("sppci_model").and_then(|v| v.as_str()).unwrap_or("Apple GPU").to_string();
+                                return (name, None);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ("System GPU".to_string(), None)
 }
 
 #[tauri::command]
@@ -317,6 +417,8 @@ fn get_hardware_info() -> HardwareInfo {
     let physical_cores = sys.physical_core_count().unwrap_or(logical_cores as usize) as u32;
     let total_memory_mb = (sys.total_memory() / 1024 / 1024) as u32;
     let available_memory_mb = (sys.available_memory() / 1024 / 1024) as u32;
+
+    let (gpu_brand, vram_mb) = detect_gpu_and_vram();
 
     let is_bmi2 = {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -357,6 +459,8 @@ fn get_hardware_info() -> HardwareInfo {
         logical_cores,
         total_memory_mb,
         available_memory_mb,
+        gpu_brand,
+        vram_mb,
         os_name,
         os_version,
         arch,

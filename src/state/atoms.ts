@@ -133,7 +133,22 @@ async function getEnginesStoragePath(key: string): Promise<string> {
 const enginesFileStorage: AsyncStringStorage = {
     async getItem(key) {
         try {
-            return await readTextFile(await getEnginesStoragePath(key));
+            const raw = await readTextFile(await getEnginesStoragePath(key));
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    const seen = new Set<string>();
+                    const deduped = parsed.filter((e: any) => {
+                        if (!e || !e.id || seen.has(e.id)) return false;
+                        seen.add(e.id);
+                        return true;
+                    });
+                    return JSON.stringify(deduped);
+                }
+            } catch {
+                // return raw
+            }
+            return raw;
         } catch {
             return null;
         }
@@ -141,7 +156,22 @@ const enginesFileStorage: AsyncStringStorage = {
     async setItem(key, newValue) {
         const path = await getEnginesStoragePath(key);
         await ensureParentDir(path);
-        await writeTextFile(path, newValue);
+        let valueToWrite = newValue;
+        try {
+            const parsed = JSON.parse(newValue);
+            if (Array.isArray(parsed)) {
+                const seen = new Set<string>();
+                const deduped = parsed.filter((e: any) => {
+                    if (!e || !e.id || seen.has(e.id)) return false;
+                    seen.add(e.id);
+                    return true;
+                });
+                valueToWrite = JSON.stringify(deduped, null, 4);
+            }
+        } catch {
+            // no-op
+        }
+        await writeTextFile(path, valueToWrite);
     },
     async removeItem(key) {
         const path = await getEnginesStoragePath(key);
@@ -309,6 +339,17 @@ export const gameOpeningBookEnabledAtom = atomWithStorage<boolean>(
 );
 
 export const gameOpeningBookMaxPlyAtom = atomWithStorage<number>("game-opening-book-max-ply", 40);
+
+export const gameMatchGameCountAtom = atomWithStorage<number>("game-match-game-count", 2);
+export const gameMatchAlternateColorsAtom = atomWithStorage<boolean>(
+    "game-match-alternate-colors",
+    true,
+);
+export const gameMatchAutoSaveAtom = atomWithStorage<boolean>("game-match-auto-save", true);
+export const gameMatchSavePathAtom = atomWithStorage<string | null>(
+    "game-match-save-path",
+    null,
+);
 
 function tabValue<T extends object | string | boolean | number | null | undefined>(
     family: AtomFamily<string, PrimitiveAtom<T>>,

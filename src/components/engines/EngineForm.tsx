@@ -13,6 +13,10 @@ import FileInput from "../common/FileInput";
 import { useAtom } from "jotai";
 import { storedSyzygyPathAtom } from "@/state/atoms";
 
+import { resolve } from "@tauri-apps/api/path";
+import { copyFile, exists } from "@tauri-apps/plugin-fs";
+import { getEnginesDir } from "@/utils/directories";
+
 export default function EngineForm({
   onSubmit,
   form,
@@ -62,9 +66,23 @@ export default function EngineForm({
             multiple: false,
             filters,
           });
-          if (!selected) return;
-          config.current = unwrap(await commands.getEngineConfig(selected as string));
-          form.setFieldValue("path", selected as string);
+          if (!selected || typeof selected !== "string") return;
+
+          const enginesDir = await getEnginesDir();
+          const binaryName = selected.split(/[/\\]/).pop() || "engine";
+          const destPath = await resolve(enginesDir, binaryName);
+
+          if (selected !== destPath) {
+            try {
+              await copyFile(selected, destPath);
+            } catch (e) {
+              console.error("Failed to copy engine binary to app engines directory:", e);
+            }
+          }
+
+          const targetPath = (await exists(destPath)) ? destPath : selected;
+          config.current = unwrap(await commands.getEngineConfig(targetPath));
+          form.setFieldValue("path", targetPath);
           form.setFieldValue("name", config.current.name);
         }}
       />
@@ -90,18 +108,32 @@ export default function EngineForm({
         <Input
           component="button"
           type="button"
-          // accept="application/octet-stream"
           onClick={async () => {
             const selected = await open({
               multiple: false,
               filters: [
                 {
                   name: "Image",
-                  extensions: ["png", "jpeg"],
+                  extensions: ["png", "jpeg", "jpg", "svg", "webp"],
                 },
               ],
             });
-            form.setFieldValue("image", selected as string);
+            if (!selected || typeof selected !== "string") return;
+
+            const enginesDir = await getEnginesDir();
+            const imageName = selected.split(/[/\\]/).pop() || "engine_image.png";
+            const destPath = await resolve(enginesDir, imageName);
+
+            if (selected !== destPath) {
+              try {
+                await copyFile(selected, destPath);
+              } catch (e) {
+                console.error("Failed to copy engine image to app engines directory:", e);
+              }
+            }
+
+            const targetImagePath = (await exists(destPath)) ? destPath : selected;
+            form.setFieldValue("image", targetImagePath);
           }}
         >
           <Text lineClamp={1}>{form.values.image}</Text>

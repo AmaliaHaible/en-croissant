@@ -11,7 +11,7 @@ import {
 import { useDebouncedValue } from "@mantine/hooks";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue } from "jotai";
-import { memo, useContext, useEffect } from "react";
+import { memo, useContext, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr/immutable";
 import { match } from "ts-pattern";
@@ -125,9 +125,17 @@ function DatabasePanel() {
 
   const { data: databases } = useSWR(db === "local" ? "databases" : null, () => getDatabases());
 
-  const dbSelectData = (databases ?? [])
-    .filter((d) => d.type === "success")
-    .map((d) => ({ value: d.file, label: d.title || d.filename }));
+  const dbSelectData = useMemo(() => {
+    const seen = new Set<string>();
+    return (databases ?? [])
+      .filter((d) => d.type === "success")
+      .map((d) => ({ value: d.file, label: d.title || d.filename }))
+      .filter((item) => {
+        if (!item.value || seen.has(item.value)) return false;
+        seen.add(item.value);
+        return true;
+      });
+  }, [databases]);
 
   useEffect(() => {
     if (db === "local") {

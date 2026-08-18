@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Badge,
   Box,
   Button,
   Checkbox,
@@ -11,17 +12,23 @@ import {
   ScrollArea,
   SegmentedControl,
   Stack,
+  Switch,
   Text,
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import {
   IconArrowsExchange,
+  IconDeviceFloppy,
+  IconDownload,
   IconFileText,
   IconPlus,
+  IconTrophy,
   IconX,
   IconZoomCheck,
 } from "@tabler/icons-react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
 import { makeUci, parseUci } from "chessops";
 import { INITIAL_FEN } from "chessops/fen";
@@ -40,13 +47,19 @@ import {
   type PlayerConfig,
 } from "@/bindings";
 import type { ChessgroundRef } from "@/chessground/Chessground";
+import { resolve } from "@tauri-apps/api/path";
 import {
   activeTabAtom,
+  addRecentFileAtom,
   flipBoardAfterMoveAtom,
   currentGameIdAtom,
   currentGameStateAtom,
   currentPlayersAtom,
   gameInputColorAtom,
+  gameMatchAlternateColorsAtom,
+  gameMatchAutoSaveAtom,
+  gameMatchGameCountAtom,
+  gameMatchSavePathAtom,
   gameOpeningBookEnabledAtom,
   gameOpeningBookMaxPlyAtom,
   gameOpeningBookPathAtom,
@@ -55,7 +68,9 @@ import {
   gameSameTimeControlAtom,
   tabsAtom,
 } from "@/state/atoms";
+import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
+import { getDocumentDir } from "@/utils/directories";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import EngineLogsView from "../common/EngineLogsView";
@@ -73,6 +88,11 @@ function gameResultToOutcome(result: GameResult): Outcome {
   if (result.type === "whiteWins") return "1-0";
   if (result.type === "blackWins") return "0-1";
   return "1/2-1/2";
+}
+
+function getPlayerDisplayName(settings: OpponentSettings): string {
+  if (settings.type === "human") return settings.name || "Player";
+  return settings.engine?.name || "Engine";
 }
 
 type BackendMove = { uci: string; clock: number | null };
@@ -138,6 +158,20 @@ function BoardGame() {
   const [whiteTime, setWhiteTime] = useState<number | null>(null);
   const [blackTime, setBlackTime] = useState<number | null>(null);
   const [gameId, setGameId] = useAtom(currentGameIdAtom);
+
+  const [matchGameCount, setMatchGameCount] = useAtom(gameMatchGameCountAtom);
+  const [matchAlternateColors, setMatchAlternateColors] = useAtom(gameMatchAlternateColorsAtom);
+  const [matchAutoSave, setMatchAutoSave] = useAtom(gameMatchAutoSaveAtom);
+  const [matchSavePath, setMatchSavePath] = useAtom(gameMatchSavePathAtom);
+
+  const [matchScores, setMatchScores] = useState({
+    p1Score: 0,
+    p2Score: 0,
+    draws: 0,
+    currentGame: 1,
+    totalGames: 1,
+    active: false,
+  });
 
   const [logsOpened, toggleLogsOpened] = useToggle();
   const [logsColor, setLogsColor] = useState<"white" | "black">("white");
@@ -233,6 +267,80 @@ function BoardGame() {
     [root, setFen, appendMove],
   );
 
+  const [, addRecentFile] = useAtom(addRecentFileAtom);
+
+  const saveLiveGameToPgn = useCallback(
+    async (filePathOverride?: string, isFinalSeries = false) => {
+      const currentState = store.getState();
+      const currentRoot = currentState.root;
+      const currentHeaders = currentState.headers;
+
+      // When a match or game is aborted (*), do not save the incomplete game
+      if (currentHeaders.result === "*") {
+        return;
+      }
+
+      const pgnText = getPGN(currentRoot, {
+        headers: currentHeaders,
+        glyphs: true,
+        comments: true,
+        variations: true,
+        extraMarkups: true,
+      });
+
+      const docDir = await getDocumentDir();
+      const whiteName = (currentHeaders.white || "White").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const blackName = (currentHeaders.black || "Black").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const defaultFileName = `${whiteName}_vs_${blackName}.pgn`;
+
+      let targetPath = filePathOverride || matchSavePath;
+      if (!targetPath) {
+        targetPath = await resolve(docDir, defaultFileName);
+        setMatchSavePath(targetPath);
+      }
+
+      try {
+        let existing = "";
+        try {
+          existing = await readTextFile(targetPath);
+        } catch {
+          // File does not exist yet
+        }
+        const updated = existing.trim() ? `${existing.trim()}\n\n${pgnText}` : pgnText;
+        await writeTextFile(targetPath, updated);
+
+        const fileName = targetPath.split(/[/\\]/).pop() || defaultFileName;
+        addRecentFile({
+          name: fileName,
+          path: targetPath,
+          type: "game",
+        });
+
+        if (isFinalSeries) {
+          notifications.show({
+            title: "Match Series Complete",
+            message: `All games saved to series file: ${fileName}`,
+            color: "teal",
+          });
+        } else if (!matchScores.active) {
+          notifications.show({
+            title: "Game Saved to App Library",
+            message: `Saved to ${fileName}`,
+            color: "teal",
+          });
+        }
+      } catch (err) {
+        console.error("Failed to save PGN:", err);
+        notifications.show({
+          title: "Save Failed",
+          message: String(err),
+          color: "red",
+        });
+      }
+    },
+    [addRecentFile, matchSavePath, matchScores.active, setMatchSavePath, store],
+  );
+
   function changeToAnalysisMode() {
     setTabs((prev) =>
       prev.map((tab) => (tab.value === activeTab ? { ...tab, type: "analysis" } : tab)),
@@ -280,9 +388,35 @@ function BoardGame() {
     return moves;
   }
 
-  async function startGame() {
-    const playerSettings = getPlayers();
+  async function startGame(customPlayerSettings?: { white: OpponentSettings; black: OpponentSettings }, isMatchStep = false) {
+    const playerSettings = customPlayerSettings || getPlayers();
     setPlayers(playerSettings);
+
+    const whiteIsEngine = playerSettings.white.type === "engine";
+    const blackIsEngine = playerSettings.black.type === "engine";
+    const isEngineMatch = whiteIsEngine && blackIsEngine;
+
+    if (isEngineMatch && !isMatchStep) {
+      setMatchScores({
+        p1Score: 0,
+        p2Score: 0,
+        draws: 0,
+        currentGame: 1,
+        totalGames: matchGameCount,
+        active: matchGameCount > 1,
+      });
+
+      getDocumentDir().then(async (docDir) => {
+        const p1Name = getPlayerDisplayName(playerSettings.white).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const p2Name = getPlayerDisplayName(playerSettings.black).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const seriesFileName =
+          matchGameCount > 1
+            ? `${p1Name}_vs_${p2Name}_series_${matchGameCount}games.pgn`
+            : `${p1Name}_vs_${p2Name}.pgn`;
+        const defaultMatchFile = await resolve(docDir, seriesFileName);
+        setMatchSavePath(defaultMatchFile);
+      });
+    }
 
     const boardOrientation =
       playerSettings.black.type === "human" && playerSettings.white.type === "engine"
@@ -341,11 +475,9 @@ function BoardGame() {
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ".");
       const timeStr = now.toISOString().slice(11, 19);
 
-      const whiteIsEngine = playerSettings.white.type === "engine";
-      const blackIsEngine = playerSettings.black.type === "engine";
       let eventStr = "Casual Game";
       if (whiteIsEngine && blackIsEngine) {
-        eventStr = "Engine Match";
+        eventStr = matchGameCount > 1 ? `Engine Match (${matchGameCount} games)` : "Engine Match";
       } else if (whiteIsEngine || blackIsEngine) {
         eventStr = "Player vs Engine";
       } else {
@@ -490,7 +622,54 @@ function BoardGame() {
       syncTreeWithMovesRef.current(mapBackendMoves(payload.moves));
 
       setGameState("gameOver");
-      setResult(gameResultToOutcome(payload.result));
+      const outcome = gameResultToOutcome(payload.result);
+      setResult(outcome);
+
+      const isLastGameInSeries = matchScores.active && matchScores.currentGame >= matchScores.totalGames;
+      if (matchAutoSave || matchScores.active) {
+        saveLiveGameToPgn(matchSavePath || undefined, isLastGameInSeries);
+      }
+
+      setMatchScores((prev) => {
+        if (!prev.active || prev.currentGame >= prev.totalGames) {
+          return { ...prev, active: false };
+        }
+
+        let p1Delta = 0;
+        let p2Delta = 0;
+        let drawDelta = 0;
+        const p1IsWhite = inputColor === "white";
+        if (outcome === "1-0") {
+          if (p1IsWhite) p1Delta = 1;
+          else p2Delta = 1;
+        } else if (outcome === "0-1") {
+          if (p1IsWhite) p2Delta = 1;
+          else p1Delta = 1;
+        } else {
+          p1Delta = 0.5;
+          p2Delta = 0.5;
+          drawDelta = 1;
+        }
+
+        const nextIndex = prev.currentGame + 1;
+        const nextScores = {
+          ...prev,
+          p1Score: prev.p1Score + p1Delta,
+          p2Score: prev.p2Score + p2Delta,
+          draws: prev.draws + drawDelta,
+          currentGame: nextIndex,
+        };
+
+        setTimeout(async () => {
+          if (matchAlternateColors) {
+            setInputColor((c) => (c === "white" ? "black" : "white"));
+          }
+          await handleNewGame();
+          startGame(undefined, true);
+        }, 1200);
+
+        return nextScores;
+      });
     });
 
     return () => {
@@ -502,7 +681,20 @@ function BoardGame() {
       unlistenClock.then((f) => f());
       unlistenGameOver.then((f) => f());
     };
-  }, [gameId, gameState, scheduleUpdate, setGameState, setResult]);
+  }, [
+    gameId,
+    gameState,
+    inputColor,
+    matchAlternateColors,
+    matchAutoSave,
+    matchSavePath,
+    matchScores.active,
+    saveLiveGameToPgn,
+    scheduleUpdate,
+    setGameState,
+    setInputColor,
+    setResult,
+  ]);
 
   useEffect(() => {
     if (gameState === "playing" && gameId) {
@@ -556,6 +748,25 @@ function BoardGame() {
     await commands.abortGame(gameId);
     setGameState("gameOver");
     setResult("*");
+
+    const completedCount = matchScores.active ? matchScores.currentGame - 1 : 0;
+    const wasActiveMatch = matchScores.active;
+    setMatchScores((prev) => ({ ...prev, active: false }));
+
+    if (wasActiveMatch && completedCount > 0 && matchSavePath) {
+      const fileName = matchSavePath.split(/[/\\]/).pop() || "series.pgn";
+      notifications.show({
+        title: "Match Series Aborted",
+        message: `Match stopped. Preserved ${completedCount} completed game(s) in ${fileName}.`,
+        color: "orange",
+      });
+    } else {
+      notifications.show({
+        title: "Game Aborted",
+        message: "Incomplete game was not saved.",
+        color: "gray",
+      });
+    }
   }
 
   async function handleResign() {
@@ -724,19 +935,75 @@ function BoardGame() {
                               )}
                             </>
                           )}
+                          {player1Settings.type === "engine" && player2Settings.type === "engine" && (
+                            <>
+                              <Divider variant="dashed" />
+                              <Stack gap="xs">
+                                <Group gap="xs">
+                                  <IconTrophy size="1rem" />
+                                  <Text size="sm" fw="bold">
+                                    Engine Match Series
+                                  </Text>
+                                </Group>
+                                <NumberInput
+                                  label="Number of Games"
+                                  description="Even number of games (2 to 100) recommended for equal White/Black rounds."
+                                  min={2}
+                                  max={100}
+                                  step={2}
+                                  value={matchGameCount}
+                                  onChange={(val) => {
+                                    if (typeof val === "number" && Number.isFinite(val)) {
+                                      setMatchGameCount(Math.max(2, Math.min(100, Math.trunc(val))));
+                                    }
+                                  }}
+                                />
+                                {matchGameCount % 2 !== 0 && (
+                                  <Text size="xs" c="yellow.5">
+                                    💡 Note: An even number of games (e.g. 2, 4, 6... 100) is recommended so both engines play an equal number of games as White and Black.
+                                  </Text>
+                                )}
+                                <Checkbox
+                                  label="Alternate colors between games"
+                                  checked={matchAlternateColors}
+                                  onChange={(e) => setMatchAlternateColors(e.currentTarget.checked)}
+                                />
+                                <Checkbox
+                                  label="Auto-save match games to App Library"
+                                  checked={matchAutoSave}
+                                  onChange={(e) => setMatchAutoSave(e.currentTarget.checked)}
+                                />
+                              </Stack>
+                            </>
+                          )}
                         </Stack>
                       </Paper>
                     </Stack>
                   </ScrollArea>
 
                   <Divider pb="sm" />
-                  <Button onClick={startGame} fullWidth variant="light" disabled={error !== null}>
+                  <Button onClick={() => startGame()} fullWidth variant="light" disabled={error !== null}>
                     {t("Board.Opponent.StartGame")}
                   </Button>
                 </Stack>
               )}
               {(gameState === "playing" || gameState === "gameOver") && (
                 <Stack h="100%">
+                  {matchScores.totalGames > 1 && (
+                    <Paper withBorder p="xs" radius="md">
+                      <Group justify="space-between" align="center">
+                        <Group gap="xs">
+                          <IconTrophy size="1rem" />
+                          <Text size="xs" fw="bold">
+                            Match: Game {matchScores.currentGame} of {matchScores.totalGames}
+                          </Text>
+                        </Group>
+                        <Badge size="sm" variant="light" color="blue">
+                          {getPlayerDisplayName(player1Settings)} ({matchScores.p1Score}) — {getPlayerDisplayName(player2Settings)} ({matchScores.p2Score}) [D: {matchScores.draws}]
+                        </Badge>
+                      </Group>
+                    </Paper>
+                  )}
                   <Box flex={1}>
                     <GameInfo headers={headers} />
                   </Box>
@@ -756,6 +1023,13 @@ function BoardGame() {
                         New Game
                       </Button>
                     )}
+                    <Button
+                      variant="default"
+                      onClick={() => saveLiveGameToPgn()}
+                      leftSection={<IconDownload size="1rem" />}
+                    >
+                      Save PGN
+                    </Button>
                     <Button
                       variant="default"
                       onClick={() => changeToAnalysisMode()}
