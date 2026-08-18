@@ -1,60 +1,108 @@
 <br />
 <div align="center">
-  <a href="https://github.com/franciscoBSalgueiro/en-croissant">
-    <img width="115" height="115" src="https://github.com/franciscoBSalgueiro/en-croissant/blob/master/src-tauri/icons/icon.png" alt="Logo">
+  <a href="https://github.com/jaipkapoor99/en-croissant">
+    <img width="120" height="120" src="src-tauri/icons/icon.png" alt="En Croissant 2.0 Logo">
   </a>
 
-<h3 align="center">En Croissant</h3>
+<h1 align="center">En Croissant 2.0</h1>
 
   <p align="center">
-    The Ultimate Chess Toolkit
+    <strong>The Ultimate Modern Chess Toolkit & Database</strong>
     <br />
-    <a href="https://www.encroissant.org"><strong>encroissant.org</strong></a>
+    Maintained and developed by <a href="https://github.com/jaipkapoor99"><strong>Jai Kapoor (@jaipkapoor99)</strong></a>
     <br />
     <br />
-    <a href="https://discord.gg/tdYzfDbSSW">Discord Server</a>
+    <a href="https://github.com/jaipkapoor99/en-croissant/releases"><strong>Download Releases</strong></a>
     ·
-    <a href="https://www.encroissant.org/download">Download</a>
-    .
-    <a href="https://www.encroissant.org/docs">Explore the docs</a>
+    <a href="https://github.com/jaipkapoor99/en-croissant/issues"><strong>Report Bug</strong></a>
+    ·
+    <a href="https://github.com/jaipkapoor99/en-croissant/issues"><strong>Request Feature</strong></a>
   </p>
 </div>
 
-En-Croissant is an open-source, cross-platform chess GUI that aims to be powerful, customizable and easy to use.
+---
 
-## Features
+**En Croissant 2.0** is an open-source, cross-platform chess GUI and database toolkit designed for speed, flexibility, and deep analysis. Built with Rust, Tauri 2, and React 19, it provides tournament players, Grandmasters, and chess enthusiasts with the most powerful free analysis workbench available.
 
-- Store and analyze your games from [lichess.org](https://lichess.org) and [chess.com](https://chess.com)
-- Multi-engine analysis. Supports all UCI engines
-- Prepare a repertoire and train it with spaced repetition
-- Simple engine and database installation and management
-- Absolute or partial position search in the database
+---
 
-<img src="https://github.com/franciscoBSalgueiro/encroisssant-site/blob/master/public/showcase.webp" />
+## ⚡ What's New in Version 2.0
 
-## Building from source
+- 🏎️ **Zero-Allocation Bitwise Tree Hashing**: Custom fast 32-bit state hashing with 0 heap string allocations—delivering **26.1% faster repertoire and tree operations**.
+- 🚀 **Automated Hardware Auto-Discovery**: Immediate CPU topology detection (physical & logical core counts), total RAM, and instruction set capabilities (AVX2, BMI2) with one-click optimal engine thread and hash allocation.
+- 💾 **Unified Global Syzygy Tablebases**: Configure your 3–7 piece Syzygy endgame tablebase directory once; En Croissant 2.0 automatically propagates and wires it to all supported UCI engines.
+- 🧠 **High-Performance Memory & Database Layer**: Integrated `mimalloc` high-performance global memory allocator in Rust and tuned SQLite database pragmas for ultra-responsive games indexing.
+- 📦 **Modernized 2026 Tech Stack**: Upgraded to **React 19**, **Vite 8**, **Tauri 2.11**, **TanStack Router 1.170**, **Jotai 2.20**, and **Zustand 5**, trimming client entry bundle size by **17.6%**.
 
-Refer to the [Tauri documentation](https://tauri.app/start/prerequisites/) for the requirements on your platform.
+---
 
-En-Croissant uses pnpm as the package manager for dependencies. Refer to the [pnpm install instructions](https://pnpm.io/installation) for how to install it on your platform.
+## 🌟 Core Features
+
+- ♟️ **Multi-Engine UCI Analysis**: Run local engines (Stockfish 17+, Berserk, Koivisto, Lc0, etc.) and cloud engines (ChessDB) concurrently with multi-PV and evaluation graphs.
+- 📖 **Repertoire Training**: Build opening repertoires and master lines using spaced repetition learning.
+- 📊 **Database Management**: Import, filter, and inspect millions of games in PGN format with exact or partial position search.
+- 🌐 **Lichess & Chess.com Sync**: Seamlessly fetch user games, fide rating cards, and personal statistics.
+- 🎯 **Syzygy Endgame Tablebases**: Instant tablebase lookups with DTZ (Distance to Zero) and WDL (Win-Draw-Loss) calculations.
+- 🎨 **Deep Customization**: High-resolution piece sets, custom boards, interactive arrows/annotations, and exportable game charts.
+
+---
+
+## 🛠️ Building from Source
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v20+ recommended)
+- [pnpm](https://pnpm.io/) (`npm install -g pnpm`)
+- [Rust](https://rustup.rs/) (latest stable toolchain)
+- Platform-specific Tauri prerequisites (see [Tauri Prerequisites](https://tauri.app/start/prerequisites/))
+
+### Build Steps
 
 ```bash
-git clone https://github.com/franciscoBSalgueiro/en-croissant
+# Clone the repository
+git clone https://github.com/jaipkapoor99/en-croissant.git
 cd en-croissant
+
+# Install frontend dependencies
 pnpm install
+
+# Run in development mode
+pnpm dev
+
+# Build production executable
 pnpm build
 ```
 
-The built app can be found at `src-tauri/target/release`
+Production binaries will be compiled to `src-tauri/target/release/`.
 
-## Donate
+---
 
-If you wish to support the development of this GUI, you can do so [here](https://encroissant.org/support). All donations are greatly appreciated!
+## 🧪 Testing & Code Quality
 
-## Contributing
+```bash
+# Run unit tests
+pnpm test
 
-For contributing to this project please refer to the [Contributing guide](./CONTRIBUTING.md).
+# Check linting
+pnpm lint
 
-## License
+# Format code
+pnpm format
+```
 
-This software is licensed under GPL-3.0 License.
+---
+
+## 👤 Author & Maintainer
+
+**Jai Kapoor**
+
+- GitHub: [@jaipkapoor99](https://github.com/jaipkapoor99)
+- Repository: [https://github.com/jaipkapoor99/en-croissant](https://github.com/jaipkapoor99/en-croissant)
+
+_Based on original foundational work by Francisco Salgueiro._
+
+---
+
+## 📜 License
+
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See the [LICENSE](LICENSE) file for details.

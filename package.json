@@ -1,7 +1,13 @@
 {
   "name": "en-croissant",
-  "version": "0.15.0",
+  "version": "2.0.0",
   "private": true,
+  "description": "En Croissant 2.0 - The Ultimate Modern Chess Toolkit & Database",
+  "author": "Jai Kapoor <jaipkapoor99@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaipkapoor99/en-croissant.git"
+  },
   "type": "module",
   "scripts": {
     "start-vite": "vite",

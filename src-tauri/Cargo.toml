@@ -1,10 +1,10 @@
 [package]
 name = "en-croissant"
-version = "0.15.0"
-description = "A Modern Chess Database"
-authors = ["Francisco Salgueiro <fgcdbs@gmail.com>"]
+version = "2.0.0"
+description = "En Croissant 2.0 - The Ultimate Modern Chess Toolkit & Database"
+authors = ["Jai Kapoor <jaipkapoor99@gmail.com>"]
 license = "GPL-3.0-only"
-repository = "https://github.com/franciscoBSalgueiro/en-croissant"
+repository = "https://github.com/jaipkapoor99/en-croissant"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

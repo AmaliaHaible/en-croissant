@@ -23,9 +23,9 @@
         "bundleMediaFramework": true
       }
     },
-    "publisher": "Francisco Salgueiro",
-    "shortDescription": "Ultimate Chess Toolkit",
-    "longDescription": "",
+    "publisher": "Jai Kapoor",
+    "shortDescription": "En Croissant 2.0 - The Ultimate Modern Chess Toolkit",
+    "longDescription": "En Croissant 2.0 is a modern, cross-platform chess GUI and database toolkit featuring zero-allocation tree operations, global Syzygy tablebases, multi-engine UCI analysis, and automated hardware optimization.",
     "macOS": {
       "entitlements": null,
       "exceptionDomain": "",
@@ -45,9 +45,10 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
-  "productName": "en-croissant-dev",
-  "mainBinaryName": "en-croissant-dev",
-  "identifier": "org.encroissant.dev",
+  "version": "2.0.0",
+  "productName": "En Croissant 2.0",
+  "mainBinaryName": "en-croissant",
+  "identifier": "org.encroissant.app",
   "plugins": {
     "cli": {
       "args": [
@@ -69,7 +70,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "En Croissant Dev",
+        "title": "En Croissant 2.0",
         "visible": false,
         "decorations": true
       }

@@ -30,17 +30,30 @@ function AboutModal({
     load();
   }, []);
   return (
-    <Modal centered opened={opened} onClose={() => setOpened(false)} title="En Croissant">
-      <Text>Version: {info?.version}</Text>
-      <Text>Tauri version: {info?.tauri}</Text>
-      <Text>
+    <Modal centered opened={opened} onClose={() => setOpened(false)} title="En Croissant 2.0">
+      <Text fw={600}>En Croissant 2.0</Text>
+      <Text size="sm" c="dimmed">
+        The Ultimate Modern Chess Toolkit & Database
+      </Text>
+      <Text size="sm" mt="xs">
+        Maintained & Developed by{" "}
+        <Anchor href="https://github.com/jaipkapoor99" target="_blank" rel="noreferrer">
+          Jai Kapoor (@jaipkapoor99)
+        </Anchor>
+      </Text>
+
+      <br />
+
+      <Text size="sm">Version: {info?.version}</Text>
+      <Text size="sm">Tauri version: {info?.tauri}</Text>
+      <Text size="sm">
         OS: {info?.os} {info?.architecture} {info?.osVersion}
       </Text>
 
       <br />
 
-      <Anchor href="https://www.encroissant.org" target="_blank" rel="noreferrer">
-        www.encroissant.org
+      <Anchor href="https://github.com/jaipkapoor99/en-croissant" target="_blank" rel="noreferrer">
+        GitHub Repository
       </Anchor>
     </Modal>
   );
