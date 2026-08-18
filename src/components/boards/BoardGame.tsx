@@ -12,14 +12,12 @@ import {
   ScrollArea,
   SegmentedControl,
   Stack,
-  Switch,
   Text,
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowsExchange,
-  IconDeviceFloppy,
   IconDownload,
   IconFileText,
   IconPlus,
@@ -27,7 +25,7 @@ import {
   IconX,
   IconZoomCheck,
 } from "@tabler/icons-react";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
 import { makeUci, parseUci } from "chessops";
@@ -540,7 +538,7 @@ function BoardGame() {
     async (uci: string) => {
       if (!gameId || gameState !== "playing") return;
       try {
-        const result = await commands.makeGameMove(gameId, uci);
+        await commands.makeGameMove(gameId, uci);
         if (!isPlayerVsEngine && autoFlipBoard) {
           toggleOrientation();
         }
@@ -587,7 +585,7 @@ function BoardGame() {
 
   const onTakeBack = useCallback(async () => {
     if (!gameId || gameState !== "playing") return;
-    const result = await commands.takeBackGameMove(gameId);
+    await commands.takeBackGameMove(gameId);
   }, [gameId, gameState]);
 
   useEffect(() => {

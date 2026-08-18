@@ -26,7 +26,6 @@ import {
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
 import {
-  IconCheck,
   IconCloud,
   IconCopy,
   IconCpu,
@@ -47,7 +46,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWRImmutable from "swr/immutable";
 import { match, P } from "ts-pattern";
-import { commands, type UciOptionConfig } from "@/bindings";
+import { commands } from "@/bindings";
 import { notifications } from "@mantine/notifications";
 import { resolve } from "@tauri-apps/api/path";
 import { copyFile, exists } from "@tauri-apps/plugin-fs";
@@ -569,7 +568,6 @@ function EngineSettings({
 
   const [deleteModal, toggleDeleteModal] = useToggle();
   const [jsonModal, toggleJSONModal] = useToggle();
-  const syzygyPathSeparator = platform() === "windows" ? ";" : ":";
 
   return (
     <ScrollArea h="100%" offsetScrollbars>
