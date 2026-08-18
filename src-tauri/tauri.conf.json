@@ -36,8 +36,7 @@
     "resources": {
       "../sound/": "sound/"
     },
-    "targets": "all",
-    "createUpdaterArtifacts": "v1Compatible"
+    "targets": "all"
   },
   "build": {
     "beforeDevCommand": "pnpm start-vite",
@@ -57,12 +56,6 @@
           "index": 1,
           "takesValue": true
         }
-      ]
-    },
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGOTBFNjg2MzFGM0RDODUKUldTRjNQTXhodWFRZjc2MTNVeXRONGJkRjdGUXlCeW1MSlZESUczT0U4eE5hKzBmY3M2S0U2L0oK",
-      "endpoints": [
-        "https://www.encroissant.org/updates"
       ]
     }
   },
