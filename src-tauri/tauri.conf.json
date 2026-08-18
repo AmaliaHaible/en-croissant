@@ -47,8 +47,8 @@
   },
   "version": "2.0.0",
   "productName": "En Croissant 2.0",
-  "mainBinaryName": "en-croissant",
-  "identifier": "org.encroissant.app",
+  "mainBinaryName": "en-croissant-2",
+  "identifier": "org.encroissant.v2",
   "plugins": {
     "cli": {
       "args": [
