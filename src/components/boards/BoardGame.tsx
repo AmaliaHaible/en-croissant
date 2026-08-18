@@ -388,7 +388,10 @@ function BoardGame() {
     return moves;
   }
 
-  async function startGame(customPlayerSettings?: { white: OpponentSettings; black: OpponentSettings }, isMatchStep = false) {
+  async function startGame(
+    customPlayerSettings?: { white: OpponentSettings; black: OpponentSettings },
+    isMatchStep = false,
+  ) {
     const playerSettings = customPlayerSettings || getPlayers();
     setPlayers(playerSettings);
 
@@ -625,7 +628,8 @@ function BoardGame() {
       const outcome = gameResultToOutcome(payload.result);
       setResult(outcome);
 
-      const isLastGameInSeries = matchScores.active && matchScores.currentGame >= matchScores.totalGames;
+      const isLastGameInSeries =
+        matchScores.active && matchScores.currentGame >= matchScores.totalGames;
       if (matchAutoSave || matchScores.active) {
         saveLiveGameToPgn(matchSavePath || undefined, isLastGameInSeries);
       }
@@ -935,54 +939,66 @@ function BoardGame() {
                               )}
                             </>
                           )}
-                          {player1Settings.type === "engine" && player2Settings.type === "engine" && (
-                            <>
-                              <Divider variant="dashed" />
-                              <Stack gap="xs">
-                                <Group gap="xs">
-                                  <IconTrophy size="1rem" />
-                                  <Text size="sm" fw="bold">
-                                    Engine Match Series
-                                  </Text>
-                                </Group>
-                                <NumberInput
-                                  label="Number of Games"
-                                  description="Even number of games (2 to 100) recommended for equal White/Black rounds."
-                                  min={2}
-                                  max={100}
-                                  step={2}
-                                  value={matchGameCount}
-                                  onChange={(val) => {
-                                    if (typeof val === "number" && Number.isFinite(val)) {
-                                      setMatchGameCount(Math.max(2, Math.min(100, Math.trunc(val))));
+                          {player1Settings.type === "engine" &&
+                            player2Settings.type === "engine" && (
+                              <>
+                                <Divider variant="dashed" />
+                                <Stack gap="xs">
+                                  <Group gap="xs">
+                                    <IconTrophy size="1rem" />
+                                    <Text size="sm" fw="bold">
+                                      Engine Match Series
+                                    </Text>
+                                  </Group>
+                                  <NumberInput
+                                    label="Number of Games"
+                                    description="Even number of games (2 to 100) recommended for equal White/Black rounds."
+                                    min={2}
+                                    max={100}
+                                    step={2}
+                                    value={matchGameCount}
+                                    onChange={(val) => {
+                                      if (typeof val === "number" && Number.isFinite(val)) {
+                                        setMatchGameCount(
+                                          Math.max(2, Math.min(100, Math.trunc(val))),
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  {matchGameCount % 2 !== 0 && (
+                                    <Text size="xs" c="yellow.5">
+                                      💡 Note: An even number of games (e.g. 2, 4, 6... 100) is
+                                      recommended so both engines play an equal number of games as
+                                      White and Black.
+                                    </Text>
+                                  )}
+                                  <Checkbox
+                                    label="Alternate colors between games"
+                                    checked={matchAlternateColors}
+                                    onChange={(e) =>
+                                      setMatchAlternateColors(e.currentTarget.checked)
                                     }
-                                  }}
-                                />
-                                {matchGameCount % 2 !== 0 && (
-                                  <Text size="xs" c="yellow.5">
-                                    💡 Note: An even number of games (e.g. 2, 4, 6... 100) is recommended so both engines play an equal number of games as White and Black.
-                                  </Text>
-                                )}
-                                <Checkbox
-                                  label="Alternate colors between games"
-                                  checked={matchAlternateColors}
-                                  onChange={(e) => setMatchAlternateColors(e.currentTarget.checked)}
-                                />
-                                <Checkbox
-                                  label="Auto-save match games to App Library"
-                                  checked={matchAutoSave}
-                                  onChange={(e) => setMatchAutoSave(e.currentTarget.checked)}
-                                />
-                              </Stack>
-                            </>
-                          )}
+                                  />
+                                  <Checkbox
+                                    label="Auto-save match games to App Library"
+                                    checked={matchAutoSave}
+                                    onChange={(e) => setMatchAutoSave(e.currentTarget.checked)}
+                                  />
+                                </Stack>
+                              </>
+                            )}
                         </Stack>
                       </Paper>
                     </Stack>
                   </ScrollArea>
 
                   <Divider pb="sm" />
-                  <Button onClick={() => startGame()} fullWidth variant="light" disabled={error !== null}>
+                  <Button
+                    onClick={() => startGame()}
+                    fullWidth
+                    variant="light"
+                    disabled={error !== null}
+                  >
                     {t("Board.Opponent.StartGame")}
                   </Button>
                 </Stack>
@@ -999,7 +1015,9 @@ function BoardGame() {
                           </Text>
                         </Group>
                         <Badge size="sm" variant="light" color="blue">
-                          {getPlayerDisplayName(player1Settings)} ({matchScores.p1Score}) — {getPlayerDisplayName(player2Settings)} ({matchScores.p2Score}) [D: {matchScores.draws}]
+                          {getPlayerDisplayName(player1Settings)} ({matchScores.p1Score}) —{" "}
+                          {getPlayerDisplayName(player2Settings)} ({matchScores.p2Score}) [D:{" "}
+                          {matchScores.draws}]
                         </Badge>
                       </Group>
                     </Paper>

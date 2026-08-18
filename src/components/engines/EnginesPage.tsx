@@ -120,7 +120,8 @@ function HardwareConfigBanner() {
                 System Memory
               </Text>
               <Text size="xs" fw={700}>
-                {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} RAM ({formatBytes(hardware.availableMemoryMb * 1024 * 1024)} Free)
+                {formatBytes(hardware.totalMemoryMb * 1024 * 1024)} RAM (
+                {formatBytes(hardware.availableMemoryMb * 1024 * 1024)} Free)
               </Text>
             </div>
           </Group>
@@ -671,7 +672,7 @@ function EngineSettings({
                     const enabled = e.currentTarget.checked;
                     setSetting(
                       syzygyOption.value.name,
-                      enabled ? (globalSyzygyPath || "default") : "",
+                      enabled ? globalSyzygyPath || "default" : "",
                       "default" in syzygyOption.value
                         ? (syzygyOption.value.default as string | null)
                         : null,

@@ -346,10 +346,7 @@ export const gameMatchAlternateColorsAtom = atomWithStorage<boolean>(
     true,
 );
 export const gameMatchAutoSaveAtom = atomWithStorage<boolean>("game-match-auto-save", true);
-export const gameMatchSavePathAtom = atomWithStorage<string | null>(
-    "game-match-save-path",
-    null,
-);
+export const gameMatchSavePathAtom = atomWithStorage<string | null>("game-match-save-path", null);
 
 function tabValue<T extends object | string | boolean | number | null | undefined>(
     family: AtomFamily<string, PrimitiveAtom<T>>,

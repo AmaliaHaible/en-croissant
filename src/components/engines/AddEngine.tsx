@@ -1,13 +1,4 @@
-import {
-  Box,
-  Button,
-  Group,
-  Modal,
-  Paper,
-  SimpleGrid,
-  Tabs,
-  Text,
-} from "@mantine/core";
+import { Box, Button, Group, Modal, Paper, SimpleGrid, Tabs, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { IconCloud, IconCpu } from "@tabler/icons-react";
 import { useAtom } from "jotai";

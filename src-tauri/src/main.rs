@@ -1,7 +1,6 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-
 mod chess;
 mod db;
 mod engine;
@@ -30,9 +29,9 @@ use progress::{clear_progress, get_progress, ProgressEvent, ProgressStore};
 
 use log::LevelFilter;
 use oauth::AuthState;
+use serde::Serialize;
 #[cfg(debug_assertions)]
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use serde::Serialize;
 use sysinfo::{CpuExt, RefreshKind, SystemExt};
 use tauri::{Manager, Window};
 use tauri_plugin_log::{Target, TargetKind};
@@ -306,7 +305,10 @@ pub struct HardwareInfo {
 fn detect_gpu_and_vram() -> (String, Option<u32>) {
     // 1. Try nvidia-smi
     if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
     {
         if output.status.success() {
@@ -380,9 +382,15 @@ fn detect_gpu_and_vram() -> (String, Option<u32>) {
             if output.status.success() {
                 if let Ok(text) = String::from_utf8(output.stdout) {
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(displays) = val.get("SPDisplaysDataType").and_then(|v| v.as_array()) {
+                        if let Some(displays) =
+                            val.get("SPDisplaysDataType").and_then(|v| v.as_array())
+                        {
                             if let Some(first) = displays.first() {
-                                let name = first.get("sppci_model").and_then(|v| v.as_str()).unwrap_or("Apple GPU").to_string();
+                                let name = first
+                                    .get("sppci_model")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Apple GPU")
+                                    .to_string();
                                 return (name, None);
                             }
                         }
@@ -442,7 +450,9 @@ fn get_hardware_info() -> HardwareInfo {
         }
     };
 
-    let os_name = sys.name().unwrap_or_else(|| std::env::consts::OS.to_string());
+    let os_name = sys
+        .name()
+        .unwrap_or_else(|| std::env::consts::OS.to_string());
     let os_version = sys.os_version().unwrap_or_default();
     let arch = std::env::consts::ARCH.to_string();
 
@@ -470,4 +480,3 @@ fn get_hardware_info() -> HardwareInfo {
         recommended_hash_mb,
     }
 }
-

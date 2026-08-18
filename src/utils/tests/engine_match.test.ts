@@ -125,7 +125,11 @@ describe("Engine Match Series & Multi-Game Logic", () => {
     });
 
     it("preserves only completed games when a match series is aborted", () => {
-        const seriesGames: { round: number; result: "1-0" | "0-1" | "1/2-1/2" | "*"; moves: string }[] = [
+        const seriesGames: {
+            round: number;
+            result: "1-0" | "0-1" | "1/2-1/2" | "*";
+            moves: string;
+        }[] = [
             { round: 1, result: "1-0", moves: "1. e4 e5 2. Nf3 Nc6 1-0" },
             { round: 2, result: "1/2-1/2", moves: "1. d4 d5 2. c4 c6 1/2-1/2" },
             { round: 3, result: "*", moves: "1. e4 c5 2. Nf3 *" }, // Aborted game

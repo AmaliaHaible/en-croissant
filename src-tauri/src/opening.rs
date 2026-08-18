@@ -208,7 +208,9 @@ lazy_static! {
         }
         for i in 0..960 {
             let fen_str = chess960_fen(i);
-            let fen: Fen = fen_str.parse().expect("Failed to parse generated chess960 fen");
+            let fen: Fen = fen_str
+                .parse()
+                .expect("Failed to parse generated chess960 fen");
             positions.push(Opening {
                 _eco: "FRC".to_string(),
                 name: format!("Fischer Random {i}"),
