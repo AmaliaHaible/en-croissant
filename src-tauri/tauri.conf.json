@@ -64,7 +64,7 @@
     "windows": [
       {
         "title": "En Croissant 2.0",
-        "visible": false,
+        "visible": true,
         "decorations": true
       }
     ],

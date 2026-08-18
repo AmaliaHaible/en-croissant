@@ -231,7 +231,7 @@ fn main() {
                 let sound_dir = app
                     .path()
                     .resolve("sound", tauri::path::BaseDirectory::Resource)
-                    .expect("failed to resolve sound resource directory");
+                    .unwrap_or_else(|_| PathBuf::from("sound"));
                 let port = sound::start_sound_server(sound_dir);
                 app.manage(sound::SoundServerPort(port));
             }
@@ -240,10 +240,6 @@ fn main() {
 
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_cli::init())?;
-
-            #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             log::info!("Finished rust initialization");
 
