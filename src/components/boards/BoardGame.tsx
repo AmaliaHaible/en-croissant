@@ -27,7 +27,7 @@ import {
   IconZoomCheck,
 } from "@tabler/icons-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
 import { makeUci, parseUci } from "chessops";
 import { INITIAL_FEN } from "chessops/fen";
@@ -181,6 +181,36 @@ function BoardGame() {
   const [openingBookPath, setOpeningBookPath] = useAtom(gameOpeningBookPathAtom);
   const [openingBookEnabled, setOpeningBookEnabled] = useAtom(gameOpeningBookEnabledAtom);
   const [openingBookMaxPly, setOpeningBookMaxPly] = useAtom(gameOpeningBookMaxPlyAtom);
+
+  const [nameTakenError, setNameTakenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = matchTournamentName.trim();
+    if (!trimmed) {
+      setNameTakenError(null);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const docDir = await getDocumentDir();
+        const cleanName = trimmed.replace(/[^a-zA-Z0-9_-]/g, "_");
+        const testPath = await resolve(docDir, `${cleanName}.pgn`);
+        const isTaken = await exists(testPath);
+        if (active) {
+          setNameTakenError(isTaken ? `The name "${trimmed}" is already taken.` : null);
+        }
+      } catch {
+        if (active) setNameTakenError(null);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [matchTournamentName]);
 
   const hasEngine = players.white.type === "engine" || players.black.type === "engine";
 
@@ -421,6 +451,26 @@ function BoardGame() {
     const isEngineMatch = whiteIsEngine && blackIsEngine;
 
     if (isEngineMatch && !isMatchStep) {
+      const customTournament = matchTournamentName.trim();
+      if (customTournament) {
+        try {
+          const docDir = await getDocumentDir();
+          const cleanName = customTournament.replace(/[^a-zA-Z0-9_-]/g, "_");
+          const testPath = await resolve(docDir, `${cleanName}.pgn`);
+          if (await exists(testPath)) {
+            setNameTakenError(`The name "${customTournament}" is already taken.`);
+            notifications.show({
+              title: "Name Already Taken",
+              message: `The name "${customTournament}" is already taken. Please choose a different tournament name.`,
+              color: "red",
+            });
+            return;
+          }
+        } catch {
+          // Ignore directory access error
+        }
+      }
+
       setMatchScores({
         p1Score: 0,
         p2Score: 0,
@@ -434,7 +484,6 @@ function BoardGame() {
         const p1Name = getPlayerDisplayName(playerSettings.white).replace(/[^a-zA-Z0-9_-]/g, "_");
         const p2Name = getPlayerDisplayName(playerSettings.black).replace(/[^a-zA-Z0-9_-]/g, "_");
         const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
-        const customTournament = matchTournamentName.trim();
         const customPrefix = customTournament
           ? customTournament.replace(/[^a-zA-Z0-9_-]/g, "_")
           : `${p1Name}_vs_${p2Name}_series_${matchGameCount}games`;
@@ -987,6 +1036,7 @@ function BoardGame() {
                                     description="Categorized under Tournaments with custom PGN event header."
                                     placeholder="e.g. TCEC Season 2026, World Computer Chess"
                                     value={matchTournamentName}
+                                    error={nameTakenError}
                                     onChange={(e) => setMatchTournamentName(e.currentTarget.value)}
                                   />
                                   <NumberInput
@@ -1036,7 +1086,7 @@ function BoardGame() {
                     onClick={() => startGame()}
                     fullWidth
                     variant="light"
-                    disabled={error !== null}
+                    disabled={error !== null || nameTakenError !== null}
                   >
                     {t("Board.Opponent.StartGame")}
                   </Button>
