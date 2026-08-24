@@ -18,11 +18,19 @@ export type StrengthDial = {
     max: number;
 };
 
+export type StyleControl = {
+    optionName: string;
+    choices: string[];
+    defaultChoice: string | null;
+};
+
 type SpinOption = Extract<UciOptionConfig, { type: "spin" }>;
+type ComboOption = Extract<UciOptionConfig, { type: "combo" }>;
 
 const ELO_OPTION_NAMES = ["uci_elo"];
 const LIMIT_OPTION_NAMES = ["uci_limitstrength"];
 const SKILL_OPTION_NAMES = ["skill level", "skill"];
+const STYLE_OPTION_NAMES = ["personality", "playing style", "style"];
 
 function findSpinOption(options: UciOptionConfig[], names: string[]): SpinOption | undefined {
     return options.find(
@@ -88,6 +96,41 @@ export function clearDialOverride(
     return baseSettings.filter(
         (s) => s.name !== dial.optionName && s.name !== dial.limitOptionName,
     );
+}
+
+/**
+ * Detects a playstyle option (a UCI combo, e.g. Komodo's "Personality": Aggressive/Defensive/
+ * Positional/...), distinct from a strength dial - it changes how an engine plays, not how well.
+ */
+export function detectStyleControl(options: UciOptionConfig[]): StyleControl | null {
+    const combo = options.find(
+        (o): o is ComboOption =>
+            o.type === "combo" && STYLE_OPTION_NAMES.includes(o.value.name.toLowerCase()),
+    );
+    if (!combo || combo.value.var.length === 0) {
+        return null;
+    }
+    return {
+        optionName: combo.value.name,
+        choices: combo.value.var,
+        defaultChoice: combo.value.default,
+    };
+}
+
+/** Sets a style option's value, replacing any previous value for it. */
+export function applyStyleValue(
+    style: StyleControl,
+    value: string,
+    baseSettings: EngineSettings,
+): EngineSettings {
+    const settings = clearStyleValue(style, baseSettings);
+    settings.push({ name: style.optionName, value });
+    return settings;
+}
+
+/** Removes a style option's value from a settings list. */
+export function clearStyleValue(style: StyleControl, baseSettings: EngineSettings): EngineSettings {
+    return baseSettings.filter((s) => s.name !== style.optionName);
 }
 
 /** Merges a preset's options into a settings list, overriding only the names it specifies. */

@@ -4,8 +4,11 @@ import type { EngineSettings } from "@/utils/engines";
 import {
     applyDialValue,
     applyPreset,
+    applyStyleValue,
     clearDialOverride,
+    clearStyleValue,
     detectStrengthDial,
+    detectStyleControl,
     findActivePreset,
     getPresetsForEngine,
 } from "@/utils/engineStrength";
@@ -23,6 +26,10 @@ function check(name: string, def: boolean | null = false): UciOptionConfig {
     return { type: "check", value: { name, default: def } };
 }
 
+function combo(name: string, def: string | null, choices: string[]): UciOptionConfig {
+    return { type: "combo", value: { name, default: def, var: choices } };
+}
+
 const stockfishOptions: UciOptionConfig[] = [
     spin("Threads", BigInt(1), BigInt(1024), BigInt(1)),
     spin("Hash", BigInt(1), BigInt(33554432), BigInt(16)),
@@ -34,6 +41,16 @@ const stockfishOptions: UciOptionConfig[] = [
 const komodoOptions: UciOptionConfig[] = [
     spin("Threads", BigInt(1), BigInt(128), BigInt(1)),
     spin("Skill", BigInt(0), BigInt(25), BigInt(25)),
+    combo("Personality", "Default", [
+        "Default",
+        "Aggressive",
+        "Defensive",
+        "Active",
+        "Positional",
+        "Endgame",
+        "Beginner",
+        "Human",
+    ]),
 ];
 
 const rodentOptions: UciOptionConfig[] = [
@@ -124,6 +141,43 @@ test("getPresetsForEngine matches Rodent II case-insensitively", () => {
 
 test("getPresetsForEngine returns null for engines with no bundled presets", () => {
     expect(getPresetsForEngine("Stockfish 18")).toBeNull();
+});
+
+test("detectStyleControl finds a combo-type playstyle option", () => {
+    const style = detectStyleControl(komodoOptions);
+    expect(style).toEqual({
+        optionName: "Personality",
+        defaultChoice: "Default",
+        choices: [
+            "Default",
+            "Aggressive",
+            "Defensive",
+            "Active",
+            "Positional",
+            "Endgame",
+            "Beginner",
+            "Human",
+        ],
+    });
+});
+
+test("detectStyleControl returns null when there is no style combo", () => {
+    expect(detectStyleControl(stockfishOptions)).toBeNull();
+});
+
+test("applyStyleValue sets the option and replaces a previous value", () => {
+    const style = detectStyleControl(komodoOptions)!;
+    const once = applyStyleValue(style, "Aggressive", []);
+    expect(once).toContainEqual({ name: "Personality", value: "Aggressive" });
+    const twice = applyStyleValue(style, "Endgame", once);
+    expect(twice.filter((o) => o.name === "Personality")).toHaveLength(1);
+    expect(twice).toContainEqual({ name: "Personality", value: "Endgame" });
+});
+
+test("clearStyleValue removes the style option and leaves everything else", () => {
+    const style = detectStyleControl(komodoOptions)!;
+    const withStyle = applyStyleValue(style, "Aggressive", [{ name: "Threads", value: 4 }]);
+    expect(clearStyleValue(style, withStyle)).toEqual([{ name: "Threads", value: 4 }]);
 });
 
 test("findActivePreset identifies a fully-applied preset and ignores partial matches", () => {

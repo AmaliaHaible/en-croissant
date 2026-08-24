@@ -1,4 +1,5 @@
 import { Divider, Group, Select, Slider, Stack, Text } from "@mantine/core";
+import { IconCheck } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWRImmutable from "swr/immutable";
@@ -6,12 +7,15 @@ import { commands } from "@/bindings";
 import {
   applyDialValue,
   applyPreset,
+  applyStyleValue,
   clearDialOverride,
   clearPreset,
   detectStrengthDial,
+  detectStyleControl,
   findActivePreset,
   getPresetsForEngine,
   type StrengthDial,
+  type StyleControl,
 } from "@/utils/engineStrength";
 import type { EngineSettings, LocalEngine } from "@/utils/engines";
 import { unwrap } from "@/utils/unwrap";
@@ -80,6 +84,35 @@ function DialControl({
   );
 }
 
+function StyleControlSelect({
+  style,
+  settings,
+  setSettings,
+}: {
+  style: StyleControl;
+  settings: EngineSettings;
+  setSettings: (fn: (prev: EngineSettings) => EngineSettings) => void;
+}) {
+  const { t } = useTranslation();
+  const current =
+    (settings.find((s) => s.name === style.optionName)?.value as string | undefined) ??
+    style.defaultChoice ??
+    style.choices[0];
+
+  return (
+    <Select
+      label={t("Board.Opponent.Style", "Style")}
+      allowDeselect={false}
+      data={style.choices}
+      value={current}
+      onChange={(value) => {
+        if (!value) return;
+        setSettings((prev) => applyStyleValue(style, value, prev));
+      }}
+    />
+  );
+}
+
 export function EngineStrengthControl({
   engine,
   settings,
@@ -95,12 +128,13 @@ export function EngineStrengthControl({
   );
 
   const dial = useMemo(() => (config ? detectStrengthDial(config.options) : null), [config]);
+  const style = useMemo(() => (config ? detectStyleControl(config.options) : null), [config]);
   const presets = useMemo(
     () => getPresetsForEngine(config?.name ?? engine.name),
     [config, engine.name],
   );
 
-  if (!dial && !presets) {
+  if (!dial && !style && !presets) {
     return null;
   }
 
@@ -126,9 +160,32 @@ export function EngineStrengthControl({
               return chosen ? applyPreset(chosen, cleared) : cleared;
             });
           }}
+          renderOption={({ option, checked }) => {
+            const description =
+              option.value === "full"
+                ? t(
+                    "Board.Opponent.FullStrengthDesc",
+                    "No personality, plays at the engine's own default strength",
+                  )
+                : (presets.find((preset) => preset.id === option.value)?.description ?? "");
+            return (
+              <Group flex="1" gap="xs" justify="space-between" wrap="nowrap">
+                <Stack gap={0}>
+                  <Text size="sm">{option.label}</Text>
+                  {description && (
+                    <Text size="xs" c="dimmed">
+                      {description}
+                    </Text>
+                  )}
+                </Stack>
+                {checked && <IconCheck size={16} style={{ flexShrink: 0 }} />}
+              </Group>
+            );
+          }}
         />
       )}
       {dial && <DialControl dial={dial} settings={settings} setSettings={setSettings} />}
+      {style && <StyleControlSelect style={style} settings={settings} setSettings={setSettings} />}
     </Stack>
   );
 }
