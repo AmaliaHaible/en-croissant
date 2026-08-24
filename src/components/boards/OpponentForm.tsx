@@ -15,6 +15,7 @@ import TimeInput, { type TimeType } from "@/components/common/TimeInput";
 import EngineSettingsForm from "@/components/panels/analysis/EngineSettingsForm";
 import type { TimeControlField } from "@/utils/clock";
 import type { EngineSettings, LocalEngine } from "@/utils/engines";
+import { EngineStrengthControl } from "./EngineStrengthControl";
 import { EnginesSelect } from "./EnginesSelect";
 
 export type OpponentSettings =
@@ -113,6 +114,24 @@ export function OpponentForm({
               engine,
               engineSettings: engine?.settings || undefined,
             }))
+          }
+        />
+      )}
+
+      {opponent.type === "engine" && opponent.engine && (
+        <EngineStrengthControl
+          engine={opponent.engine}
+          settings={opponent.engineSettings || opponent.engine.settings || []}
+          setSettings={(fn) =>
+            setOpponent((prev) => {
+              if (prev.type === "human" || !prev.engine) {
+                return prev;
+              }
+              return {
+                ...prev,
+                engineSettings: fn(prev.engineSettings || prev.engine.settings || []),
+              };
+            })
           }
         />
       )}
