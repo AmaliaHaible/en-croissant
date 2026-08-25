@@ -20,6 +20,7 @@ import { useToggle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowsExchange,
+  IconBulb,
   IconChartBar,
   IconDownload,
   IconFileText,
@@ -31,7 +32,7 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
-import { makeUci, parseUci } from "chessops";
+import { makeSquare, makeUci, type NormalMove, parseUci } from "chessops";
 import { INITIAL_FEN } from "chessops/fen";
 import dayjs from "dayjs";
 import { useAtom, useAtomValue } from "jotai";
@@ -159,6 +160,8 @@ function BoardGame() {
   const setResult = useStore(store, (s) => s.setResult);
   const appendMove = useStore(store, (s) => s.appendMove);
   const resetTree = useStore(store, (s) => s.reset);
+  const setShapes = useStore(store, (s) => s.setShapes);
+  const currentNode = useStore(store, (s) => s.currentNode());
 
   const [, setTabs] = useAtom(tabsAtom);
   const autoFlipBoard = useAtomValue(flipBoardAfterMoveAtom);
@@ -1209,6 +1212,52 @@ function BoardGame() {
                       leftSection={<IconZoomCheck />}
                     >
                       Analyze
+                    </Button>
+                    <Button
+                      variant="default"
+                      leftSection={<IconBulb size="1rem" />}
+                      disabled={
+                        !bestMoveUci ||
+                        gameState !== "playing" ||
+                        (pos?.turn === "white"
+                          ? players.white.type !== "human"
+                          : players.black.type !== "human")
+                      }
+                      onClick={() => {
+                        if (!bestMoveUci) return;
+                        const move = parseUci(bestMoveUci) as NormalMove;
+                        const from = makeSquare(move.from);
+                        const to = makeSquare(move.to);
+                        if (!from || !to) return;
+
+                        const currentShapes = currentNode.shapes;
+                        const hasCircle = currentShapes.some((s) => s.orig === from && !s.dest);
+                        const hasArrow = currentShapes.some(
+                          (s) => s.orig === from && s.dest === to,
+                        );
+
+                        if (hasArrow) {
+                          setShapes(
+                            currentShapes.filter(
+                              (s) => !(s.orig === from && (!s.dest || s.dest === to)),
+                            ),
+                          );
+                          setHintActive(false);
+                        } else if (hasCircle) {
+                          setShapes([
+                            ...currentShapes.filter((s) => !(s.orig === from && !s.dest)),
+                            { orig: from, dest: to, brush: "green" },
+                          ]);
+                        } else {
+                          setHintActive(true);
+                          setShapes([
+                            ...currentShapes,
+                            { orig: from, dest: undefined, brush: "green" },
+                          ]);
+                        }
+                      }}
+                    >
+                      {t("Board.Coach.Hint")}
                     </Button>
 
                     {hasEngine && (
