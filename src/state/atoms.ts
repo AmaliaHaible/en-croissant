@@ -221,6 +221,23 @@ export const flipBoardAfterMoveAtom = atomWithStorage<boolean>("flip-board-after
 export const liveEvalEnabledAtom = atomWithStorage<boolean>("live-eval-enabled", false);
 export const coachFeedbackWhiteAtom = atomWithStorage<boolean>("coach-feedback-white", false);
 export const coachFeedbackBlackAtom = atomWithStorage<boolean>("coach-feedback-black", false);
+
+export type CoachEngineConfig = {
+    engineId: string | null;
+    go: GoMode;
+    settings: EngineSettings;
+};
+
+export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "live-eval-engine-config",
+    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
+);
+
+export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "hint-engine-config",
+    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
+);
+
 export const enableBoardScrollAtom = atomWithStorage<boolean>("board-scroll", true);
 export const materialDisplayAtom = atomWithStorage<"diff" | "all">("material-display", "diff");
 export const forcedEnPassantAtom = atomWithStorage<boolean>("forced-ep", false);
