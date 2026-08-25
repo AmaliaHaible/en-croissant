@@ -22,6 +22,7 @@ import {
   IconKeyboard,
   IconMouse,
   IconReload,
+  IconRobot,
   IconSearch,
   IconShield,
   IconVolume,
@@ -68,6 +69,7 @@ import { notifications } from "@mantine/notifications";
 import { platform } from "@tauri-apps/plugin-os";
 import FileInput from "../common/FileInput";
 import BoardSelect from "./BoardSelect";
+import CoachSettingsTab from "./CoachSettingsTab";
 import ColorControl from "./ColorControl";
 import FontSizeSlider from "./FontSizeSlider";
 import KeybindInput from "./KeybindInput";
@@ -82,6 +84,7 @@ import VolumeSlider from "./VolumeSlider";
 
 type SettingCategory =
   | "board"
+  | "coach"
   | "inputs"
   | "anarchy"
   | "appearance"
@@ -721,6 +724,11 @@ export default function Page() {
         description: t("Settings.Board.Desc"),
         icon: <IconChess size="1rem" />,
       },
+      coach: {
+        title: t("Settings.Coach"),
+        description: t("Settings.Coach.Desc"),
+        icon: <IconRobot size="1rem" />,
+      },
       inputs: {
         title: t("Settings.Inputs"),
         description: t("Settings.Inputs.Desc"),
@@ -877,6 +885,9 @@ export default function Page() {
             <Tabs.Tab value="board" leftSection={<IconChess size="1rem" />}>
               {t("Settings.Board")}
             </Tabs.Tab>
+            <Tabs.Tab value="coach" leftSection={<IconRobot size="1rem" />}>
+              {t("Settings.Coach")}
+            </Tabs.Tab>
             <Tabs.Tab value="inputs" leftSection={<IconMouse size="1rem" />}>
               {t("Settings.Inputs")}
             </Tabs.Tab>
@@ -913,6 +924,13 @@ export default function Page() {
                     {t("Settings.Board.Desc")}
                   </Text>
                   {renderCategorySettings("board")}
+                </Tabs.Panel>
+
+                <Tabs.Panel value="coach">
+                  <Text size="lg" fw={500} className={classes.title}>
+                    {t("Settings.Coach")}
+                  </Text>
+                  <CoachSettingsTab />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="inputs">
