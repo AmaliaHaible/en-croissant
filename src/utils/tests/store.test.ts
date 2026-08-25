@@ -1,3 +1,4 @@
+import type { DrawShape } from "@lichess-org/chessground/draw";
 import { parseUci } from "chessops";
 import { beforeEach, expect, test } from "vitest";
 import { createTreeStore } from "@/state/store/tree";
@@ -547,4 +548,72 @@ test("should not duplicate an existing setNodeAnnotation", () => {
             ],
         },
     });
+});
+
+test("should handle setNodeShapes", () => {
+    store.setState({ ...treeE4D5(), position: [0] });
+    store.getState().setNodeShapes([
+        {
+            brush: "red",
+            orig: "e4",
+            dest: "d5",
+        },
+        {
+            brush: "green",
+            orig: "g1",
+            dest: undefined,
+        },
+    ]);
+
+    expect(getNewState()).toStrictEqual({
+        ...treeE4D5(),
+        dirty: true,
+        position: [0],
+        root: {
+            ...treeE4D5().root,
+            children: [
+                {
+                    ...treeE4D5().root.children[0],
+                    shapes: [
+                        {
+                            brush: "red",
+                            orig: "e4",
+                            dest: "d5",
+                        },
+                        {
+                            brush: "green",
+                            orig: "g1",
+                            dest: undefined,
+                        },
+                    ],
+                },
+            ],
+        },
+    });
+});
+
+test("should fully replace shapes with setNodeShapes instead of toggling them", () => {
+    store.setState({ ...treeE4D5(), position: [0] });
+    const userShape: DrawShape = { brush: "blue", orig: "a1", dest: "a2" };
+    store.getState().setNodeShapes([userShape]);
+
+    // setShapes would remove this shape again (toggle); setNodeShapes replaces.
+    store.getState().setNodeShapes([userShape, { brush: "green", orig: "e2", dest: undefined }]);
+
+    expect(store.getState().currentNode().shapes).toStrictEqual([
+        userShape,
+        { brush: "green", orig: "e2", dest: undefined },
+    ]);
+});
+
+test("should clear shapes when setNodeShapes is called with an empty array", () => {
+    store.setState({ ...treeE4D5(), position: [0] });
+    store.getState().setNodeShapes([
+        { brush: "blue", orig: "a1", dest: "a2" },
+        { brush: "green", orig: "e2", dest: undefined },
+    ]);
+
+    store.getState().setNodeShapes([]);
+
+    expect(store.getState().currentNode().shapes).toStrictEqual([]);
 });

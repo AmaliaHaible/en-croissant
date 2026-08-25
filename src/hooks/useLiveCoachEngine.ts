@@ -16,9 +16,9 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
+import { classifyMove } from "@/utils/coach";
 import type { LocalEngine } from "@/utils/engines";
 import { useThrottledEffect } from "@/utils/misc";
-import { getAnnotation } from "@/utils/score";
 import { treeIteratorMainLine } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 
@@ -70,7 +70,70 @@ export function useLiveCoachEngine(hintActive: boolean): {
 
     const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
     const bestLinesCacheRef = useRef<Map<string, BestMoves[]>>(new Map());
-    const classifiedNodesRef = useRef<Set<string>>(new Set());
+    // Keyed by the fen of the classified node (not by its tree path): paths are
+    // reused across a new game or a take-back, fens identify the actual position.
+    const classifiedFensRef = useRef<Set<string>>(new Set());
+    // The engine process we last asked to search, so it can still be stopped or
+    // killed after `engine`/`activeTab` changed or became null.
+    const startedRef = useRef<{ id: string; tab: string } | null>(null);
+    const searchingRef = useRef(false);
+    const mainLineLengthRef = useRef(0);
+
+    // The best move belongs to exactly one position: drop it as soon as the
+    // position changes so a hint can never reveal a stale move.
+    useEffect(() => {
+        setBestMoveUci(null);
+    }, [finalFen]);
+
+    // Shared handling of engine output, used both by the event listener and by
+    // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
+    // is refreshed after every render so neither effect needs it as a dependency.
+    const handleResultRef = useRef<
+        (resultFen: string, bestLines: BestMoves[], progress: number) => void
+    >(() => {});
+    useEffect(() => {
+        handleResultRef.current = (resultFen, bestLines, progress) => {
+            // Late answer for a position we already left.
+            if (bestLines.length === 0 || resultFen !== finalFen) return;
+
+            bestLinesCacheRef.current.set(finalFen, bestLines);
+            setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
+
+            if (liveEvalEnabled) {
+                setScore(bestLines[0].score);
+            }
+
+            if (progress < 100) return;
+
+            const mainLine = Array.from(treeIteratorMainLine(store.getState().root));
+            // The main line only gets shorter when the tree was rebuilt: a new game
+            // in a match series, a take-back or a position edit. Those replay fens
+            // that are still marked as classified, so drop the markers. (The engine
+            // lines cache stays: analysis of a given fen is position-only and
+            // remains valid.)
+            if (mainLine.length < mainLineLengthRef.current) {
+                classifiedFensRef.current.clear();
+            }
+            mainLineLengthRef.current = mainLine.length;
+
+            const classification = classifyMove({
+                mainLine,
+                finalFen,
+                bestLines,
+                cache: bestLinesCacheRef.current,
+                feedbackEnabled: {
+                    white: whiteFeedbackEnabled,
+                    black: blackFeedbackEnabled,
+                },
+                classifiedFens: classifiedFensRef.current,
+            });
+
+            if (classification) {
+                setNodeAnnotation(classification.path, classification.annotation);
+                classifiedFensRef.current.add(classification.fen);
+            }
+        };
+    });
 
     useEffect(() => {
         if (!active || !engine || !activeTab) return;
@@ -81,93 +144,64 @@ export function useLiveCoachEngine(hintActive: boolean): {
                 payload.engine !== listenerId ||
                 payload.tab !== activeTab ||
                 payload.fen !== fen ||
-                !equal(payload.moves, moves) ||
-                payload.bestLines.length === 0
+                !equal(payload.moves, moves)
             ) {
                 return;
             }
 
-            bestLinesCacheRef.current.set(finalFen, payload.bestLines);
-            setBestMoveUci(payload.bestLines[0].uciMoves[0] ?? null);
-
-            if (liveEvalEnabled) {
-                setScore(payload.bestLines[0].score);
-            }
-
-            if (payload.progress < 100) return;
-
-            const state = store.getState();
-            const mainLine = Array.from(treeIteratorMainLine(state.root));
-            const tip = mainLine[mainLine.length - 1];
-            if (tip.node.fen !== finalFen || !tip.node.move) return;
-
-            const nodeKey = tip.position.join(",");
-            if (classifiedNodesRef.current.has(nodeKey)) return;
-
-            const color = tip.node.halfMoves % 2 === 1 ? "white" : "black";
-            const colorFeedbackEnabled = color === "white" ? whiteFeedbackEnabled : blackFeedbackEnabled;
-            if (!colorFeedbackEnabled) return;
-
-            const parentEntry = mainLine[mainLine.length - 2];
-            const grandparentEntry = mainLine.length >= 3 ? mainLine[mainLine.length - 3] : null;
-            const prevMoves = bestLinesCacheRef.current.get(parentEntry.node.fen) ?? [];
-            const prevScore = prevMoves[0]?.score.value ?? null;
-            const prevprevScore = grandparentEntry
-                ? (bestLinesCacheRef.current.get(grandparentEntry.node.fen)?.[0]?.score.value ?? null)
-                : null;
-
-            const annotation = getAnnotation(
-                prevprevScore,
-                prevScore,
-                payload.bestLines[0].score.value,
-                color,
-                prevMoves,
-                false,
-                tip.node.san || "",
-            );
-
-            if (annotation) {
-                setNodeAnnotation(tip.position, annotation);
-                classifiedNodesRef.current.add(nodeKey);
-            }
+            handleResultRef.current(finalFen, payload.bestLines, payload.progress);
         });
 
         return () => {
             unlisten.then((f) => f());
         };
-    }, [
-        active,
-        engine,
-        activeTab,
-        fen,
-        JSON.stringify(moves),
-        finalFen,
-        liveEvalEnabled,
-        whiteFeedbackEnabled,
-        blackFeedbackEnabled,
-        setScore,
-        setNodeAnnotation,
-        store,
-    ]);
+    }, [active, engine, activeTab, fen, JSON.stringify(moves), finalFen]);
 
     useThrottledEffect(
         () => {
-            if (!active || !engine || !activeTab) return;
-            if (isGameOver) {
-                commands.stopEngine(liveCoachId(engine.id), activeTab).then((r) => unwrap(r));
+            if (!engine || !activeTab) return;
+            const id = liveCoachId(engine.id);
+
+            if (!active || isGameOver) {
+                if (searchingRef.current) {
+                    searchingRef.current = false;
+                    commands.stopEngine(id, activeTab).then((r) => unwrap(r));
+                }
                 return;
             }
+
+            const requestFen = finalFen;
+            searchingRef.current = true;
+            startedRef.current = { id, tab: activeTab };
             commands
-                .getBestMoves(liveCoachId(engine.id), engine.path, activeTab, LIVE_COACH_GO_MODE, {
+                .getBestMoves(id, engine.path, activeTab, LIVE_COACH_GO_MODE, {
                     fen,
                     moves,
                     extraOptions: [{ name: "MultiPV", value: "2" }],
                 })
-                .then((r) => unwrap(r));
+                .then((r) => {
+                    // A matching search is already running: the backend answers
+                    // directly and emits no event, so consume the result here.
+                    const result = unwrap(r);
+                    if (!result) return;
+                    const [progress, bestLines] = result;
+                    handleResultRef.current(requestFen, bestLines, progress);
+                });
         },
         50,
-        [active, engine, activeTab, fen, JSON.stringify(moves), isGameOver],
+        [active, engine, activeTab, fen, JSON.stringify(moves), finalFen, isGameOver],
     );
+
+    // Leaving the play tab unmounts this hook: tear the process down entirely.
+    useEffect(() => {
+        return () => {
+            const started = startedRef.current;
+            if (!started) return;
+            startedRef.current = null;
+            searchingRef.current = false;
+            commands.killEngine(started.id, started.tab).catch(() => {});
+        };
+    }, []);
 
     return { bestMoveUci, engine };
 }

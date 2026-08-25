@@ -105,6 +105,17 @@ function getPlayerDisplayName(settings: OpponentSettings): string {
 
 type BackendMove = { uci: string; clock: number | null };
 
+const HINT_BRUSH = "green";
+
+function hintSquares(uci: string) {
+  const move = parseUci(uci) as NormalMove;
+  if (!move) return null;
+  const from = makeSquare(move.from);
+  const to = makeSquare(move.to);
+  if (!from || !to) return null;
+  return { from, to };
+}
+
 function mapBackendMoves(moves: { uci: string; clock: bigint | null }[]): BackendMove[] {
   return moves.map((m) => ({
     uci: m.uci,
@@ -120,6 +131,9 @@ function BoardGame() {
   const [selectedPiece, setSelectedPiece] = useState<Piece | null>(null);
 
   const [hintActive, setHintActive] = useState(false);
+  // Set when a hint was asked for before the engine had an answer; the reveal then
+  // happens as soon as `bestMoveUci` arrives.
+  const [hintPending, setHintPending] = useState(false);
   const { bestMoveUci, engine: coachEngine } = useLiveCoachEngine(hintActive);
   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
   const [whiteFeedbackEnabled, setWhiteFeedbackEnabled] = useAtom(coachFeedbackWhiteAtom);
@@ -160,8 +174,45 @@ function BoardGame() {
   const setResult = useStore(store, (s) => s.setResult);
   const appendMove = useStore(store, (s) => s.appendMove);
   const resetTree = useStore(store, (s) => s.reset);
-  const setShapes = useStore(store, (s) => s.setShapes);
+  const setNodeShapes = useStore(store, (s) => s.setNodeShapes);
   const currentNode = useStore(store, (s) => s.currentNode());
+
+  const applyHintShapes = useCallback(
+    (uci: string, stage: "circle" | "arrow" | "clear") => {
+      const squares = hintSquares(uci);
+      if (!squares) return;
+      const { from, to } = squares;
+      // Shapes the user drew themselves are kept; only the hint's own circle/arrow
+      // (green, starting on the hinted square) is replaced.
+      const otherShapes = currentNode.shapes.filter(
+        (s) => !(s.brush === HINT_BRUSH && s.orig === from && (!s.dest || s.dest === to)),
+      );
+      if (stage === "clear") {
+        setNodeShapes(otherShapes);
+        return;
+      }
+      setNodeShapes([
+        ...otherShapes,
+        stage === "circle"
+          ? { orig: from, dest: undefined, brush: HINT_BRUSH }
+          : { orig: from, dest: to, brush: HINT_BRUSH },
+      ]);
+    },
+    [currentNode.shapes, setNodeShapes],
+  );
+
+  // The engine only starts once a hint is requested, so the first reveal has to
+  // wait for the first evaluation to come back.
+  useEffect(() => {
+    if (!hintPending || !bestMoveUci) return;
+    applyHintShapes(bestMoveUci, "circle");
+    setHintPending(false);
+  }, [hintPending, bestMoveUci, applyHintShapes]);
+
+  // A hint that was requested for a position we already left is dropped.
+  useEffect(() => {
+    setHintPending(false);
+  }, [currentNode.fen]);
 
   const [, setTabs] = useAtom(tabsAtom);
   const autoFlipBoard = useAtomValue(flipBoardAfterMoveAtom);
@@ -1217,43 +1268,41 @@ function BoardGame() {
                       variant="default"
                       leftSection={<IconBulb size="1rem" />}
                       disabled={
-                        !bestMoveUci ||
+                        !coachEngine ||
                         gameState !== "playing" ||
                         (pos?.turn === "white"
                           ? players.white.type !== "human"
                           : players.black.type !== "human")
                       }
                       onClick={() => {
-                        if (!bestMoveUci) return;
-                        const move = parseUci(bestMoveUci) as NormalMove;
-                        const from = makeSquare(move.from);
-                        const to = makeSquare(move.to);
-                        if (!from || !to) return;
+                        // Requesting a hint is what starts the coach engine, so this
+                        // has to happen even when no evaluation exists yet.
+                        setHintActive(true);
+                        if (!bestMoveUci) {
+                          setHintPending(true);
+                          return;
+                        }
+
+                        const squares = hintSquares(bestMoveUci);
+                        if (!squares) return;
+                        const { from, to } = squares;
 
                         const currentShapes = currentNode.shapes;
-                        const hasCircle = currentShapes.some((s) => s.orig === from && !s.dest);
+                        const hasCircle = currentShapes.some(
+                          (s) => s.brush === HINT_BRUSH && s.orig === from && !s.dest,
+                        );
                         const hasArrow = currentShapes.some(
-                          (s) => s.orig === from && s.dest === to,
+                          (s) => s.brush === HINT_BRUSH && s.orig === from && s.dest === to,
                         );
 
                         if (hasArrow) {
-                          setShapes(
-                            currentShapes.filter(
-                              (s) => !(s.orig === from && (!s.dest || s.dest === to)),
-                            ),
-                          );
+                          applyHintShapes(bestMoveUci, "clear");
                           setHintActive(false);
+                          setHintPending(false);
                         } else if (hasCircle) {
-                          setShapes([
-                            ...currentShapes.filter((s) => !(s.orig === from && !s.dest)),
-                            { orig: from, dest: to, brush: "green" },
-                          ]);
+                          applyHintShapes(bestMoveUci, "arrow");
                         } else {
-                          setHintActive(true);
-                          setShapes([
-                            ...currentShapes,
-                            { orig: from, dest: undefined, brush: "green" },
-                          ]);
+                          applyHintShapes(bestMoveUci, "circle");
                         }
                       }}
                     >

@@ -66,6 +66,7 @@ export interface TreeStoreState extends TreeState {
     setHeaders: (payload: GameHeaders) => void;
     setResult: (payload: Outcome) => void;
     setShapes: (shapes: DrawShape[]) => void;
+    setNodeShapes: (shapes: DrawShape[]) => void;
     setScore: (score: Score) => void;
 
     clearShapes: () => void;
@@ -491,6 +492,19 @@ export const createTreeStore = (id?: string, initialTree?: TreeState) => {
                 produce((state) => {
                     state.dirty = true;
                     setShapes(state, shapes);
+                }),
+            ),
+        // Unlike setShapes, this replaces the current node's shapes outright
+        // instead of toggling a single shape, so callers that compute the whole
+        // desired list (e.g. the hint button) cannot clobber user-drawn shapes.
+        setNodeShapes: (shapes) =>
+            set(
+                produce((state) => {
+                    state.dirty = true;
+                    const node = getNodeAtPath(state.root, state.position);
+                    if (node) {
+                        node.shapes = shapes;
+                    }
                 }),
             ),
         setScore: (score) =>
