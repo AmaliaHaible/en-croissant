@@ -58,11 +58,18 @@ const rodentOptions: UciOptionConfig[] = [
     check("OwnBook", true),
 ];
 
+const maia3Options: UciOptionConfig[] = [
+    spin("Elo", BigInt(0), BigInt(5000), BigInt(1500)),
+    spin("SelfElo", BigInt(0), BigInt(5000), BigInt(1500)),
+    spin("OppoElo", BigInt(0), BigInt(5000), BigInt(1500)),
+    spin("MultiPV", BigInt(1), BigInt(20), BigInt(5)),
+];
+
 test("detects a UCI_Elo dial and prefers it over Skill Level", () => {
     const dial = detectStrengthDial(stockfishOptions);
     expect(dial).toEqual({
         kind: "elo",
-        optionName: "UCI_Elo",
+        optionNames: ["UCI_Elo"],
         limitOptionName: "UCI_LimitStrength",
         min: 1320,
         max: 3190,
@@ -73,11 +80,31 @@ test("falls back to a skill dial when no Elo option is present", () => {
     const dial = detectStrengthDial(komodoOptions);
     expect(dial).toEqual({
         kind: "skill",
-        optionName: "Skill",
+        optionNames: ["Skill"],
         limitOptionName: null,
         min: 0,
         max: 25,
     });
+});
+
+test("detects Maia3's plain Elo option and syncs same-range SelfElo/OppoElo into one dial", () => {
+    const dial = detectStrengthDial(maia3Options);
+    expect(dial).toEqual({
+        kind: "elo",
+        optionNames: ["Elo", "SelfElo", "OppoElo"],
+        limitOptionName: null,
+        min: 0,
+        max: 5000,
+    });
+});
+
+test("applyDialValue on a synced multi-option dial sets every option to the same value", () => {
+    const dial = detectStrengthDial(maia3Options)!;
+    const result = applyDialValue(dial, 1800, [{ name: "MultiPV", value: 5 }]);
+    expect(result).toContainEqual({ name: "MultiPV", value: 5 });
+    expect(result).toContainEqual({ name: "Elo", value: 1800 });
+    expect(result).toContainEqual({ name: "SelfElo", value: 1800 });
+    expect(result).toContainEqual({ name: "OppoElo", value: 1800 });
 });
 
 test("returns null when the engine has no strength-limiting option", () => {

@@ -45,7 +45,8 @@ function DialControl({
 }) {
   const { t } = useTranslation();
   const currentValue =
-    (settings.find((s) => s.name === dial.optionName)?.value as number | undefined) ?? dial.max;
+    (settings.find((s) => dial.optionNames.includes(s.name))?.value as number | undefined) ??
+    dial.max;
   const [tempValue, setTempValue] = useState(currentValue);
 
   useEffect(() => {

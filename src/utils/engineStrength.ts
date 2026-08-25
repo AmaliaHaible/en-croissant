@@ -12,7 +12,8 @@ export type StrengthPreset = {
 
 export type StrengthDial = {
     kind: "elo" | "skill";
-    optionName: string;
+    /** UCI options kept in sync under this one dial (e.g. Maia3's Elo/SelfElo/OppoElo). */
+    optionNames: string[];
     limitOptionName: string | null;
     min: number;
     max: number;
@@ -27,7 +28,7 @@ export type StyleControl = {
 type SpinOption = Extract<UciOptionConfig, { type: "spin" }>;
 type ComboOption = Extract<UciOptionConfig, { type: "combo" }>;
 
-const ELO_OPTION_NAMES = ["uci_elo"];
+const ELO_OPTION_NAMES = ["uci_elo", "elo"];
 const LIMIT_OPTION_NAMES = ["uci_limitstrength"];
 const SKILL_OPTION_NAMES = ["skill level", "skill"];
 const STYLE_OPTION_NAMES = ["personality", "playing style", "style"];
@@ -39,11 +40,29 @@ function findSpinOption(options: UciOptionConfig[], names: string[]): SpinOption
 }
 
 /**
+ * Finds other spin options that represent the same Elo dial as `primary` (e.g. Maia3's
+ * "SelfElo"/"OppoElo" alongside its "Elo"), so one slider can drive all of them in sync.
+ * A sibling qualifies by sharing the exact min/max bounds and having "elo" in its name.
+ */
+function findSyncedEloOptions(options: UciOptionConfig[], primary: SpinOption): string[] {
+    const siblings = options.filter(
+        (o): o is SpinOption =>
+            o.type === "spin" &&
+            o.value.name !== primary.value.name &&
+            o.value.min === primary.value.min &&
+            o.value.max === primary.value.max &&
+            o.value.name.toLowerCase().includes("elo"),
+    );
+    return [primary.value.name, ...siblings.map((s) => s.value.name)];
+}
+
+/**
  * Detects the best available way to limit an engine's playing strength, based on the UCI
  * options it advertises. Prefers a native Elo dial (UCI_Elo + UCI_LimitStrength, as used by
- * Stockfish/Patricia) and falls back to a generic skill spin (e.g. Komodo's "Skill"). Returns
- * null when the engine exposes neither, meaning only bundled presets (see getPresetsForEngine)
- * can adjust its strength.
+ * Stockfish/Patricia; or a plain "Elo" spin, as used by Maia3, possibly synced with same-range
+ * "*Elo*" siblings like SelfElo/OppoElo) and falls back to a generic skill spin (e.g. Komodo's
+ * "Skill"). Returns null when the engine exposes neither, meaning only bundled presets (see
+ * getPresetsForEngine) can adjust its strength.
  */
 export function detectStrengthDial(options: UciOptionConfig[]): StrengthDial | null {
     const elo = findSpinOption(options, ELO_OPTION_NAMES);
@@ -53,7 +72,7 @@ export function detectStrengthDial(options: UciOptionConfig[]): StrengthDial | n
         );
         return {
             kind: "elo",
-            optionName: elo.value.name,
+            optionNames: findSyncedEloOptions(options, elo),
             limitOptionName: limit?.value.name ?? null,
             min: Number(elo.value.min),
             max: Number(elo.value.max),
@@ -64,7 +83,7 @@ export function detectStrengthDial(options: UciOptionConfig[]): StrengthDial | n
     if (skill?.value.min != null && skill.value.max != null) {
         return {
             kind: "skill",
-            optionName: skill.value.name,
+            optionNames: [skill.value.name],
             limitOptionName: null,
             min: Number(skill.value.min),
             max: Number(skill.value.max),
@@ -81,7 +100,9 @@ export function applyDialValue(
     baseSettings: EngineSettings,
 ): EngineSettings {
     const settings = clearDialOverride(dial, baseSettings);
-    settings.push({ name: dial.optionName, value });
+    for (const name of dial.optionNames) {
+        settings.push({ name, value });
+    }
     if (dial.limitOptionName) {
         settings.push({ name: dial.limitOptionName, value: value < dial.max });
     }
@@ -94,7 +115,7 @@ export function clearDialOverride(
     baseSettings: EngineSettings,
 ): EngineSettings {
     return baseSettings.filter(
-        (s) => s.name !== dial.optionName && s.name !== dial.limitOptionName,
+        (s) => !dial.optionNames.includes(s.name) && s.name !== dial.limitOptionName,
     );
 }
 

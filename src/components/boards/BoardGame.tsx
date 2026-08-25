@@ -57,9 +57,9 @@ import {
   currentPlayersAtom,
   gameInputColorAtom,
   gameMatchAlternateColorsAtom,
-  gameMatchAutoSaveAtom,
   gameMatchGameCountAtom,
   gameMatchSavePathAtom,
+  gameMatchSeriesEnabledAtom,
   gameMatchTournamentNameAtom,
   gameOpeningBookEnabledAtom,
   gameOpeningBookMaxPlyAtom,
@@ -160,11 +160,12 @@ function BoardGame() {
   const [blackTime, setBlackTime] = useState<number | null>(null);
   const [gameId, setGameId] = useAtom(currentGameIdAtom);
 
+  const [matchSeriesEnabled, setMatchSeriesEnabled] = useAtom(gameMatchSeriesEnabledAtom);
   const [matchGameCount, setMatchGameCount] = useAtom(gameMatchGameCountAtom);
   const [matchTournamentName, setMatchTournamentName] = useAtom(gameMatchTournamentNameAtom);
   const [matchAlternateColors, setMatchAlternateColors] = useAtom(gameMatchAlternateColorsAtom);
-  const [matchAutoSave, setMatchAutoSave] = useAtom(gameMatchAutoSaveAtom);
   const [matchSavePath, setMatchSavePath] = useAtom(gameMatchSavePathAtom);
+  const effectiveGameCount = matchSeriesEnabled ? matchGameCount : 1;
 
   const [matchScores, setMatchScores] = useState({
     p1Score: 0,
@@ -326,10 +327,11 @@ function BoardGame() {
       const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
 
       let defaultFileName = `${whiteName}_vs_${blackName}_${timestamp}.pgn`;
-      if (matchScores.active || matchTournamentName.trim()) {
-        const customPrefix = matchTournamentName.trim()
-          ? matchTournamentName.trim().replace(/[^a-zA-Z0-9_-]/g, "_")
-          : `${whiteName}_vs_${blackName}_series_${matchScores.totalGames || matchGameCount}games`;
+      if (matchScores.active || (matchSeriesEnabled && matchTournamentName.trim())) {
+        const customPrefix =
+          matchSeriesEnabled && matchTournamentName.trim()
+            ? matchTournamentName.trim().replace(/[^a-zA-Z0-9_-]/g, "_")
+            : `${whiteName}_vs_${blackName}_series_${matchScores.totalGames || effectiveGameCount}games`;
         defaultFileName = `${customPrefix}_${timestamp}.pgn`;
       }
 
@@ -351,7 +353,9 @@ function BoardGame() {
 
         const fileName = targetPath.split(/[/\\]/).pop() || defaultFileName;
         const isTournament =
-          matchScores.active || matchGameCount > 1 || Boolean(matchTournamentName.trim());
+          matchScores.active ||
+          effectiveGameCount > 1 ||
+          Boolean(matchSeriesEnabled && matchTournamentName.trim());
         addRecentFile({
           name: fileName,
           path: targetPath,
@@ -382,10 +386,11 @@ function BoardGame() {
     },
     [
       addRecentFile,
-      matchGameCount,
+      effectiveGameCount,
       matchSavePath,
       matchScores.active,
       matchScores.totalGames,
+      matchSeriesEnabled,
       matchTournamentName,
       setMatchSavePath,
       store,
@@ -449,9 +454,9 @@ function BoardGame() {
     const whiteIsEngine = playerSettings.white.type === "engine";
     const blackIsEngine = playerSettings.black.type === "engine";
     const isEngineMatch = whiteIsEngine && blackIsEngine;
+    const customTournament = matchSeriesEnabled ? matchTournamentName.trim() : "";
 
     if (isEngineMatch && !isMatchStep) {
-      const customTournament = matchTournamentName.trim();
       if (customTournament) {
         try {
           const docDir = await getDocumentDir();
@@ -476,8 +481,8 @@ function BoardGame() {
         p2Score: 0,
         draws: 0,
         currentGame: 1,
-        totalGames: matchGameCount,
-        active: matchGameCount > 1,
+        totalGames: effectiveGameCount,
+        active: effectiveGameCount > 1,
       });
 
       getDocumentDir().then(async (docDir) => {
@@ -486,9 +491,9 @@ function BoardGame() {
         const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
         const customPrefix = customTournament
           ? customTournament.replace(/[^a-zA-Z0-9_-]/g, "_")
-          : `${p1Name}_vs_${p2Name}_series_${matchGameCount}games`;
+          : `${p1Name}_vs_${p2Name}_series_${effectiveGameCount}games`;
         const seriesFileName =
-          matchGameCount > 1
+          effectiveGameCount > 1
             ? `${customPrefix}_${timestamp}.pgn`
             : `${p1Name}_vs_${p2Name}_${timestamp}.pgn`;
         const defaultMatchFile = await resolve(docDir, seriesFileName);
@@ -553,19 +558,19 @@ function BoardGame() {
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ".");
       const timeStr = now.toISOString().slice(11, 19);
 
-      const customTournament = matchTournamentName.trim();
       let eventStr = "Casual Game";
       if (customTournament) {
         eventStr = customTournament;
       } else if (whiteIsEngine && blackIsEngine) {
-        eventStr = matchGameCount > 1 ? `Engine Match (${matchGameCount} games)` : "Engine Match";
+        eventStr =
+          effectiveGameCount > 1 ? `Engine Match (${effectiveGameCount} games)` : "Engine Match";
       } else if (whiteIsEngine || blackIsEngine) {
         eventStr = "Player vs Engine";
       } else {
         eventStr = "Player Match";
       }
 
-      const isTournament = isEngineMatch || matchGameCount > 1 || Boolean(customTournament);
+      const isTournament = effectiveGameCount > 1 || Boolean(customTournament);
 
       const formatTimeControl = (settings: OpponentSettings): string => {
         if (!settings.timeControl) return "-";
@@ -711,9 +716,7 @@ function BoardGame() {
 
       const isLastGameInSeries =
         matchScores.active && matchScores.currentGame >= matchScores.totalGames;
-      if (matchAutoSave || matchScores.active) {
-        saveLiveGameToPgn(matchSavePath || undefined, isLastGameInSeries);
-      }
+      saveLiveGameToPgn(matchSavePath || undefined, isLastGameInSeries);
 
       setMatchScores((prev) => {
         if (!prev.active || prev.currentGame >= prev.totalGames) {
@@ -771,7 +774,6 @@ function BoardGame() {
     gameState,
     inputColor,
     matchAlternateColors,
-    matchAutoSave,
     matchSavePath,
     matchScores.active,
     saveLiveGameToPgn,
@@ -1031,48 +1033,57 @@ function BoardGame() {
                                       Engine Match Series
                                     </Text>
                                   </Group>
-                                  <TextInput
-                                    label="Tournament / Series Name (Optional)"
-                                    description="Categorized under Tournaments with custom PGN event header."
-                                    placeholder="e.g. TCEC Season 2026, World Computer Chess"
-                                    value={matchTournamentName}
-                                    error={nameTakenError}
-                                    onChange={(e) => setMatchTournamentName(e.currentTarget.value)}
-                                  />
-                                  <NumberInput
-                                    label="Number of Games"
-                                    description="Even number of games (2 to 100) recommended for equal White/Black rounds."
-                                    min={2}
-                                    max={100}
-                                    step={2}
-                                    value={matchGameCount}
-                                    onChange={(val) => {
-                                      if (typeof val === "number" && Number.isFinite(val)) {
-                                        setMatchGameCount(
-                                          Math.max(2, Math.min(100, Math.trunc(val))),
-                                        );
-                                      }
-                                    }}
-                                  />
-                                  {matchGameCount % 2 !== 0 && (
-                                    <Text size="xs" c="yellow.5">
-                                      💡 Note: An even number of games (e.g. 2, 4, 6... 100) is
-                                      recommended so both engines play an equal number of games as
-                                      White and Black.
-                                    </Text>
-                                  )}
                                   <Checkbox
-                                    label="Alternate colors between games"
-                                    checked={matchAlternateColors}
+                                    label="Play a match series (multiple games)"
+                                    description="Off: play a single one-off game. On: run a series of games back to back."
+                                    checked={matchSeriesEnabled}
                                     onChange={(e) =>
-                                      setMatchAlternateColors(e.currentTarget.checked)
+                                      setMatchSeriesEnabled(e.currentTarget.checked)
                                     }
                                   />
-                                  <Checkbox
-                                    label="Auto-save match games to App Library"
-                                    checked={matchAutoSave}
-                                    onChange={(e) => setMatchAutoSave(e.currentTarget.checked)}
-                                  />
+                                  {matchSeriesEnabled && (
+                                    <>
+                                      <TextInput
+                                        label="Tournament / Series Name (Optional)"
+                                        description="Categorized under Tournaments with custom PGN event header."
+                                        placeholder="e.g. TCEC Season 2026, World Computer Chess"
+                                        value={matchTournamentName}
+                                        error={nameTakenError}
+                                        onChange={(e) =>
+                                          setMatchTournamentName(e.currentTarget.value)
+                                        }
+                                      />
+                                      <NumberInput
+                                        label="Number of Games"
+                                        description="Even number of games (2 to 100) recommended for equal White/Black rounds."
+                                        min={2}
+                                        max={100}
+                                        step={2}
+                                        value={matchGameCount}
+                                        onChange={(val) => {
+                                          if (typeof val === "number" && Number.isFinite(val)) {
+                                            setMatchGameCount(
+                                              Math.max(2, Math.min(100, Math.trunc(val))),
+                                            );
+                                          }
+                                        }}
+                                      />
+                                      {matchGameCount % 2 !== 0 && (
+                                        <Text size="xs" c="yellow.5">
+                                          💡 Note: An even number of games (e.g. 2, 4, 6... 100) is
+                                          recommended so both engines play an equal number of
+                                          games as White and Black.
+                                        </Text>
+                                      )}
+                                      <Checkbox
+                                        label="Alternate colors between games"
+                                        checked={matchAlternateColors}
+                                        onChange={(e) =>
+                                          setMatchAlternateColors(e.currentTarget.checked)
+                                        }
+                                      />
+                                    </>
+                                  )}
                                 </Stack>
                               </>
                             )}

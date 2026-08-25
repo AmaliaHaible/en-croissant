@@ -340,6 +340,10 @@ export const gameOpeningBookEnabledAtom = atomWithStorage<boolean>(
 
 export const gameOpeningBookMaxPlyAtom = atomWithStorage<number>("game-opening-book-max-ply", 40);
 
+export const gameMatchSeriesEnabledAtom = atomWithStorage<boolean>(
+    "game-match-series-enabled",
+    false,
+);
 export const gameMatchGameCountAtom = atomWithStorage<number>("game-match-game-count", 2);
 export const gameMatchTournamentNameAtom = atomWithStorage<string>(
     "game-match-tournament-name",
@@ -349,7 +353,6 @@ export const gameMatchAlternateColorsAtom = atomWithStorage<boolean>(
     "game-match-alternate-colors",
     true,
 );
-export const gameMatchAutoSaveAtom = atomWithStorage<boolean>("game-match-auto-save", true);
 export const gameMatchSavePathAtom = atomWithStorage<string | null>("game-match-save-path", null);
 
 function tabValue<T extends object | string | boolean | number | null | undefined>(
