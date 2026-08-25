@@ -14,11 +14,13 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useToggle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowsExchange,
+  IconChartBar,
   IconDownload,
   IconFileText,
   IconPlus,
@@ -51,6 +53,8 @@ import { resolve } from "@tauri-apps/api/path";
 import {
   activeTabAtom,
   addRecentFileAtom,
+  coachFeedbackBlackAtom,
+  coachFeedbackWhiteAtom,
   flipBoardAfterMoveAtom,
   currentGameIdAtom,
   currentGameStateAtom,
@@ -67,6 +71,7 @@ import {
   gamePlayer1SettingsAtom,
   gamePlayer2SettingsAtom,
   gameSameTimeControlAtom,
+  liveEvalEnabledAtom,
   tabsAtom,
 } from "@/state/atoms";
 import { getPGN } from "@/utils/chess";
@@ -74,6 +79,7 @@ import { positionFromFen } from "@/utils/chessops";
 import { getDocumentDir } from "@/utils/directories";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
+import { useLiveCoachEngine } from "@/hooks/useLiveCoachEngine";
 import EngineLogsView from "../common/EngineLogsView";
 import FileInput from "../common/FileInput";
 import GameInfo from "../common/GameInfo";
@@ -111,6 +117,12 @@ function BoardGame() {
 
   const [editingMode, toggleEditingMode] = useToggle();
   const [selectedPiece, setSelectedPiece] = useState<Piece | null>(null);
+
+  const [hintActive, setHintActive] = useState(false);
+  const { bestMoveUci, engine: coachEngine } = useLiveCoachEngine(hintActive);
+  const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
+  const [whiteFeedbackEnabled, setWhiteFeedbackEnabled] = useAtom(coachFeedbackWhiteAtom);
+  const [blackFeedbackEnabled, setBlackFeedbackEnabled] = useAtom(coachFeedbackBlackAtom);
 
   const [inputColor, setInputColor] = useAtom(gameInputColorAtom);
   function cycleColor() {
@@ -1125,6 +1137,49 @@ function BoardGame() {
                   <Box flex={1}>
                     <GameInfo headers={headers} />
                   </Box>
+                  <Group gap="xs">
+                    <Tooltip
+                      label={coachEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")}
+                    >
+                      <ActionIcon
+                        variant={liveEvalEnabled ? "filled" : "default"}
+                        disabled={!coachEngine}
+                        onClick={() => setLiveEvalEnabled((v) => !v)}
+                      >
+                        <IconChartBar size="1rem" />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip
+                      label={
+                        coachEngine ? t("Board.Coach.WhiteFeedback") : t("Board.Coach.NoEngine")
+                      }
+                    >
+                      <ActionIcon
+                        variant={whiteFeedbackEnabled ? "filled" : "default"}
+                        disabled={!coachEngine}
+                        onClick={() => setWhiteFeedbackEnabled((v) => !v)}
+                      >
+                        <Text fz="xs" fw="bold">
+                          W
+                        </Text>
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip
+                      label={
+                        coachEngine ? t("Board.Coach.BlackFeedback") : t("Board.Coach.NoEngine")
+                      }
+                    >
+                      <ActionIcon
+                        variant={blackFeedbackEnabled ? "filled" : "default"}
+                        disabled={!coachEngine}
+                        onClick={() => setBlackFeedbackEnabled((v) => !v)}
+                      >
+                        <Text fz="xs" fw="bold">
+                          B
+                        </Text>
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
                   <Group grow>
                     {gameState === "playing" && (
                       <Button
