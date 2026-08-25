@@ -80,6 +80,7 @@ import { positionFromFen } from "@/utils/chessops";
 import { getDocumentDir } from "@/utils/directories";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
+import { useCoachHint } from "@/hooks/useCoachHint";
 import { useLiveCoachEngine } from "@/hooks/useLiveCoachEngine";
 import EngineLogsView from "../common/EngineLogsView";
 import FileInput from "../common/FileInput";
@@ -134,7 +135,8 @@ function BoardGame() {
   // Set when a hint was asked for before the engine had an answer; the reveal then
   // happens as soon as `bestMoveUci` arrives.
   const [hintPending, setHintPending] = useState(false);
-  const { bestMoveUci, engine: coachEngine } = useLiveCoachEngine(hintActive);
+  const { engine: liveEvalEngine } = useLiveCoachEngine();
+  const { bestMoveUci, engine: hintEngine } = useCoachHint(hintActive);
   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
   const [whiteFeedbackEnabled, setWhiteFeedbackEnabled] = useAtom(coachFeedbackWhiteAtom);
   const [blackFeedbackEnabled, setBlackFeedbackEnabled] = useAtom(coachFeedbackBlackAtom);
@@ -1193,11 +1195,13 @@ function BoardGame() {
                   </Box>
                   <Group gap="xs">
                     <Tooltip
-                      label={coachEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")}
+                      label={
+                        liveEvalEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")
+                      }
                     >
                       <ActionIcon
                         variant={liveEvalEnabled ? "filled" : "default"}
-                        disabled={!coachEngine}
+                        disabled={!liveEvalEngine}
                         onClick={() => setLiveEvalEnabled((v) => !v)}
                       >
                         <IconChartBar size="1rem" />
@@ -1205,12 +1209,14 @@ function BoardGame() {
                     </Tooltip>
                     <Tooltip
                       label={
-                        coachEngine ? t("Board.Coach.WhiteFeedback") : t("Board.Coach.NoEngine")
+                        liveEvalEngine
+                          ? t("Board.Coach.WhiteFeedback")
+                          : t("Board.Coach.NoEngine")
                       }
                     >
                       <ActionIcon
                         variant={whiteFeedbackEnabled ? "filled" : "default"}
-                        disabled={!coachEngine}
+                        disabled={!liveEvalEngine}
                         onClick={() => setWhiteFeedbackEnabled((v) => !v)}
                       >
                         <Text fz="xs" fw="bold">
@@ -1220,12 +1226,14 @@ function BoardGame() {
                     </Tooltip>
                     <Tooltip
                       label={
-                        coachEngine ? t("Board.Coach.BlackFeedback") : t("Board.Coach.NoEngine")
+                        liveEvalEngine
+                          ? t("Board.Coach.BlackFeedback")
+                          : t("Board.Coach.NoEngine")
                       }
                     >
                       <ActionIcon
                         variant={blackFeedbackEnabled ? "filled" : "default"}
-                        disabled={!coachEngine}
+                        disabled={!liveEvalEngine}
                         onClick={() => setBlackFeedbackEnabled((v) => !v)}
                       >
                         <Text fz="xs" fw="bold">
@@ -1268,7 +1276,7 @@ function BoardGame() {
                       variant="default"
                       leftSection={<IconBulb size="1rem" />}
                       disabled={
-                        !coachEngine ||
+                        !hintEngine ||
                         gameState !== "playing" ||
                         (pos?.turn === "white"
                           ? players.white.type !== "human"

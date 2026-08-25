@@ -2,42 +2,45 @@ import { parseUci } from "chessops";
 import { makeFen } from "chessops/fen";
 import equal from "fast-deep-equal";
 import { useAtomValue } from "jotai";
-import { useContext, useEffect, useMemo, useRef } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { type BestMoves, commands, events } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import {
-    activeTabAtom,
-    coachFeedbackBlackAtom,
-    coachFeedbackWhiteAtom,
-    enginesAtom,
-    liveEvalEnabledAtom,
-    liveEvalEngineConfigAtom,
-} from "@/state/atoms";
+import { activeTabAtom, enginesAtom, hintEngineConfigAtom } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
-import { classifyMove } from "@/utils/coach";
 import type { LocalEngine } from "@/utils/engines";
 import { useThrottledEffect } from "@/utils/misc";
-import { treeIteratorMainLine } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 
-const LIVE_COACH_SUFFIX = "-live-coach";
+const COACH_HINT_SUFFIX = "-coach-hint";
 
-function liveCoachId(engineId: string): string {
-    return `${engineId}${LIVE_COACH_SUFFIX}`;
+function coachHintId(engineId: string): string {
+    return `${engineId}${COACH_HINT_SUFFIX}`;
 }
 
-export function useLiveCoachEngine(): {
+/**
+ * Drives the Hint button's engine session, independent of the live-eval/coach
+ * feedback session in `useLiveCoachEngine`. Deliberately mirrors that hook's
+ * lifecycle plumbing (event listener + throttled search effect + synchronous
+ * short-circuit consumption + unmount cleanup) rather than sharing an
+ * abstraction with it: that lifecycle already went through a full review
+ * cycle that caught real concurrency/lifecycle bugs, so duplicating the
+ * proven shape here is lower risk than factoring out a shared helper under
+ * time pressure.
+ *
+ * Two modes, selected purely by the configured go-mode:
+ * - Bounded go-mode (Time/Depth/Nodes): on-demand. Only searches while
+ *   `requested` is true (i.e. after the Hint button has been clicked).
+ * - `{ t: "Infinite" }` go-mode: continuous. Searches for the whole game,
+ *   independent of `requested` — Hint just reveals whatever's been found.
+ */
+export function useCoachHint(requested: boolean): {
+    bestMoveUci: string | null;
     engine: LocalEngine | null;
 } {
-    const liveEvalEnabled = useAtomValue(liveEvalEnabledAtom);
-    const whiteFeedbackEnabled = useAtomValue(coachFeedbackWhiteAtom);
-    const blackFeedbackEnabled = useAtomValue(coachFeedbackBlackAtom);
-    const active = liveEvalEnabled || whiteFeedbackEnabled || blackFeedbackEnabled;
-
-    const config = useAtomValue(liveEvalEngineConfigAtom);
+    const config = useAtomValue(hintEngineConfigAtom);
 
     const engines = useAtomValue(enginesAtom);
     const engine = useMemo(() => {
@@ -50,6 +53,7 @@ export function useLiveCoachEngine(): {
     }, [engines, config.engineId]);
 
     const goMode = config.go;
+    const isContinuous = goMode.t === "Infinite";
     const extraOptions = useMemo(
         () =>
             config.settings.length > 0
@@ -57,14 +61,12 @@ export function useLiveCoachEngine(): {
                       name: s.name,
                       value: s.value?.toString() ?? "",
                   }))
-                : [{ name: "MultiPV", value: "2" }],
+                : [{ name: "MultiPV", value: "1" }],
         [config.settings],
     );
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;
-    const setScore = useStore(store, (s) => s.setScore);
-    const setNodeAnnotation = useStore(store, (s) => s.setNodeAnnotation);
     const fen = useStore(store, (s) => s.root.fen);
     const moves = useStore(
         store,
@@ -82,68 +84,37 @@ export function useLiveCoachEngine(): {
     const isGameOver = pos?.isEnd() ?? false;
     const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : fen), [pos, fen]);
 
-    const bestLinesCacheRef = useRef<Map<string, BestMoves[]>>(new Map());
-    // Keyed by the fen of the classified node (not by its tree path): paths are
-    // reused across a new game or a take-back, fens identify the actual position.
-    const classifiedFensRef = useRef<Set<string>>(new Set());
+    const active = isContinuous ? !isGameOver : requested;
+
+    const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
     // The engine process we last asked to search, so it can still be stopped or
     // killed after `engine`/`activeTab` changed or became null.
     const startedRef = useRef<{ id: string; tab: string } | null>(null);
     const searchingRef = useRef(false);
-    const mainLineLengthRef = useRef(0);
+
+    // The best move belongs to exactly one position: drop it as soon as the
+    // position changes so a hint can never reveal a stale move.
+    useEffect(() => {
+        setBestMoveUci(null);
+    }, [finalFen]);
 
     // Shared handling of engine output, used both by the event listener and by
     // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
     // is refreshed after every render so neither effect needs it as a dependency.
     const handleResultRef = useRef<
-        (resultFen: string, bestLines: BestMoves[], progress: number) => void
+        (resultFen: string, bestLines: BestMoves[]) => void
     >(() => {});
     useEffect(() => {
-        handleResultRef.current = (resultFen, bestLines, progress) => {
+        handleResultRef.current = (resultFen, bestLines) => {
             // Late answer for a position we already left.
             if (bestLines.length === 0 || resultFen !== finalFen) return;
-
-            bestLinesCacheRef.current.set(finalFen, bestLines);
-
-            if (liveEvalEnabled) {
-                setScore(bestLines[0].score);
-            }
-
-            if (progress < 100) return;
-
-            const mainLine = Array.from(treeIteratorMainLine(store.getState().root));
-            // The main line only gets shorter when the tree was rebuilt: a new game
-            // in a match series, a take-back or a position edit. Those replay fens
-            // that are still marked as classified, so drop the markers. (The engine
-            // lines cache stays: analysis of a given fen is position-only and
-            // remains valid.)
-            if (mainLine.length < mainLineLengthRef.current) {
-                classifiedFensRef.current.clear();
-            }
-            mainLineLengthRef.current = mainLine.length;
-
-            const classification = classifyMove({
-                mainLine,
-                finalFen,
-                bestLines,
-                cache: bestLinesCacheRef.current,
-                feedbackEnabled: {
-                    white: whiteFeedbackEnabled,
-                    black: blackFeedbackEnabled,
-                },
-                classifiedFens: classifiedFensRef.current,
-            });
-
-            if (classification) {
-                setNodeAnnotation(classification.path, classification.annotation);
-                classifiedFensRef.current.add(classification.fen);
-            }
+            setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
         };
     });
 
     useEffect(() => {
         if (!active || !engine || !activeTab) return;
-        const listenerId = liveCoachId(engine.id);
+        const listenerId = coachHintId(engine.id);
 
         const unlisten = events.bestMovesPayload.listen(({ payload }) => {
             if (
@@ -155,7 +126,7 @@ export function useLiveCoachEngine(): {
                 return;
             }
 
-            handleResultRef.current(finalFen, payload.bestLines, payload.progress);
+            handleResultRef.current(finalFen, payload.bestLines);
         });
 
         return () => {
@@ -166,7 +137,7 @@ export function useLiveCoachEngine(): {
     useThrottledEffect(
         () => {
             if (!engine || !activeTab) return;
-            const id = liveCoachId(engine.id);
+            const id = coachHintId(engine.id);
 
             if (!active || isGameOver) {
                 if (searchingRef.current) {
@@ -190,8 +161,8 @@ export function useLiveCoachEngine(): {
                     // directly and emits no event, so consume the result here.
                     const result = unwrap(r);
                     if (!result) return;
-                    const [progress, bestLines] = result;
-                    handleResultRef.current(requestFen, bestLines, progress);
+                    const [, bestLines] = result;
+                    handleResultRef.current(requestFen, bestLines);
                 });
         },
         50,
@@ -219,7 +190,7 @@ export function useLiveCoachEngine(): {
         };
     }, []);
 
-    return { engine };
+    return { bestMoveUci, engine };
 }
 
-export default useLiveCoachEngine;
+export default useCoachHint;
