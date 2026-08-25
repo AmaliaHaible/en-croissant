@@ -61,6 +61,7 @@ export interface TreeStoreState extends TreeState {
     setStart: (start: number[]) => void;
 
     setAnnotation: (payload: Annotation) => void;
+    setNodeAnnotation: (path: number[], payload: Annotation) => void;
     setComment: (payload: string) => void;
     setHeaders: (payload: GameHeaders) => void;
     setResult: (payload: Outcome) => void;
@@ -438,6 +439,23 @@ export const createTreeStore = (id?: string, initialTree?: TreeState) => {
                             );
                         }
                     }
+                }),
+            ),
+        setNodeAnnotation: (path, payload) =>
+            set(
+                produce((state) => {
+                    if (!payload) return;
+                    const node = getNodeAtPath(state.root, path);
+                    if (!node || node.annotations.includes(payload)) return;
+                    state.dirty = true;
+                    const newAnnotations = node.annotations.filter(
+                        (a) =>
+                            !ANNOTATION_INFO[a].group ||
+                            ANNOTATION_INFO[a].group !== ANNOTATION_INFO[payload].group,
+                    );
+                    node.annotations = [...newAnnotations, payload].sort((a, b) =>
+                        ANNOTATION_INFO[a].nag > ANNOTATION_INFO[b].nag ? 1 : -1,
+                    );
                 }),
             ),
         setComment: (payload) =>

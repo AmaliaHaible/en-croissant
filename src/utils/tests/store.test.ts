@@ -509,3 +509,42 @@ test("should handle promoteVariation", () => {
         },
     });
 });
+
+test("should handle setNodeAnnotation", () => {
+    store.setState(treeE4D5());
+    store.getState().setNodeAnnotation([0], "!");
+
+    expect(getNewState()).toStrictEqual({
+        ...treeE4D5(),
+        dirty: true,
+        root: {
+            ...treeE4D5().root,
+            children: [
+                {
+                    ...treeE4D5().root.children[0],
+                    annotations: ["!"],
+                },
+            ],
+        },
+    });
+});
+
+test("should not duplicate an existing setNodeAnnotation", () => {
+    store.setState(treeE4D5());
+    store.getState().setNodeAnnotation([0], "!");
+    store.getState().setNodeAnnotation([0], "!");
+
+    expect(getNewState()).toStrictEqual({
+        ...treeE4D5(),
+        dirty: true,
+        root: {
+            ...treeE4D5().root,
+            children: [
+                {
+                    ...treeE4D5().root.children[0],
+                    annotations: ["!"],
+                },
+            ],
+        },
+    });
+});
