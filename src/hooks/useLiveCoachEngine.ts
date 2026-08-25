@@ -44,9 +44,7 @@ export function useLiveCoachEngine(): {
         const loadedLocal = (engines ?? []).filter(
             (e): e is LocalEngine => e.type === "local" && !!e.loaded,
         );
-        return (
-            loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null
-        );
+        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
     }, [engines, config.engineId]);
 
     const goMode = config.go;
@@ -109,7 +107,16 @@ export function useLiveCoachEngine(): {
                 setScore(bestLines[0].score);
             }
 
-            if (progress < 100) return;
+            // GoMode::Infinite and GoMode::PlayersTime never report progress===100
+            // from the backend (it caps at 99.99 until an explicit `stop()`, whose
+            // final message usually arrives after the listener has already moved on
+            // to a new position and gets discarded above) — so treat those go-modes
+            // as always complete enough to classify here. `classifiedFens` already
+            // dedupes, so this doesn't reclassify the same fen on every intermediate
+            // line a long-running search keeps emitting. Do not revert this to a
+            // plain `progress < 100` check: that silently disables all move
+            // classification whenever live-eval is configured to Infinite/PlayersTime.
+            if (progress < 100 && goMode.t !== "Infinite" && goMode.t !== "PlayersTime") return;
 
             const mainLine = Array.from(treeIteratorMainLine(store.getState().root));
             // The main line only gets shorter when the tree was rebuilt: a new game
@@ -171,12 +178,25 @@ export function useLiveCoachEngine(): {
             if (!active || isGameOver) {
                 if (searchingRef.current) {
                     searchingRef.current = false;
-                    commands.stopEngine(id, activeTab).then((r) => unwrap(r));
+                    // Stop the process that's actually running, not `id`: if the
+                    // configured engine changed since the search was started, `id`
+                    // (recomputed from the current `engine`) no longer matches it.
+                    const started = startedRef.current;
+                    if (started) {
+                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
+                    }
                 }
                 return;
             }
 
             const requestFen = finalFen;
+            // The engine (or tab) resolved to something new since the last search
+            // was started: that old process is no longer referenced by anything
+            // below, so it would otherwise be orphaned. Kill it before moving on.
+            const prevStarted = startedRef.current;
+            if (prevStarted && (prevStarted.id !== id || prevStarted.tab !== activeTab)) {
+                commands.killEngine(prevStarted.id, prevStarted.tab).catch(() => {});
+            }
             searchingRef.current = true;
             startedRef.current = { id, tab: activeTab };
             commands
