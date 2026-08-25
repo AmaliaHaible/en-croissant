@@ -143,6 +143,12 @@ test("getPresetsForEngine returns null for engines with no bundled presets", () 
     expect(getPresetsForEngine("Stockfish 18")).toBeNull();
 });
 
+test("getPresetsForEngine does not match other Rodent versions", () => {
+    expect(getPresetsForEngine("Rodent 5")).toBeNull();
+    expect(getPresetsForEngine("Rodent IV")).toBeNull();
+    expect(getPresetsForEngine("Rodent III")).toBeNull();
+});
+
 test("detectStyleControl finds a combo-type playstyle option", () => {
     const style = detectStyleControl(komodoOptions);
     expect(style).toEqual({

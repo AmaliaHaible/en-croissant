@@ -161,7 +161,7 @@ export function findActivePreset(
 }
 
 const PRESET_REGISTRY: { match: (engineName: string) => boolean; presets: StrengthPreset[] }[] = [
-    { match: (name) => name.toLowerCase().includes("rodent"), presets: rodentIIPresets },
+    { match: (name) => /rodent\s*ii\b/i.test(name), presets: rodentIIPresets },
 ];
 
 /** Returns bundled named strength presets for an engine, matched by its UCI id name, or null. */
