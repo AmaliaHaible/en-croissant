@@ -1,7 +1,7 @@
 import { parseUci } from "chessops";
 import { expect, test } from "vitest";
 import type { BestMoves } from "@/bindings";
-import { classifyMove } from "../coach";
+import { classifyMove, withMultiPvFloor } from "../coach";
 import type { ListNode, TreeNode } from "../treeReducer";
 
 // classifyMove only ever compares fens as opaque strings, so synthetic ids keep
@@ -160,4 +160,45 @@ test("should skip empty engine output", () => {
     });
 
     expect(result).toBeNull();
+});
+
+test("withMultiPvFloor adds MultiPV to empty settings", () => {
+    expect(withMultiPvFloor([])).toStrictEqual([{ name: "MultiPV", value: "2" }]);
+});
+
+test("withMultiPvFloor adds MultiPV when settings don't mention it", () => {
+    expect(
+        withMultiPvFloor([
+            { name: "Threads", value: 4 },
+            { name: "Hash", value: 256 },
+        ]),
+    ).toStrictEqual([
+        { name: "Threads", value: "4" },
+        { name: "Hash", value: "256" },
+        { name: "MultiPV", value: "2" },
+    ]);
+});
+
+test("withMultiPvFloor raises a MultiPV below the floor", () => {
+    expect(
+        withMultiPvFloor([
+            { name: "MultiPV", value: 1 },
+            { name: "Threads", value: 2 },
+        ]),
+    ).toStrictEqual([
+        { name: "MultiPV", value: "2" },
+        { name: "Threads", value: "2" },
+    ]);
+});
+
+test("withMultiPvFloor leaves a MultiPV above the floor alone", () => {
+    expect(withMultiPvFloor([{ name: "MultiPV", value: 3 }])).toStrictEqual([
+        { name: "MultiPV", value: "3" },
+    ]);
+});
+
+test("withMultiPvFloor raises an unparseable MultiPV to the floor", () => {
+    expect(withMultiPvFloor([{ name: "MultiPV", value: null }])).toStrictEqual([
+        { name: "MultiPV", value: "2" },
+    ]);
 });

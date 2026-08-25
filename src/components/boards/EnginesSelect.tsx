@@ -7,12 +7,21 @@ import type { LocalEngine } from "@/utils/engines";
 export function EnginesSelect({
   engine,
   setEngine,
+  filter,
 }: {
   engine: LocalEngine | null;
   setEngine: (engine: LocalEngine | null) => void;
+  /**
+   * Extra predicate narrowing which local engines are offered. Callers that only
+   * work with engines in a particular state (e.g. loaded ones) must pass it, so
+   * the auto-selection below can never hand them an engine they can't use.
+   */
+  filter?: (engine: LocalEngine) => boolean;
 }) {
   const allEngines = useAtomValue(enginesAtom);
-  const rawEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
+  const rawEngines = (allEngines ?? []).filter(
+    (e): e is LocalEngine => e.type === "local" && (!filter || filter(e)),
+  );
 
   const engines = useMemo(() => {
     const seen = new Set<string>();

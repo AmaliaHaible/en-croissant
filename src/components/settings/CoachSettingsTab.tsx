@@ -20,9 +20,16 @@ function CoachEngineSection({
   title: string;
   description: string;
 }) {
+  const { t } = useTranslation();
   const [config, setConfig] = useAtom(configAtom);
   const allEngines = useAtomValue(enginesAtom);
-  const localEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
+  // Must match what `useLiveCoachEngine`/`useCoachHint` accept: they only ever
+  // use loaded local engines and silently fall back to the first loaded one
+  // otherwise, so offering unloaded engines here would let the user "select" an
+  // engine the coach never actually runs.
+  const localEngines = (allEngines ?? []).filter(
+    (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+  );
   const selectedEngine = localEngines.find((e) => e.id === config.engineId) ?? null;
 
   const setEngine = (engine: LocalEngine | null) => {
@@ -39,7 +46,13 @@ function CoachEngineSection({
       <Text size="xs" c="dimmed">
         {description}
       </Text>
-      <EnginesSelect engine={selectedEngine} setEngine={setEngine} />
+      {localEngines.length === 0 ? (
+        <Text size="xs" c="dimmed">
+          {t("Settings.Coach.NoEngines")}
+        </Text>
+      ) : (
+        <EnginesSelect engine={selectedEngine} setEngine={setEngine} filter={(e) => !!e.loaded} />
+      )}
       {selectedEngine && (
         <EngineSettingsForm
           engine={selectedEngine}

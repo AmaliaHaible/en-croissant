@@ -135,6 +135,13 @@ function BoardGame() {
   // Set when a hint was asked for before the engine had an answer; the reveal then
   // happens as soon as `bestMoveUci` arrives.
   const [hintPending, setHintPending] = useState(false);
+  // The move actually being revealed, frozen at the moment the first circle is
+  // drawn. A continuous search keeps improving `bestMoveUci` while the shapes are
+  // on the board, so the circle -> arrow -> clear cycle has to be driven off this
+  // fixed value; otherwise a later click looks for a shape on the *new* best
+  // move's square, fails to find the circle it drew, and leaves it orphaned while
+  // drawing a second one.
+  const [hintShownUci, setHintShownUci] = useState<string | null>(null);
   const { engine: liveEvalEngine } = useLiveCoachEngine();
   const { bestMoveUci, engine: hintEngine } = useCoachHint(hintActive);
   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
@@ -208,12 +215,20 @@ function BoardGame() {
   useEffect(() => {
     if (!hintPending || !bestMoveUci) return;
     applyHintShapes(bestMoveUci, "circle");
+    setHintShownUci(bestMoveUci);
     setHintPending(false);
   }, [hintPending, bestMoveUci, applyHintShapes]);
 
-  // A hint that was requested for a position we already left is dropped.
+  // A hint request belongs to the position it was made for. Leaving that position
+  // drops the pending reveal, the frozen move, and the request itself — without
+  // the last one, a single Hint click would keep the (possibly slow, possibly
+  // expensive) on-demand hint engine searching every position for the rest of the
+  // game, which is the opt-in behaviour of the "Infinite" go mode, not of one
+  // click.
   useEffect(() => {
     setHintPending(false);
+    setHintActive(false);
+    setHintShownUci(null);
   }, [currentNode.fen]);
 
   const [, setTabs] = useAtom(tabsAtom);
@@ -1286,12 +1301,16 @@ function BoardGame() {
                         // Requesting a hint is what starts the coach engine, so this
                         // has to happen even when no evaluation exists yet.
                         setHintActive(true);
-                        if (!bestMoveUci) {
+                        // Once a reveal is under way, stay on the move it started
+                        // with: a continuous search may have moved on to a
+                        // different best move since the circle was drawn.
+                        const uci = hintShownUci ?? bestMoveUci;
+                        if (!uci) {
                           setHintPending(true);
                           return;
                         }
 
-                        const squares = hintSquares(bestMoveUci);
+                        const squares = hintSquares(uci);
                         if (!squares) return;
                         const { from, to } = squares;
 
@@ -1304,13 +1323,16 @@ function BoardGame() {
                         );
 
                         if (hasArrow) {
-                          applyHintShapes(bestMoveUci, "clear");
+                          applyHintShapes(uci, "clear");
                           setHintActive(false);
                           setHintPending(false);
+                          setHintShownUci(null);
                         } else if (hasCircle) {
-                          applyHintShapes(bestMoveUci, "arrow");
+                          applyHintShapes(uci, "arrow");
+                          setHintShownUci(uci);
                         } else {
-                          applyHintShapes(bestMoveUci, "circle");
+                          applyHintShapes(uci, "circle");
+                          setHintShownUci(uci);
                         }
                       }}
                     >

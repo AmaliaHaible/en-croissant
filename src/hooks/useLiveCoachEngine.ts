@@ -17,7 +17,7 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
-import { classifyMove } from "@/utils/coach";
+import { classifyMove, withMultiPvFloor } from "@/utils/coach";
 import type { LocalEngine } from "@/utils/engines";
 import { useThrottledEffect } from "@/utils/misc";
 import { treeIteratorMainLine } from "@/utils/treeReducer";
@@ -48,16 +48,11 @@ export function useLiveCoachEngine(): {
     }, [engines, config.engineId]);
 
     const goMode = config.go;
-    const extraOptions = useMemo(
-        () =>
-            config.settings.length > 0
-                ? config.settings.map((s) => ({
-                      name: s.name,
-                      value: s.value?.toString() ?? "",
-                  }))
-                : [{ name: "MultiPV", value: "2" }],
-        [config.settings],
-    );
+    // Merge the MultiPV floor into whatever is configured rather than only using
+    // it when nothing is configured: any UI write of the engine's own UCI
+    // defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
+    // permanently disable "Good" move detection. See `withMultiPvFloor`.
+    const extraOptions = useMemo(() => withMultiPvFloor(config.settings), [config.settings]);
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;

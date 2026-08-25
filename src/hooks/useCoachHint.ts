@@ -57,6 +57,11 @@ export function useCoachHint(requested: boolean): {
 
     const goMode = config.go;
     const isContinuous = goMode.t === "Infinite";
+    // Go-modes whose searches never terminate on their own, and therefore never
+    // report progress===100: their results have to be published as they improve
+    // or they'd never be published at all. (`PlayersTime` isn't offered by the
+    // coach settings UI, but the config is persisted user data, so don't assume.)
+    const isStreaming = goMode.t === "Infinite" || goMode.t === "PlayersTime";
     const extraOptions = useMemo(
         () =>
             config.settings.length > 0
@@ -111,11 +116,21 @@ export function useCoachHint(requested: boolean): {
     // Shared handling of engine output, used both by the event listener and by
     // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
     // is refreshed after every render so neither effect needs it as a dependency.
-    const handleResultRef = useRef<(resultFen: string, bestLines: BestMoves[]) => void>(() => {});
+    const handleResultRef = useRef<
+        (resultFen: string, bestLines: BestMoves[], progress: number) => void
+    >(() => {});
     useEffect(() => {
-        handleResultRef.current = (resultFen, bestLines) => {
+        handleResultRef.current = (resultFen, bestLines, progress) => {
             // Late answer for a position we already left.
             if (bestLines.length === 0 || resultFen !== finalFen) return;
+            // A bounded search (Time/Depth/Nodes) emits intermediate lines from
+            // its very first, shallow iteration onwards — publishing those would
+            // reveal a ~20ms answer and never update it again, making the
+            // configured search budget meaningless. Wait for completion instead.
+            // Streaming go-modes never report progress===100 (the backend caps
+            // them at 99.99 until an explicit stop), so for those keep
+            // publishing every improvement — which is the point of that mode.
+            if (!isStreaming && progress < 100) return;
             setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
         };
     });
@@ -134,7 +149,7 @@ export function useCoachHint(requested: boolean): {
                 return;
             }
 
-            handleResultRef.current(finalFen, payload.bestLines);
+            handleResultRef.current(finalFen, payload.bestLines, payload.progress);
         });
 
         return () => {
@@ -182,8 +197,8 @@ export function useCoachHint(requested: boolean): {
                     // directly and emits no event, so consume the result here.
                     const result = unwrap(r);
                     if (!result) return;
-                    const [, bestLines] = result;
-                    handleResultRef.current(requestFen, bestLines);
+                    const [progress, bestLines] = result;
+                    handleResultRef.current(requestFen, bestLines, progress);
                 });
         },
         50,
