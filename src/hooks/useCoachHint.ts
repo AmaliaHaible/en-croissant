@@ -5,7 +5,7 @@ import { useAtomValue } from "jotai";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { type BestMoves, commands, events } from "@/bindings";
+import { type BestMoves, commands, events, type GoMode } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import {
     activeTabAtom,
@@ -16,11 +16,12 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
-import type { LocalEngine } from "@/utils/engines";
+import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 import { useThrottledEffect } from "@/utils/misc";
 import { unwrap } from "@/utils/unwrap";
 
 const COACH_HINT_SUFFIX = "-coach-hint";
+const DEFAULT_COACH_GO_MODE: GoMode = { t: "Time", c: 300 };
 
 function coachHintId(engineId: string): string {
     return `${engineId}${COACH_HINT_SUFFIX}`;
@@ -56,23 +57,27 @@ export function useCoachHint(requested: boolean): {
         return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
     }, [engines, config.engineId]);
 
-    const goMode = config.go;
+    const variant = useMemo(
+        () =>
+            engine
+                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+                : null,
+        [engine, config.variantId],
+    );
+
+    const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
     const isContinuous = goMode.t === "Infinite";
     // Go-modes whose searches never terminate on their own, and therefore never
     // report progress===100: their results have to be published as they improve
     // or they'd never be published at all. (`PlayersTime` isn't offered by the
     // coach settings UI, but the config is persisted user data, so don't assume.)
     const isStreaming = goMode.t === "Infinite" || goMode.t === "PlayersTime";
-    const extraOptions = useMemo(
-        () =>
-            config.settings.length > 0
-                ? config.settings.map((s) => ({
-                      name: s.name,
-                      value: s.value?.toString() ?? "",
-                  }))
-                : [{ name: "MultiPV", value: "1" }],
-        [config.settings],
-    );
+    const extraOptions = useMemo(() => {
+        const settings = variant?.settings ?? [];
+        return settings.length > 0
+            ? settings.map((s) => ({ name: s.name, value: s.value?.toString() ?? "" }))
+            : [{ name: "MultiPV", value: "1" }];
+    }, [variant]);
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;

@@ -2,7 +2,7 @@ import { Stack, Text } from "@mantine/core";
 import { useAtom, useAtomValue } from "jotai";
 import { useTranslation } from "react-i18next";
 import { EnginesSelect } from "@/components/boards/EnginesSelect";
-import EngineSettingsForm from "@/components/panels/analysis/EngineSettingsForm";
+import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
 import {
   type CoachEngineConfig,
   enginesAtom,
@@ -36,8 +36,12 @@ function CoachEngineSection({
     setConfig((prev: CoachEngineConfig) => ({
       ...prev,
       engineId: engine?.id ?? null,
-      settings: engine?.settings ?? [],
+      variantId: engine?.variants[0]?.id ?? null,
     }));
+  };
+
+  const setVariantId = (variantId: string) => {
+    setConfig((prev) => ({ ...prev, variantId }));
   };
 
   return (
@@ -54,26 +58,10 @@ function CoachEngineSection({
         <EnginesSelect engine={selectedEngine} setEngine={setEngine} filter={(e) => !!e.loaded} />
       )}
       {selectedEngine && (
-        <EngineSettingsForm
+        <EngineVariantSelect
           engine={selectedEngine}
-          remote={false}
-          settings={{
-            go: config.go,
-            settings: config.settings,
-            enabled: true,
-            synced: false,
-          }}
-          setSettings={(fn) =>
-            setConfig((prev) => {
-              const next = fn({
-                go: prev.go,
-                settings: prev.settings,
-                enabled: true,
-                synced: false,
-              });
-              return { ...prev, go: next.go, settings: next.settings };
-            })
-          }
+          variantId={config.variantId}
+          setVariantId={setVariantId}
         />
       )}
     </Stack>

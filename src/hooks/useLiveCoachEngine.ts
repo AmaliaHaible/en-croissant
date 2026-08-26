@@ -5,7 +5,7 @@ import { useAtomValue } from "jotai";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { type BestMoves, commands, events } from "@/bindings";
+import { type BestMoves, commands, events, type GoMode } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import {
     activeTabAtom,
@@ -18,12 +18,13 @@ import {
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { classifyMove, withMultiPvFloor } from "@/utils/coach";
-import type { LocalEngine } from "@/utils/engines";
+import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 import { useThrottledEffect } from "@/utils/misc";
 import { treeIteratorMainLine } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 
 const LIVE_COACH_SUFFIX = "-live-coach";
+const DEFAULT_COACH_GO_MODE: GoMode = { t: "Time", c: 300 };
 
 function liveCoachId(engineId: string): string {
     return `${engineId}${LIVE_COACH_SUFFIX}`;
@@ -47,12 +48,23 @@ export function useLiveCoachEngine(): {
         return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
     }, [engines, config.engineId]);
 
-    const goMode = config.go;
+    const variant = useMemo(
+        () =>
+            engine
+                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+                : null,
+        [engine, config.variantId],
+    );
+
+    const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
     // Merge the MultiPV floor into whatever is configured rather than only using
     // it when nothing is configured: any UI write of the engine's own UCI
     // defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
     // permanently disable "Good" move detection. See `withMultiPvFloor`.
-    const extraOptions = useMemo(() => withMultiPvFloor(config.settings), [config.settings]);
+    const extraOptions = useMemo(
+        () => withMultiPvFloor(variant?.settings ?? []),
+        [variant],
+    );
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;

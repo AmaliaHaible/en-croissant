@@ -224,18 +224,17 @@ export const coachFeedbackBlackAtom = atomWithStorage<boolean>("coach-feedback-b
 
 export type CoachEngineConfig = {
     engineId: string | null;
-    go: GoMode;
-    settings: EngineSettings;
+    variantId: string | null;
 };
 
 export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     "live-eval-engine-config",
-    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
+    { engineId: null, variantId: null },
 );
 
 export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     "hint-engine-config",
-    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
+    { engineId: null, variantId: null },
 );
 
 export const enableBoardScrollAtom = atomWithStorage<boolean>("board-scroll", true);
