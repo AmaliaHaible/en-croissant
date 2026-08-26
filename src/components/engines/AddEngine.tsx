@@ -4,7 +4,7 @@ import { IconCloud, IconCpu } from "@tabler/icons-react";
 import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import { enginesAtom } from "@/state/atoms";
-import type { LocalEngine, RemoteEngine } from "@/utils/engines";
+import { createVariant, type LocalEngine, type RemoteEngine } from "@/utils/engines";
 import EngineForm from "./EngineForm";
 
 export default function AddEngine({
@@ -28,6 +28,7 @@ export default function AddEngine({
       path: "",
       image: "",
       elo: undefined,
+      variants: [],
     },
 
     validate: {
@@ -123,12 +124,7 @@ function CloudCard({ engine }: { engine: RemoteEngine }) {
                   id: crypto.randomUUID(),
                   type: engine.type,
                   loaded: true,
-                  settings: [
-                    {
-                      name: "MultiPV",
-                      value: "1",
-                    },
-                  ],
+                  variants: [createVariant("Default", [{ name: "MultiPV", value: "1" }])],
                 },
               ]);
             }}
