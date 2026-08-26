@@ -78,6 +78,7 @@ export default function AddEngine({
                 name: "ChessDB",
                 type: "chessdb",
                 url: "https://chessdb.cn",
+                variants: [],
               }}
             />
             <CloudCard
@@ -86,6 +87,7 @@ export default function AddEngine({
                 name: "Lichess Cloud",
                 type: "lichess",
                 url: "https://lichess.org",
+                variants: [],
               }}
             />
           </SimpleGrid>
