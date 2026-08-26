@@ -56,9 +56,13 @@ import { enginesAtom, storedSyzygyPathAtom } from "@/state/atoms";
 import {
   applySyzygyPathToAllEngines,
   type Engine,
+  type EngineVariant,
   engineSchema,
+  getDefaultVariant,
   type LocalEngine,
+  type RemoteEngine,
   requiredEngineSettings,
+  withDefaultVariant,
 } from "@/utils/engines";
 import { formatBytes } from "@/utils/format";
 import { useHardwareInfo } from "@/utils/hardware";
@@ -70,6 +74,7 @@ import LocalImage from "../common/LocalImage";
 import OpenFolderButton from "../common/OpenFolderButton";
 import LinesSlider from "../panels/analysis/LinesSlider";
 import AddEngine from "./AddEngine";
+import { VariantManager } from "./VariantManager";
 
 function HardwareConfigBanner() {
   const { hardware, isLoading } = useHardwareInfo();
@@ -361,7 +366,7 @@ export default function EnginesPage() {
         ) : (
           <Paper withBorder style={{ borderWidth: 2 }} p="md" h="100%">
             {selectedEngine.type === "local" ? (
-              <EngineSettings selected={selected} setSelected={setSelected} />
+              <EngineSettings key={selected} selected={selected} setSelected={setSelected} />
             ) : (
               <Stack>
                 <Divider variant="dashed" label={t("Common.GeneralSettings")} />
@@ -385,24 +390,24 @@ export default function EnginesPage() {
                   <LinesSlider
                     value={
                       Number(
-                        selectedEngine.settings?.find((setting) => setting.name === "MultiPV")
-                          ?.value,
+                        getDefaultVariant(selectedEngine).settings.find(
+                          (setting) => setting.name === "MultiPV",
+                        )?.value,
                       ) || 1
                     }
                     setValue={(v) => {
                       setEngines(async (prev) => {
                         const copy = [...(await prev)];
-                        const setting = copy[selected].settings?.find(
-                          (setting) => setting.name === "MultiPV",
-                        );
+                        const eng = copy[selected] as RemoteEngine;
+                        const variant = getDefaultVariant(eng);
+                        const settings = [...variant.settings];
+                        const setting = settings.find((s) => s.name === "MultiPV");
                         if (setting) {
                           setting.value = v;
                         } else {
-                          copy[selected].settings?.push({
-                            name: "MultiPV",
-                            value: v,
-                          });
+                          settings.push({ name: "MultiPV", value: v });
                         }
+                        copy[selected] = withDefaultVariant(eng, { settings });
                         return copy;
                       });
                     }}
@@ -445,6 +450,9 @@ function EngineSettings({
   const [engines, setEngines] = useAtom(enginesAtom);
   const [globalSyzygyPath] = useAtom(storedSyzygyPathAtom);
   const engine = engines![selected] as LocalEngine;
+  const [selectedVariantId, setSelectedVariantId] = useState(engine.variants[0].id);
+  const variant = engine.variants.find((v) => v.id === selectedVariantId) ?? engine.variants[0];
+
   const { data: options } = useSWRImmutable(["engine-config", engine.path], async ([, path]) => {
     return unwrap(await commands.getEngineConfig(path));
   });
@@ -457,9 +465,16 @@ function EngineSettings({
     });
   }
 
+  function setVariant(patch: Partial<EngineVariant>) {
+    setEngine({
+      ...engine,
+      variants: engine.variants.map((v) => (v.id === variant.id ? { ...v, ...patch } : v)),
+    });
+  }
+
   useEffect(() => {
     if (options) {
-      const settings = [...(engine.settings || [])];
+      const settings = [...variant.settings];
       const missing = requiredEngineSettings.filter(
         (field) => !settings.find((setting) => setting.name === field),
       );
@@ -488,15 +503,15 @@ function EngineSettings({
         });
       }
       if (missing.length > 0 || (syzygyOption && globalSyzygyPath)) {
-        setEngine({ ...engine, settings });
+        setVariant({ settings });
       }
     }
-  }, [options, globalSyzygyPath]);
+  }, [options, globalSyzygyPath, variant.id]);
 
   const syzygyOption = options?.options.find(
     (option) => option.value.name.toLowerCase() === "syzygypath",
   );
-  const currentEngineSyzygyPath = engine.settings?.find(
+  const currentEngineSyzygyPath = variant.settings.find(
     (s) => s.name.toLowerCase() === "syzygypath",
   )?.value as string | undefined;
 
@@ -506,7 +521,7 @@ function EngineSettings({
         (option) => option.type !== "button" && option.value.name.toLowerCase() !== "syzygypath",
       )
       .map((option) => {
-        const setting = engine.settings?.find((setting) => setting.name === option.value.name);
+        const setting = variant.settings.find((setting) => setting.name === option.value.name);
         const defaultValue = "default" in option.value ? option.value.default : null;
         return {
           ...option,
@@ -546,7 +561,7 @@ function EngineSettings({
     value: string | number | boolean | null,
     def: string | number | boolean | null,
   ) {
-    const newSettings = engine.settings || [];
+    const newSettings = [...variant.settings];
     const setting = newSettings.find((setting) => setting.name === name);
     if (setting) {
       setting.value = value;
@@ -554,15 +569,9 @@ function EngineSettings({
       newSettings.push({ name, value });
     }
     if (value !== def || requiredEngineSettings.includes(name)) {
-      setEngine({
-        ...engine,
-        settings: newSettings,
-      });
+      setVariant({ settings: newSettings });
     } else {
-      setEngine({
-        ...engine,
-        settings: newSettings.filter((setting) => setting.name !== name),
-      });
+      setVariant({ settings: newSettings.filter((setting) => setting.name !== name) });
     }
   }
 
@@ -632,11 +641,17 @@ function EngineSettings({
             )}
           </Center>
         </Group>
-        <Divider variant="dashed" label={t("Engines.Settings.SearchSettings")} />
-        <GoModeInput
-          goMode={engine.go || null}
-          setGoMode={(v) => setEngine({ ...engine, go: v })}
+
+        <Divider variant="dashed" label={t("Engines.Settings.Variant", "Variant")} />
+        <VariantManager
+          engine={engine}
+          selectedVariantId={variant.id}
+          setSelectedVariantId={setSelectedVariantId}
+          setEngine={setEngine}
         />
+
+        <Divider variant="dashed" label={t("Engines.Settings.SearchSettings")} />
+        <GoModeInput goMode={variant.go} setGoMode={(v) => setVariant({ go: v })} />
 
         {syzygyOption && (
           <>
@@ -773,8 +788,7 @@ function EngineSettings({
           <Button
             variant="default"
             onClick={() =>
-              setEngine({
-                ...engine,
+              setVariant({
                 settings: options?.options
                   .filter((option) => requiredEngineSettings.includes(option.value.name))
                   .filter((option) => option.type !== "button")
