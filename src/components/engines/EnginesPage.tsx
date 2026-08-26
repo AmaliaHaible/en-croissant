@@ -55,6 +55,7 @@ import { Route } from "@/routes/engines";
 import { enginesAtom, storedSyzygyPathAtom } from "@/state/atoms";
 import {
   applySyzygyPathToAllEngines,
+  backfillRequiredSettings,
   type Engine,
   type EngineVariant,
   engineSchema,
@@ -473,36 +474,9 @@ function EngineSettings({
 
   useEffect(() => {
     if (options) {
-      const settings = [...variant.settings];
-      const missing = requiredEngineSettings.filter(
-        (field) => !settings.find((setting) => setting.name === field),
-      );
-      for (const field of requiredEngineSettings) {
-        if (!settings.find((setting) => setting.name === field)) {
-          const option = options.options.find((option) => option.value.name === field);
-          if (option && option.type !== "button") {
-            settings.push({
-              name: field,
-              value: option.value.default as string | number | boolean | null,
-            });
-          }
-        }
-      }
-      const syzygyOption = options.options.find(
-        (option) => option.value.name.toLowerCase() === "syzygypath",
-      );
-      if (
-        syzygyOption &&
-        globalSyzygyPath &&
-        !settings.find((setting) => setting.name.toLowerCase() === "syzygypath")
-      ) {
-        settings.push({
-          name: syzygyOption.value.name,
-          value: globalSyzygyPath,
-        });
-      }
-      if (missing.length > 0 || (syzygyOption && globalSyzygyPath)) {
-        setVariant({ settings });
+      const backfilled = backfillRequiredSettings(variant.settings, options.options, globalSyzygyPath);
+      if (backfilled) {
+        setVariant({ settings: backfilled });
       }
     }
   }, [options, globalSyzygyPath, variant.id]);

@@ -2,8 +2,8 @@ import { fetch } from "@tauri-apps/plugin-http";
 import type { Platform } from "@tauri-apps/plugin-os";
 import useSWR from "swr";
 import { z } from "zod";
-import { type BestMoves, commands, type EngineOptions, type GoMode } from "@/bindings";
-import { engineVariantSchema } from "./engineVariants";
+import { type BestMoves, commands, type EngineOptions, type GoMode, type UciOptionConfig } from "@/bindings";
+import { type EngineSettings, engineVariantSchema } from "./engineVariants";
 import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
 
@@ -20,6 +20,47 @@ export {
 } from "./engineVariants";
 
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
+
+/**
+ * Backfills a variant's settings with UCI defaults for any required field it's missing, and
+ * with the global Syzygy tablebase path if the engine supports it and none is set yet. Returns
+ * `null` when nothing needs to change, so callers can skip writing back to the engine record
+ * entirely - critical because a spurious write here can race with (and silently undo) a
+ * concurrent variant mutation like delete/duplicate elsewhere in the same render cycle.
+ */
+export function backfillRequiredSettings(
+    variantSettings: EngineSettings,
+    uciOptions: UciOptionConfig[],
+    globalSyzygyPath: string,
+): EngineSettings | null {
+    const settings = [...variantSettings];
+    let changed = false;
+
+    for (const field of requiredEngineSettings) {
+        if (!settings.find((setting) => setting.name === field)) {
+            const option = uciOptions.find((option) => option.value.name === field);
+            if (option && option.type !== "button") {
+                settings.push({
+                    name: field,
+                    value: option.value.default as string | number | boolean | null,
+                });
+                changed = true;
+            }
+        }
+    }
+
+    const syzygyOption = uciOptions.find((option) => option.value.name.toLowerCase() === "syzygypath");
+    if (
+        syzygyOption &&
+        globalSyzygyPath &&
+        !settings.find((setting) => setting.name.toLowerCase() === "syzygypath")
+    ) {
+        settings.push({ name: syzygyOption.value.name, value: globalSyzygyPath });
+        changed = true;
+    }
+
+    return changed ? settings : null;
+}
 
 const localEngineSchema = z.object({
     type: z.literal("local"),
