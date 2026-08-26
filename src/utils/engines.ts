@@ -3,36 +3,23 @@ import type { Platform } from "@tauri-apps/plugin-os";
 import useSWR from "swr";
 import { z } from "zod";
 import { type BestMoves, commands, type EngineOptions, type GoMode } from "@/bindings";
+import { engineVariantSchema, getDefaultVariant, withDefaultVariant } from "./engineVariants";
+import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
 
+export {
+    canDeleteVariant,
+    createVariant,
+    DEFAULT_GO_MODE,
+    duplicateVariant,
+    type EngineSettings,
+    engineSettingsSchema,
+    type EngineVariant,
+    getDefaultVariant,
+    withDefaultVariant,
+} from "./engineVariants";
+
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
-
-const goModeSchema: z.ZodSchema<GoMode> = z.union([
-    z.object({
-        t: z.literal("Depth"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Time"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Nodes"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Infinite"),
-    }),
-]);
-
-const engineSettingsSchema = z.array(
-    z.object({
-        name: z.string(),
-        value: z.string().or(z.number()).or(z.boolean()).nullable(),
-    }),
-);
-
-export type EngineSettings = z.infer<typeof engineSettingsSchema>;
 
 const localEngineSchema = z.object({
     type: z.literal("local"),
@@ -45,9 +32,8 @@ const localEngineSchema = z.object({
     downloadSize: z.number().nullish(),
     downloadLink: z.string().nullish(),
     loaded: z.boolean().nullish(),
-    go: goModeSchema.nullish(),
     enabled: z.boolean().nullish(),
-    settings: engineSettingsSchema.nullish(),
+    variants: z.array(engineVariantSchema).min(1),
 });
 
 export type LocalEngine = z.output<typeof localEngineSchema>;
@@ -60,13 +46,15 @@ const remoteEngineSchema = z.object({
     image: z.string().nullish(),
     loaded: z.boolean().nullish(),
     enabled: z.boolean().nullish(),
-    go: goModeSchema.nullish(),
-    settings: engineSettingsSchema.nullish(),
+    variants: z.array(engineVariantSchema).min(1),
 });
 
 export type RemoteEngine = z.output<typeof remoteEngineSchema>;
 
-export const engineSchema = z.union([localEngineSchema, remoteEngineSchema]);
+export const engineSchema = z.preprocess(
+    migrateEngineRecord,
+    z.union([localEngineSchema, remoteEngineSchema]),
+);
 export type Engine = z.output<typeof engineSchema>;
 
 export function stopEngine(engine: LocalEngine, tab: string): Promise<void> {
@@ -113,22 +101,24 @@ export function useDefaultEngines(os: Platform | undefined, opened: boolean) {
 }
 
 export function applySyzygyPathToEngine(engine: LocalEngine, syzygyPath: string): LocalEngine {
-    const settings = [...(engine.settings || [])];
-    const syzygyIndex = settings.findIndex((s) => s.name.toLowerCase() === "syzygypath");
-    if (syzygyIndex >= 0) {
-        settings[syzygyIndex] = {
-            ...settings[syzygyIndex],
-            value: syzygyPath,
-        };
-    } else {
-        settings.push({
-            name: "SyzygyPath",
-            value: syzygyPath,
-        });
-    }
     return {
         ...engine,
-        settings,
+        variants: engine.variants.map((variant) => {
+            const settings = [...variant.settings];
+            const syzygyIndex = settings.findIndex((s) => s.name.toLowerCase() === "syzygypath");
+            if (syzygyIndex >= 0) {
+                settings[syzygyIndex] = {
+                    ...settings[syzygyIndex],
+                    value: syzygyPath,
+                };
+            } else {
+                settings.push({
+                    name: "SyzygyPath",
+                    value: syzygyPath,
+                });
+            }
+            return { ...variant, settings };
+        }),
     };
 }
 
