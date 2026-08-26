@@ -78,7 +78,7 @@ import {
 import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { getDocumentDir } from "@/utils/directories";
-import { describeStrengthSuffix } from "@/utils/engineStrength";
+import { getDefaultVariant } from "@/utils/engines";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import { useCoachHint } from "@/hooks/useCoachHint";
@@ -504,19 +504,16 @@ function BoardGame() {
     }
     const engine = settings.engine;
     const baseName = engine?.name ?? "Engine";
-    const engineOptions = (settings.engineSettings ?? engine?.settings ?? []).filter(
-      (s) => s.name !== "MultiPV",
-    );
+    const variant = engine
+      ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
+      : null;
+    const engineOptions = (variant?.settings ?? []).filter((s) => s.name !== "MultiPV");
 
-    // The engine's difficulty/skill/playstyle isn't otherwise visible in the saved PGN, so
-    // fold it into the name that ends up in the White/Black headers.
-    let name = baseName;
-    if (engine) {
-      const suffix = await describeStrengthSuffix(engine, engineOptions);
-      if (suffix) {
-        name = `${baseName} (${suffix})`;
-      }
-    }
+    // The chosen variant isn't otherwise visible in the saved PGN, so fold its name into the
+    // White/Black headers - but only when it isn't the engine's own default variant, matching
+    // the old "no suffix at full strength" behavior.
+    const isDefaultVariant = engine && variant ? variant.id === getDefaultVariant(engine).id : true;
+    const name = engine && variant && !isDefaultVariant ? `${baseName} (${variant.name})` : baseName;
 
     return {
       type: "engine",
@@ -526,7 +523,7 @@ function BoardGame() {
         name: s.name,
         value: s.value?.toString() ?? "",
       })),
-      go: settings.timeControl ? null : settings.go,
+      go: settings.timeControl ? null : (variant?.go ?? null),
     };
   }
 

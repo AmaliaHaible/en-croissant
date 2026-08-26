@@ -9,13 +9,10 @@ import {
 } from "@mantine/core";
 import { IconCpu, IconUser } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import type { GoMode } from "@/bindings";
-import GoModeInput from "@/components/common/GoModeInput";
+import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
 import TimeInput, { type TimeType } from "@/components/common/TimeInput";
-import EngineSettingsForm from "@/components/panels/analysis/EngineSettingsForm";
 import type { TimeControlField } from "@/utils/clock";
-import type { EngineSettings, LocalEngine } from "@/utils/engines";
-import { EngineStrengthControl } from "./EngineStrengthControl";
+import type { LocalEngine } from "@/utils/engines";
 import { EnginesSelect } from "./EnginesSelect";
 
 export type OpponentSettings =
@@ -30,8 +27,7 @@ export type OpponentSettings =
       type: "engine";
       timeControl?: TimeControlField;
       engine: LocalEngine | null;
-      go: GoMode;
-      engineSettings?: EngineSettings;
+      variantId: string | null;
       timeUnit?: TimeType;
       incrementUnit?: TimeType;
     };
@@ -66,7 +62,7 @@ export function OpponentForm({
         ...prev,
         type: "engine",
         engine: null,
-        go: ("go" in prev && prev.go) || { t: "Depth", c: 24 },
+        variantId: null,
       }));
     }
   }
@@ -112,26 +108,18 @@ export function OpponentForm({
             setOpponent((prev) => ({
               ...prev,
               engine,
-              engineSettings: engine?.settings || undefined,
+              variantId: engine?.variants[0]?.id ?? null,
             }))
           }
         />
       )}
 
       {opponent.type === "engine" && opponent.engine && (
-        <EngineStrengthControl
+        <EngineVariantSelect
           engine={opponent.engine}
-          settings={opponent.engineSettings || opponent.engine.settings || []}
-          setSettings={(fn) =>
-            setOpponent((prev) => {
-              if (prev.type === "human" || !prev.engine) {
-                return prev;
-              }
-              return {
-                ...prev,
-                engineSettings: fn(prev.engineSettings || prev.engine.settings || []),
-              };
-            })
+          variantId={opponent.variantId}
+          setVariantId={(variantId) =>
+            setOpponent((prev) => (prev.type === "engine" ? { ...prev, variantId } : prev))
           }
         />
       )}
@@ -224,61 +212,6 @@ export function OpponentForm({
           </>
         )}
       </Group>
-
-      {opponent.type === "engine" && (
-        <Stack>
-          {!opponent.timeControl && (
-            <GoModeInput
-              gameMode
-              goMode={opponent.go}
-              setGoMode={(go) =>
-                setOpponent((prev) => {
-                  if (prev.type === "human") {
-                    return prev;
-                  }
-                  return {
-                    ...prev,
-                    go,
-                  };
-                })
-              }
-            />
-          )}
-          <Divider variant="dashed" label={t("Board.Opponent.EngineSettings", "Engine Settings")} />
-          {opponent.engine && (
-            <EngineSettingsForm
-              engine={opponent.engine}
-              remote={false}
-              gameMode
-              settings={{
-                go: opponent.go,
-                settings: opponent.engineSettings || opponent.engine.settings || [],
-                enabled: true,
-                synced: false,
-              }}
-              setSettings={(fn) =>
-                setOpponent((prev) => {
-                  if (prev.type === "human") {
-                    return prev;
-                  }
-                  const newSettings = fn({
-                    go: prev.go,
-                    settings: prev.engineSettings || prev.engine?.settings || [],
-                    enabled: true,
-                    synced: false,
-                  });
-                  return {
-                    ...prev,
-                    go: newSettings.go,
-                    engineSettings: newSettings.settings,
-                  };
-                })
-              }
-              minimal={true}
-            />
-          )}
-        </Stack>
-      )}
     </Stack>
   );
 }
