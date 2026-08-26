@@ -3,7 +3,7 @@ import type { Platform } from "@tauri-apps/plugin-os";
 import useSWR from "swr";
 import { z } from "zod";
 import { type BestMoves, commands, type EngineOptions, type GoMode } from "@/bindings";
-import { engineVariantSchema, getDefaultVariant, withDefaultVariant } from "./engineVariants";
+import { engineVariantSchema } from "./engineVariants";
 import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
 

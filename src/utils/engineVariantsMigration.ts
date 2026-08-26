@@ -163,7 +163,7 @@ function mergeSettings(
     overrides: [string, string | number][],
 ): { name: string; value: string | number | boolean | null }[] {
     const overrideNames = new Set(overrides.map(([name]) => name));
-    const remaining = base.filter((s) => !overrideNames.has(s.name));
+    const remaining = base.filter((s) => !overrideNames.has(s.name)).map((s) => ({ ...s }));
     return [...remaining, ...overrides.map(([name, value]) => ({ name, value }))];
 }
 

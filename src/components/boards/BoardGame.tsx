@@ -504,9 +504,10 @@ function BoardGame() {
     }
     const engine = settings.engine;
     const baseName = engine?.name ?? "Engine";
-    const variant = engine
-      ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
-      : null;
+    const variant =
+      engine?.variants && engine.variants.length > 0
+        ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
+        : null;
     const engineOptions = (variant?.settings ?? []).filter((s) => s.name !== "MultiPV");
 
     // The chosen variant isn't otherwise visible in the saved PGN, so fold its name into the
@@ -523,7 +524,7 @@ function BoardGame() {
         name: s.name,
         value: s.value?.toString() ?? "",
       })),
-      go: settings.timeControl ? null : (variant?.go ?? null),
+      go: settings.timeControl || variant?.go?.t === "Infinite" ? null : (variant?.go ?? null),
     };
   }
 

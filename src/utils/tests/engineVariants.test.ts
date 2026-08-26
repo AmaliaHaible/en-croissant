@@ -32,6 +32,16 @@ test("duplicateVariant copies settings/go but assigns a new id and name", () => 
     expect(copy.go).toEqual(original.go);
 });
 
+test("duplicateVariant produces settings independent from the source (mutating the copy does not affect the original)", () => {
+    const original = createVariant("Original", [{ name: "Threads", value: 1 }]);
+    const copy = duplicateVariant(original, "Copy");
+    // Simulate the exact mutation pattern setSetting used to perform (before the fix)
+    const newSettings = copy.settings.map((s) => (s.name === "Threads" ? { ...s, value: 8 } : s));
+    expect(newSettings).toEqual([{ name: "Threads", value: 8 }]);
+    expect(original.settings).toEqual([{ name: "Threads", value: 1 }]);
+    expect(copy.settings).not.toBe(original.settings);
+});
+
 test("getDefaultVariant returns the first variant", () => {
     const a = createVariant("A");
     const b = createVariant("B");

@@ -52,7 +52,12 @@ export function createVariant(
 
 /** Copies a variant's settings/go under a new id and name. */
 export function duplicateVariant(variant: EngineVariant, name: string): EngineVariant {
-    return { ...variant, id: crypto.randomUUID(), name };
+    return {
+        ...variant,
+        id: crypto.randomUUID(),
+        name,
+        settings: variant.settings.map((s) => ({ ...s })),
+    };
 }
 
 /** The implicit default variant used wherever no explicit picker exists (e.g. the Analysis panel). */

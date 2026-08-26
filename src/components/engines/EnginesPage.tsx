@@ -400,13 +400,12 @@ export default function EnginesPage() {
                         const copy = [...(await prev)];
                         const eng = copy[selected] as RemoteEngine;
                         const variant = getDefaultVariant(eng);
-                        const settings = [...variant.settings];
-                        const setting = settings.find((s) => s.name === "MultiPV");
-                        if (setting) {
-                          setting.value = v;
-                        } else {
-                          settings.push({ name: "MultiPV", value: v });
-                        }
+                        const exists = variant.settings.some((s) => s.name === "MultiPV");
+                        const settings = exists
+                          ? variant.settings.map((s) =>
+                              s.name === "MultiPV" ? { ...s, value: v } : s,
+                            )
+                          : [...variant.settings, { name: "MultiPV", value: v }];
                         copy[selected] = withDefaultVariant(eng, { settings });
                         return copy;
                       });
@@ -561,13 +560,10 @@ function EngineSettings({
     value: string | number | boolean | null,
     def: string | number | boolean | null,
   ) {
-    const newSettings = [...variant.settings];
-    const setting = newSettings.find((setting) => setting.name === name);
-    if (setting) {
-      setting.value = value;
-    } else {
-      newSettings.push({ name, value });
-    }
+    const exists = variant.settings.some((setting) => setting.name === name);
+    const newSettings = exists
+      ? variant.settings.map((setting) => (setting.name === name ? { ...setting, value } : setting))
+      : [...variant.settings, { name, value }];
     if (value !== def || requiredEngineSettings.includes(name)) {
       setVariant({ settings: newSettings });
     } else {
@@ -789,13 +785,14 @@ function EngineSettings({
             variant="default"
             onClick={() =>
               setVariant({
-                settings: options?.options
-                  .filter((option) => requiredEngineSettings.includes(option.value.name))
-                  .filter((option) => option.type !== "button")
-                  .map((option) => ({
-                    name: option.value.name,
-                    value: option.value.default as string | number | boolean | null,
-                  })),
+                settings:
+                  options?.options
+                    .filter((option) => requiredEngineSettings.includes(option.value.name))
+                    .filter((option) => option.type !== "button")
+                    .map((option) => ({
+                      name: option.value.name,
+                      value: option.value.default as string | number | boolean | null,
+                    })) ?? [],
               })
             }
           >
