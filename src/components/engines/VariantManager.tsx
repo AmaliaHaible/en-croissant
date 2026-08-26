@@ -1,6 +1,6 @@
 import { ActionIcon, Button, Group, Modal, Select, Stack, TextInput, Tooltip } from "@mantine/core";
 import { IconCopy, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   canDeleteVariant,
@@ -25,6 +25,12 @@ function NamePromptModal({
 }) {
   const [name, setName] = useState(initialName);
   const { t } = useTranslation();
+
+  useEffect(() => {
+    if (opened) {
+      setName(initialName);
+    }
+  }, [opened, initialName]);
 
   return (
     <Modal opened={opened} onClose={onClose} title={title}>
