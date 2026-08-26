@@ -78,6 +78,7 @@ import {
 import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { getDocumentDir } from "@/utils/directories";
+import { describeStrengthSuffix } from "@/utils/engineStrength";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import { useCoachHint } from "@/hooks/useCoachHint";
@@ -494,23 +495,37 @@ function BoardGame() {
     return positionFromFen(node.fen);
   }, [root]);
 
-  function toPlayerConfig(settings: OpponentSettings): PlayerConfig {
+  async function toPlayerConfig(settings: OpponentSettings): Promise<PlayerConfig> {
     if (settings.type === "human") {
       return {
         type: "human",
         name: settings.name ?? "Player",
       };
     }
+    const engine = settings.engine;
+    const baseName = engine?.name ?? "Engine";
+    const engineOptions = (settings.engineSettings ?? engine?.settings ?? []).filter(
+      (s) => s.name !== "MultiPV",
+    );
+
+    // The engine's difficulty/skill/playstyle isn't otherwise visible in the saved PGN, so
+    // fold it into the name that ends up in the White/Black headers.
+    let name = baseName;
+    if (engine) {
+      const suffix = await describeStrengthSuffix(engine, engineOptions);
+      if (suffix) {
+        name = `${baseName} (${suffix})`;
+      }
+    }
+
     return {
       type: "engine",
-      name: settings.engine?.name ?? "Engine",
-      path: settings.engine?.path ?? "",
-      options: (settings.engineSettings ?? settings.engine?.settings ?? [])
-        .filter((s) => s.name !== "MultiPV")
-        .map((s) => ({
-          name: s.name,
-          value: s.value?.toString() ?? "",
-        })),
+      name,
+      path: engine?.path ?? "",
+      options: engineOptions.map((s) => ({
+        name: s.name,
+        value: s.value?.toString() ?? "",
+      })),
       go: settings.timeControl ? null : settings.go,
     };
   }
@@ -538,6 +553,15 @@ function BoardGame() {
     const blackIsEngine = playerSettings.black.type === "engine";
     const isEngineMatch = whiteIsEngine && blackIsEngine;
     const customTournament = matchSeriesEnabled ? matchTournamentName.trim() : "";
+
+    // `matchSavePath` is persisted across sessions (atomWithStorage) and is only ever
+    // repopulated below for a brand-new engine-vs-engine match. Without clearing it here,
+    // a later unrelated game (e.g. a human vs. engine game started after a previous engine
+    // match) would inherit that stale path and get appended into the old match's PGN file
+    // instead of getting its own freshly-named file.
+    if (!isMatchStep) {
+      setMatchSavePath(null);
+    }
 
     if (isEngineMatch && !isMatchStep) {
       if (customTournament) {
@@ -594,9 +618,14 @@ function BoardGame() {
 
     const initialMoves = getTreeMoves();
 
+    const [whitePlayerConfig, blackPlayerConfig] = await Promise.all([
+      toPlayerConfig(playerSettings.white),
+      toPlayerConfig(playerSettings.black),
+    ]);
+
     const config: GameConfig = {
-      white: toPlayerConfig(playerSettings.white),
-      black: toPlayerConfig(playerSettings.black),
+      white: whitePlayerConfig,
+      black: blackPlayerConfig,
       whiteTimeControl: playerSettings.white.timeControl
         ? {
             initialTime: playerSettings.white.timeControl.seconds,

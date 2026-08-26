@@ -1,4 +1,4 @@
-import type { UciOptionConfig } from "@/bindings";
+import { commands, type UciOptionConfig } from "@/bindings";
 import type { EngineSettings } from "@/utils/engines";
 import { rodentIIPresets } from "@/utils/presets/rodentII";
 
@@ -189,4 +189,45 @@ const PRESET_REGISTRY: { match: (engineName: string) => boolean; presets: Streng
 export function getPresetsForEngine(engineName: string): StrengthPreset[] | null {
     const entry = PRESET_REGISTRY.find((e) => e.match(engineName));
     return entry ? entry.presets : null;
+}
+
+/**
+ * Describes any non-default difficulty/skill/playstyle chosen for an engine (via a preset, a
+ * strength dial, or a style control), as a short human-readable string suitable for appending
+ * to the engine's name - e.g. "Skill 5", "1500 Elo", "Aggressive", or "Beginner (~800 Elo)".
+ * Returns null when the engine plays at its own default strength and style.
+ */
+export async function describeStrengthSuffix(
+    engine: { path: string; name: string },
+    settings: EngineSettings,
+): Promise<string | null> {
+    const result = await commands.getEngineConfig(engine.path);
+    if (result.status !== "ok") return null;
+    const { options } = result.data;
+
+    const parts: string[] = [];
+
+    const presets = getPresetsForEngine(result.data.name || engine.name);
+    const activePreset = presets ? findActivePreset(presets, settings) : null;
+    if (activePreset) {
+        parts.push(`${activePreset.name} (~${activePreset.elo} Elo)`);
+    } else {
+        const dial = detectStrengthDial(options);
+        if (dial) {
+            const value = settings.find((s) => dial.optionNames.includes(s.name))?.value;
+            if (typeof value === "number" && value < dial.max) {
+                parts.push(dial.kind === "elo" ? `${value} Elo` : `Skill ${value}`);
+            }
+        }
+    }
+
+    const style = detectStyleControl(options);
+    if (style) {
+        const value = settings.find((s) => s.name === style.optionName)?.value;
+        if (typeof value === "string" && value !== style.defaultChoice) {
+            parts.push(value);
+        }
+    }
+
+    return parts.length > 0 ? parts.join(", ") : null;
 }

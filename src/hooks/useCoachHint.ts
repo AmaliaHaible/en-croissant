@@ -10,6 +10,7 @@ import { TreeStateContext } from "@/components/common/TreeStateContext";
 import {
     activeTabAtom,
     currentGameStateAtom,
+    currentPlayersAtom,
     enginesAtom,
     hintEngineConfigAtom,
 } from "@/state/atoms";
@@ -99,7 +100,20 @@ export function useCoachHint(requested: boolean): {
     // Infinite search never gets told to stop after those endings (and would
     // also start during "settingUp", before a game even exists).
     const gameState = useAtomValue(currentGameStateAtom);
-    const active = isContinuous ? gameState === "playing" && !isGameOver : requested;
+    // Continuous mode is only useful while a human is on move: it's their hint
+    // to ask for. Gating on this (rather than just `gameState === "playing"`)
+    // also means the search naturally starts when their turn starts and stops
+    // the moment they move, instead of running for the engine's turn too, and
+    // it's `false` for the whole game whenever neither side is human — i.e.
+    // engine-vs-engine games never spin up a hint session at all.
+    const players = useAtomValue(currentPlayersAtom);
+    const isHumanTurn =
+        pos?.turn === "white"
+            ? players.white.type === "human"
+            : pos?.turn === "black"
+              ? players.black.type === "human"
+              : false;
+    const active = isContinuous ? gameState === "playing" && !isGameOver && isHumanTurn : requested;
 
     const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
     // The engine process we last asked to search, so it can still be stopped or
