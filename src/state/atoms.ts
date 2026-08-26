@@ -20,7 +20,7 @@ import { type Position, positionSchema } from "@/components/files/opening";
 import type { LocalOptions } from "@/components/panels/database/DatabasePanel";
 import { positionFromFen, swapMove } from "@/utils/chessops";
 import type { SuccessDatabaseInfo } from "@/utils/db";
-import { type Engine, type EngineSettings, engineSchema } from "@/utils/engines";
+import { type Engine, type EngineSettings, engineSchema, getDefaultVariant } from "@/utils/engines";
 import {
     type LichessGamesOptions,
     lichessGamesOptionsSchema,
@@ -738,8 +738,8 @@ export const allEnabledAtom = atom((get) => {
             const atom = tabEngineSettingsFamily({
                 tab: get(activeTabAtom)!,
                 engineId: engine.id,
-                defaultSettings: engine.type === "local" ? engine.settings || [] : undefined,
-                defaultGo: engine.go ?? undefined,
+                defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+                defaultGo: getDefaultVariant(engine).go,
             });
             return get(atom).enabled;
         });
@@ -755,8 +755,8 @@ export const enableAllAtom = atom(null, (get, set, value: boolean) => {
         const atom = tabEngineSettingsFamily({
             tab: get(activeTabAtom)!,
             engineId: engine.id,
-            defaultSettings: engine.type === "local" ? engine.settings || [] : undefined,
-            defaultGo: engine.go ?? undefined,
+            defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+            defaultGo: getDefaultVariant(engine).go,
         });
         set(atom, { ...get(atom), enabled: value });
     }

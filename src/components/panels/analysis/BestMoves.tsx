@@ -41,7 +41,7 @@ import {
   tabEngineSettingsFamily,
 } from "@/state/atoms";
 import { chessopsError, positionFromFen, swapMove } from "@/utils/chessops";
-import type { Engine } from "@/utils/engines";
+import { type Engine, getDefaultVariant, withDefaultVariant } from "@/utils/engines";
 import { formatNodes } from "@/utils/format";
 import { formatScore } from "@/utils/score";
 import AnalysisRow from "./AnalysisRow";
@@ -80,11 +80,12 @@ function BestMovesComponent({
   const ev = useAtomValue(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
   const progress = useAtomValue(engineProgressFamily({ engine: engine.id, tab: activeTab! }));
   const [, setEngines] = useAtom(enginesAtom);
+  const defaultVariant = getDefaultVariant(engine);
   const [settings, setSettings2] = useAtom(
     tabEngineSettingsFamily({
       engineId: engine.id,
-      defaultSettings: engine.settings ?? undefined,
-      defaultGo: engine.go ?? undefined,
+      defaultSettings: defaultVariant.settings,
+      defaultGo: defaultVariant.go,
       tab: activeTab!,
     }),
   );
@@ -93,11 +94,11 @@ function BestMovesComponent({
     if (settings.synced) {
       setSettings2((prev) => ({
         ...prev,
-        go: engine.go || prev.go,
-        settings: engine.settings || prev.settings,
+        go: defaultVariant.go,
+        settings: defaultVariant.settings,
       }));
     }
-  }, [engine.settings, engine.go, settings.synced, setSettings2]);
+  }, [defaultVariant.settings, defaultVariant.go, settings.synced, setSettings2]);
 
   const setSettings = useCallback(
     (fn: (prev: Settings) => Settings) => {
@@ -106,7 +107,9 @@ function BestMovesComponent({
       if (newSettings.synced) {
         setEngines(async (prev) =>
           (await prev).map((o) =>
-            o.id === engine.id ? { ...o, settings: newSettings.settings, go: newSettings.go } : o,
+            o.id === engine.id
+              ? withDefaultVariant(o, { settings: newSettings.settings, go: newSettings.go })
+              : o,
           ),
         );
       }

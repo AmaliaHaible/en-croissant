@@ -8,7 +8,7 @@ import { useStore } from "zustand";
 import { commands, type GoMode } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import { enginesAtom, referenceDbAtom } from "@/state/atoms";
-import type { LocalEngine } from "@/utils/engines";
+import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 
 const reportSettingsAtom = atomWithStorage("report-settings", {
   novelty: true,
@@ -80,7 +80,7 @@ function ReportModal({
     setInProgress(true);
     closeReportingMode();
     const engine = localEngines.find((e) => e.id === form.values.engine);
-    const engineSettings = (engine?.settings ?? []).map((s) => ({
+    const engineSettings = (engine ? getDefaultVariant(engine).settings : []).map((s) => ({
       ...s,
       value: s.value?.toString() ?? "",
     }));

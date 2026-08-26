@@ -18,7 +18,7 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen, swapMove } from "@/utils/chessops";
-import type { EngineSettings } from "@/utils/engines";
+import { type EngineSettings, getDefaultVariant } from "@/utils/engines";
 import ScoreBubble from "../panels/analysis/ScoreBubble";
 import { TreeStateContext } from "./TreeStateContext";
 
@@ -32,13 +32,14 @@ function DetachedEval() {
   if (!engine || !engine.loaded) {
     return null;
   }
+  const defaultVariant = getDefaultVariant(engine);
 
   return (
     <DetachedEvalInner
       engineId={detachedEngineId}
       engineName={engine.name}
-      defaultSettings={engine.settings ?? undefined}
-      defaultGo={engine.go ?? undefined}
+      defaultSettings={defaultVariant.settings}
+      defaultGo={defaultVariant.go}
       onClose={() => setDetachedEngineId(null)}
     />
   );

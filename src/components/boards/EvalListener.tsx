@@ -23,6 +23,7 @@ import {
   type Engine,
   type LocalEngine,
   getBestMoves as localGetBestMoves,
+  getDefaultVariant,
   stopEngine,
 } from "@/utils/engines";
 import { getBestMoves as lichessGetBestMoves } from "@/utils/lichess/api";
@@ -123,11 +124,12 @@ function EngineListener({
   const [, setProgress] = useAtom(engineProgressFamily({ engine: engine.id, tab: activeTab! }));
 
   const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
+  const defaultVariant = getDefaultVariant(engine);
   const [settings] = useAtom(
     tabEngineSettingsFamily({
       engineId: engine.id,
-      defaultSettings: engine.settings ?? undefined,
-      defaultGo: engine.go ?? undefined,
+      defaultSettings: defaultVariant.settings,
+      defaultGo: defaultVariant.go,
       tab: activeTab!,
     }),
   );
