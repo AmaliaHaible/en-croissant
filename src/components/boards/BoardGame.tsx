@@ -410,22 +410,36 @@ function BoardGame() {
       const whiteName = (currentHeaders.white || "White").replace(/[^a-zA-Z0-9_-]/g, "_");
       const blackName = (currentHeaders.black || "Black").replace(/[^a-zA-Z0-9_-]/g, "_");
       const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+      const whiteLabel = currentHeaders.white || "White";
+      const blackLabel = currentHeaders.black || "Black";
+
+      const isTournament =
+        matchScores.active ||
+        effectiveGameCount > 1 ||
+        Boolean(matchSeriesEnabled && matchTournamentName.trim());
 
       let defaultFileName = `${whiteName}_vs_${blackName}_${timestamp}.pgn`;
+      let displayName = `${whiteLabel} vs ${blackLabel}`;
       if (matchScores.active || (matchSeriesEnabled && matchTournamentName.trim())) {
         const customPrefix =
           matchSeriesEnabled && matchTournamentName.trim()
             ? matchTournamentName.trim().replace(/[^a-zA-Z0-9_-]/g, "_")
             : `${whiteName}_vs_${blackName}_series_${matchScores.totalGames || effectiveGameCount}games`;
         defaultFileName = `${customPrefix}_${timestamp}.pgn`;
+        displayName =
+          matchSeriesEnabled && matchTournamentName.trim()
+            ? matchTournamentName.trim()
+            : `${whiteLabel} vs ${blackLabel} Series`;
       }
 
       let targetPath = filePathOverride || matchSavePath;
+      let isNewFile = false;
       if (!targetPath) {
         const category = classifyPlayers(players.white.type, players.black.type);
         const collectionDir = await getCollectionDir(docDir, category);
         targetPath = await resolve(collectionDir, defaultFileName);
         setMatchSavePath(targetPath);
+        isNewFile = true;
       }
 
       try {
@@ -438,11 +452,20 @@ function BoardGame() {
         const updated = existing.trim() ? `${existing.trim()}\n\n${pgnText}` : pgnText;
         await writeTextFile(targetPath, updated);
 
+        if (isNewFile) {
+          const infoPath = targetPath.replace(".pgn", ".info");
+          await writeTextFile(
+            infoPath,
+            JSON.stringify({
+              type: isTournament ? "tournament" : "game",
+              tags: [],
+              displayName,
+              createdAt: Date.now(),
+            }),
+          ).catch(() => {});
+        }
+
         const fileName = targetPath.split(/[/\\]/).pop() || defaultFileName;
-        const isTournament =
-          matchScores.active ||
-          effectiveGameCount > 1 ||
-          Boolean(matchSeriesEnabled && matchTournamentName.trim());
         addRecentFile({
           name: fileName,
           path: targetPath,

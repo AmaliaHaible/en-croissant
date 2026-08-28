@@ -270,14 +270,17 @@ export default function NewTabHome({ id }: { id: string }) {
 
     try {
       const dir = await getCollectionDir(documentDir, "imported");
-      const white = (tree.headers.white || "White").replace(/[^a-zA-Z0-9_-]/g, "_");
-      const black = (tree.headers.black || "Black").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const whiteLabel = tree.headers.white || "White";
+      const blackLabel = tree.headers.black || "Black";
+      const white = whiteLabel.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const black = blackLabel.replace(/[^a-zA-Z0-9_-]/g, "_");
       const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss-SSS");
       await createFile({
         filename: `${white}_vs_${black}_${timestamp}`,
         filetype: "game",
         pgn,
         dir,
+        displayName: `${whiteLabel} vs ${blackLabel}`,
       });
     } catch {
       // best-effort save into the collection; the game is already open regardless

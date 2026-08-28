@@ -109,11 +109,13 @@ export async function createFile({
     filetype,
     pgn,
     dir,
+    displayName,
 }: {
     filename: string;
     filetype: "game" | "repertoire" | "tournament" | "puzzle" | "other";
     pgn?: string;
     dir: string;
+    displayName?: string;
 }): Promise<Result<FileMetadata>> {
     const file = await resolve(dir, `${filename}.pgn`);
     if (await exists(file)) {
@@ -122,7 +124,7 @@ export async function createFile({
     const metadata: FileMetadata["metadata"] = {
         type: filetype,
         tags: [],
-        displayName: filename,
+        displayName: displayName || filename,
         createdAt: Date.now(),
     };
     await writeTextFile(file, pgn || makePgn(defaultGame()));
