@@ -35,6 +35,7 @@
     "Board.Analysis.Accuracy": "Accuracy",
     "Board.Analysis.Advantage": "Advantage",
     "Board.Analysis.Analyze": "Analyze",
+    "Board.Analysis.AnalyzedWith": "Analyzed with {{label}}",
     "Board.Analysis.AnnotateNovelties": "Annotate Novelties",
     "Board.Analysis.AnnotateNovelties.Desc": "Add a comment to the first position that is not in the reference database.",
     "Board.Analysis.EnableWDL": "You have to enable UCI_ShowWDL in the engine settings to use this feature.",

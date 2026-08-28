@@ -24,6 +24,7 @@ function ReportPanel() {
 
   const store = useContext(TreeStateContext)!;
   const root = useStore(store, (s) => s.root);
+  const headers = useStore(store, (s) => s.headers);
   const [reportingMode, setReportingMode] = useAtom(currentReportModalOpenAtom);
 
   const inProgress = useStore(store, (s) => s.report.inProgress);
@@ -70,6 +71,12 @@ function ReportPanel() {
           inProgress={inProgress}
           setInProgress={setInProgress}
         />
+
+        {headers.other?.Analysis && (
+          <Text size="xs" c="dimmed" ta="center">
+            {t("Board.Analysis.AnalyzedWith", { label: headers.other.Analysis })}
+          </Text>
+        )}
 
         {stats.whiteAccuracy > 0 && stats.blackAccuracy > 0 && (
           <Group grow>

@@ -8,6 +8,7 @@ import { useStore } from "zustand";
 import { commands, type GoMode } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import { enginesAtom, referenceDbAtom } from "@/state/atoms";
+import { buildAnalysisLabel } from "@/utils/analysisLabel";
 import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 
 const reportSettingsAtom = atomWithStorage("report-settings", {
@@ -103,6 +104,7 @@ function ReportModal({
         if (analysis.status === "ok") {
           addAnalysis(analysis.data, {
             showVariations: form.values.variations,
+            analysisLabel: engine ? buildAnalysisLabel(engine.name, form.values.goMode) : undefined,
           });
         }
       })

@@ -79,7 +79,7 @@ export interface TreeStoreState extends TreeState {
             novelty: boolean;
             is_sacrifice: boolean;
         }[],
-        options?: { showVariations: boolean },
+        options?: { showVariations: boolean; analysisLabel?: string },
     ) => void;
 
     setReportInProgress: (value: boolean) => void;
@@ -729,8 +729,12 @@ function addAnalysis(
         novelty: boolean;
         is_sacrifice: boolean;
     }[],
-    options?: { showVariations: boolean },
+    options?: { showVariations: boolean; analysisLabel?: string },
 ) {
+    if (options?.analysisLabel) {
+        state.headers.other = { ...state.headers.other, Analysis: options.analysisLabel };
+    }
+
     let cur = state.root;
     let i = 0;
     let parent: TreeNode | undefined;
