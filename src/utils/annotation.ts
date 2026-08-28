@@ -35,7 +35,31 @@ export type Annotation =
     | "∆"
     | "□"
     | "⨀"
-    | "⊗";
+    | "⊗"
+    | "BM1"
+    | "BM2"
+    | "BM3"
+    | "BM4";
+
+// Marks a variation added by the "always show best moves" report feature, ranked
+// by how strong the engine considered the alternative (BM1 = top choice). Not a
+// move-quality glyph, so it's kept out of the visible annotation symbol lists and
+// only used to pick the best-move arrow color/shade on the board.
+export const BEST_MOVE_SUGGESTION_ANNOTATIONS = ["BM1", "BM2", "BM3", "BM4"] as const;
+
+export function isBestMoveSuggestion(
+    annotation: string,
+): annotation is (typeof BEST_MOVE_SUGGESTION_ANNOTATIONS)[number] {
+    return (BEST_MOVE_SUGGESTION_ANNOTATIONS as readonly string[]).includes(annotation);
+}
+
+export function getBestMoveSuggestionRank(annotations: Annotation[]): number | null {
+    for (const annotation of annotations) {
+        const index = (BEST_MOVE_SUGGESTION_ANNOTATIONS as readonly string[]).indexOf(annotation);
+        if (index !== -1) return index;
+    }
+    return null;
+}
 
 export const NAG_INFO = new Map<string, Annotation>([
     ["$1", "!"],
@@ -70,6 +94,10 @@ export const NAG_INFO = new Map<string, Annotation>([
     ["$139", "⊕"],
     ["$140", "∆"],
     ["$146", "N"],
+    ["$220", "BM1"],
+    ["$221", "BM2"],
+    ["$222", "BM3"],
+    ["$223", "BM4"],
 ]);
 
 type AnnotationInfo = {
@@ -187,6 +215,10 @@ export const ANNOTATION_INFO: Record<Annotation, AnnotationInfo> = {
     "□": { name: "Only move", translationKey: "OnlyMove", nag: 7 },
     "⨀": { name: "Zugzwang", translationKey: "Zugzwang", nag: 22 },
     "⊗": { name: "Miss", color: "red", nag: 9 },
+    BM1: { name: "Best move suggestion (1st)", nag: 220 },
+    BM2: { name: "Best move suggestion (2nd)", nag: 221 },
+    BM3: { name: "Best move suggestion (3rd)", nag: 222 },
+    BM4: { name: "Best move suggestion (4th)", nag: 223 },
 };
 
 export function isBasicAnnotation(

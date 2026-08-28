@@ -36,6 +36,7 @@ import { useTranslation } from "react-i18next";
 import {
   autoPromoteAtom,
   autoSaveAtom,
+  bestMoveColorAtom,
   enableBoardScrollAtom,
   eraseDrawablesOnClickAtom,
   forcedEnPassantAtom,
@@ -504,6 +505,18 @@ export default function Page() {
         render: () => (
           <div style={{ width: 200 }}>
             <ColorControl />
+          </div>
+        ),
+      },
+      {
+        id: "best-move-color",
+        category: "appearance",
+        title: t("Settings.Appearance.BestMoveColor"),
+        description: t("Settings.Appearance.BestMoveColor.Desc"),
+        keywords: ["best", "move", "color", "arrow", "suggestion", "report"],
+        render: () => (
+          <div style={{ width: 200 }}>
+            <ColorControl colorAtom={bestMoveColorAtom} />
           </div>
         ),
       },

@@ -3,8 +3,12 @@ import { useColorScheme } from "@mantine/hooks";
 import { useAtom } from "jotai";
 import { primaryColorAtom } from "@/state/atoms";
 
-export default function ColorControl() {
-  const [primaryColor, setPrimaryColor] = useAtom(primaryColorAtom);
+export default function ColorControl({
+  colorAtom = primaryColorAtom,
+}: {
+  colorAtom?: typeof primaryColorAtom;
+}) {
+  const [primaryColor, setPrimaryColor] = useAtom(colorAtom);
   const theme = useMantineTheme();
   const colorScheme = useColorScheme();
 

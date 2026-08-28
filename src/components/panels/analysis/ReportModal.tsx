@@ -11,13 +11,18 @@ import { enginesAtom, referenceDbAtom } from "@/state/atoms";
 import { buildAnalysisLabel } from "@/utils/analysisLabel";
 import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 
-const reportSettingsAtom = atomWithStorage("report-settings", {
+const defaultReportSettings = {
   novelty: true,
   reversed: true,
-  variations: true,
+  showBestMoves: true,
+  bestMovesMode: "mistakes" as "mistakes" | "always",
+  bestMovesCount: 1,
+  bestMovesDepth: 10,
   goMode: { t: "Time", c: 500 } as Exclude<GoMode, { t: "Infinite" }>,
   engine: "",
-});
+};
+
+const reportSettingsAtom = atomWithStorage("report-settings", defaultReportSettings);
 
 function ReportModal({
   tab,
@@ -54,7 +59,7 @@ function ReportModal({
   const [reportSettings, setReportSettings] = useAtom(reportSettingsAtom);
 
   const form = useForm({
-    initialValues: reportSettings,
+    initialValues: { ...defaultReportSettings, ...reportSettings },
     validate: {
       engine: (value) => {
         if (!value) return t("Board.Analysis.EngineRequired");
@@ -73,7 +78,7 @@ function ReportModal({
           ? localEngines[0].id
           : reportSettings.engine;
 
-    form.setValues({ ...reportSettings, engine });
+    form.setValues({ ...defaultReportSettings, ...reportSettings, engine });
   }, [localEngines, reportSettings]);
 
   function analyze() {
@@ -97,13 +102,17 @@ function ReportModal({
           referenceDb,
           reversed: form.values.reversed,
           moves,
+          bestMovesCount: form.values.showBestMoves ? form.values.bestMovesCount : 0,
         },
         engineSettings,
       )
       .then((analysis) => {
         if (analysis.status === "ok") {
           addAnalysis(analysis.data, {
-            showVariations: form.values.variations,
+            showBestMoves: form.values.showBestMoves,
+            bestMovesMode: form.values.bestMovesMode,
+            bestMovesCount: form.values.bestMovesCount,
+            bestMovesDepth: form.values.bestMovesDepth,
             analysisLabel: engine ? buildAnalysisLabel(engine.name, form.values.goMode) : undefined,
           });
         }
@@ -178,10 +187,38 @@ function ReportModal({
           />
 
           <Checkbox
-            label={t("Board.Analysis.ShowVariations")}
-            description={t("Board.Analysis.ShowVariations.Desc")}
-            {...form.getInputProps("variations", { type: "checkbox" })}
+            label={t("Board.Analysis.ShowBestMoves")}
+            description={t("Board.Analysis.ShowBestMoves.Desc")}
+            {...form.getInputProps("showBestMoves", { type: "checkbox" })}
           />
+
+          {form.values.showBestMoves && (
+            <Stack gap="xs" pl="lg">
+              <Select
+                allowDeselect={false}
+                label={t("Board.Analysis.BestMovesMode")}
+                data={[
+                  { value: "mistakes", label: t("Board.Analysis.BestMovesMode.Mistakes") },
+                  { value: "always", label: t("Board.Analysis.BestMovesMode.Always") },
+                ]}
+                {...form.getInputProps("bestMovesMode")}
+              />
+              <NumberInput
+                label={t("Board.Analysis.BestMovesCount")}
+                description={t("Board.Analysis.BestMovesCount.Desc")}
+                min={1}
+                max={4}
+                {...form.getInputProps("bestMovesCount")}
+              />
+              <NumberInput
+                label={t("Board.Analysis.BestMovesDepth")}
+                description={t("Board.Analysis.BestMovesDepth.Desc")}
+                min={1}
+                max={20}
+                {...form.getInputProps("bestMovesDepth")}
+              />
+            </Stack>
+          )}
 
           <Group justify="right">
             <Button type="submit">{t("Board.Analysis.Analyze")}</Button>

@@ -232,10 +232,10 @@ export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     { engineId: null, variantId: null },
 );
 
-export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
-    "hint-engine-config",
-    { engineId: null, variantId: null },
-);
+export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>("hint-engine-config", {
+    engineId: null,
+    variantId: null,
+});
 
 export const enableBoardScrollAtom = atomWithStorage<boolean>("board-scroll", true);
 export const materialDisplayAtom = atomWithStorage<"diff" | "all">("material-display", "diff");
@@ -262,6 +262,7 @@ export const soundVolumeAtom = atomWithStorage<number>("sound-volume", 0.8, unde
 export const pieceSetAtom = atomWithStorage<string>("piece-set", "staunty");
 export const boardImageAtom = atomWithStorage<string>("board-image", "gray.svg");
 export const primaryColorAtom = atomWithStorage<MantineColor>("mantine-primary-color", "blue");
+export const bestMoveColorAtom = atomWithStorage<MantineColor>("best-move-color", "teal");
 export const sessionsAtom = atomWithStorage<Session[]>("sessions", []);
 export const nativeBarAtom = atomWithStorage<boolean>("native-bar", false);
 export const telemetryEnabledAtom = atomWithStorage<boolean>("telemetry-enabled", true, undefined, {
@@ -737,7 +738,8 @@ export const allEnabledAtom = atom((get) => {
             const atom = tabEngineSettingsFamily({
                 tab: get(activeTabAtom)!,
                 engineId: engine.id,
-                defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+                defaultSettings:
+                    engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
                 defaultGo: getDefaultVariant(engine).go,
             });
             return get(atom).enabled;
@@ -754,7 +756,8 @@ export const enableAllAtom = atom(null, (get, set, value: boolean) => {
         const atom = tabEngineSettingsFamily({
             tab: get(activeTabAtom)!,
             engineId: engine.id,
-            defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+            defaultSettings:
+                engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
             defaultGo: getDefaultVariant(engine).go,
         });
         set(atom, { ...get(atom), enabled: value });

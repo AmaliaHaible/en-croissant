@@ -1,9 +1,15 @@
 import { Box, rgba, useMantineTheme } from "@mantine/core";
 import { IconFlag } from "@tabler/icons-react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import type { ReactNode, RefObject } from "react";
-import { currentShowCommentsAtom, moveNotationTypeAtom } from "@/state/atoms";
-import { ANNOTATION_INFO, type Annotation, addPieceSymbol } from "@/utils/annotation";
+import { bestMoveColorAtom, currentShowCommentsAtom, moveNotationTypeAtom } from "@/state/atoms";
+import {
+  ANNOTATION_INFO,
+  type Annotation,
+  addPieceSymbol,
+  getBestMoveSuggestionRank,
+  isBestMoveSuggestion,
+} from "@/utils/annotation";
 import classes from "./MoveCell.module.css";
 
 interface MoveCellProps {
@@ -21,7 +27,10 @@ interface MoveCellProps {
 function MoveCell(props: MoveCellProps) {
   const [moveNotationType] = useAtom(moveNotationTypeAtom);
   const [showComments] = useAtom(currentShowCommentsAtom);
-  const visualAnnotation = showComments ? props.annotations[0] : "";
+  const bestMoveColor = useAtomValue(bestMoveColorAtom);
+  const visibleAnnotations = props.annotations.filter((a) => !isBestMoveSuggestion(a));
+  const visualAnnotation = showComments ? visibleAnnotations[0] : "";
+  const bestMoveRank = showComments ? getBestMoveSuggestionRank(props.annotations) : null;
 
   const color = ANNOTATION_INFO[visualAnnotation]?.color || "gray";
   const theme = useMantineTheme();
@@ -66,7 +75,21 @@ function MoveCell(props: MoveCellProps) {
       <Box component="span" className={classes.moveText}>
         {props.isStart && <IconFlag style={{ marginRight: 5 }} size="0.875rem" />}
         {moveNotationType === "symbols" ? addPieceSymbol(props.move) : props.move}
-        {showComments ? props.annotations.join("") : ""}
+        {showComments ? visibleAnnotations.join("") : ""}
+        {bestMoveRank !== null && (
+          <Box
+            component="span"
+            title={`Engine's #${bestMoveRank + 1} choice`}
+            style={{
+              marginLeft: 2,
+              fontSize: "0.7em",
+              fontWeight: 700,
+              color: theme.colors[bestMoveColor][6],
+            }}
+          >
+            #{bestMoveRank + 1}
+          </Box>
+        )}
       </Box>
       {props.rightAccessory && (
         <Box component="span" className={classes.rightAccessory}>

@@ -62,6 +62,11 @@ export default function AnnotationHint({
 // added manually drawn path for Miss (⊗)
 const glyphToSvg: Record<Annotation, ReactNode> = {
   "": <></>,
+  // Best-move-suggestion markers are internal metadata, never rendered as a board glyph.
+  BM1: <></>,
+  BM2: <></>,
+  BM3: <></>,
+  BM4: <></>,
   "!": (
     <>
       <path

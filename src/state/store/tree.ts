@@ -79,7 +79,13 @@ export interface TreeStoreState extends TreeState {
             novelty: boolean;
             is_sacrifice: boolean;
         }[],
-        options?: { showVariations: boolean; analysisLabel?: string },
+        options?: {
+            showBestMoves: boolean;
+            bestMovesMode: "mistakes" | "always";
+            bestMovesCount: number;
+            bestMovesDepth: number;
+            analysisLabel?: string;
+        },
     ) => void;
 
     setReportInProgress: (value: boolean) => void;
@@ -722,6 +728,58 @@ function setShapes(state: TreeState, shapes: DrawShape[]) {
     return state;
 }
 
+function findChildByMove(parent: TreeNode, move: Move): TreeNode | undefined {
+    return parent.children.find(
+        (c) =>
+            c.move &&
+            isNormal(c.move) &&
+            isNormal(move) &&
+            c.move.from === move.from &&
+            c.move.to === move.to &&
+            c.move.promotion === move.promotion,
+    );
+}
+
+function addBestMoveVariation(parent: TreeNode, line: BestMoves, rank: number, depth: number) {
+    const [parentPos] = positionFromFen(parent.fen);
+    if (!parentPos) return;
+    const bestMove = parseUci(line.uciMoves[0]);
+    if (!bestMove || findChildByMove(parent, bestMove)) return;
+
+    const san = makeSan(parentPos, bestMove);
+    parentPos.play(bestMove);
+    const newFen = makeFen(parentPos.toSetup());
+    const variationNode = createNode({
+        fen: newFen,
+        move: bestMove,
+        san,
+        halfMoves: parent.halfMoves + 1,
+    });
+    variationNode.annotations = [`BM${rank + 1}` as Annotation];
+
+    let currentVarNode = variationNode;
+    const currentVarPos = parentPos;
+
+    const pv = line.uciMoves;
+    for (let j = 1; j < Math.min(pv.length, depth); j++) {
+        const nextMove = parseUci(pv[j]);
+        if (!nextMove) break;
+        const nextSan = makeSan(currentVarPos, nextMove);
+        currentVarPos.play(nextMove);
+        const nextFen = makeFen(currentVarPos.toSetup());
+        const nextNode = createNode({
+            fen: nextFen,
+            move: nextMove,
+            san: nextSan,
+            halfMoves: currentVarNode.halfMoves + 1,
+        });
+        currentVarNode.children.push(nextNode);
+        currentVarNode = nextNode;
+    }
+
+    parent.children.push(variationNode);
+}
+
 function addAnalysis(
     state: TreeState,
     analysis: {
@@ -729,7 +787,13 @@ function addAnalysis(
         novelty: boolean;
         is_sacrifice: boolean;
     }[],
-    options?: { showVariations: boolean; analysisLabel?: string },
+    options?: {
+        showBestMoves: boolean;
+        bestMovesMode: "mistakes" | "always";
+        bestMovesCount: number;
+        bestMovesDepth: number;
+        analysisLabel?: string;
+    },
 ) {
     if (options?.analysisLabel) {
         state.headers.other = { ...state.headers.other, Analysis: options.analysisLabel };
@@ -766,67 +830,37 @@ function addAnalysis(
             );
             if (annotation) {
                 cur.annotations = [...cur.annotations, annotation];
+            }
 
-                if (
-                    options?.showVariations &&
-                    (annotation === "??" || annotation === "?" || annotation === "?!") &&
-                    parent &&
-                    i > 0 &&
-                    analysis[i - 1].best.length > 0
-                ) {
-                    const bestMoveUci = analysis[i - 1].best[0].uciMoves[0];
-                    const [parentPos] = positionFromFen(parent.fen);
-                    if (parentPos) {
-                        const bestMove = parseUci(bestMoveUci);
-                        if (bestMove) {
-                            const existingChild = parent.children.find(
-                                (c) =>
-                                    c.move &&
-                                    isNormal(c.move) &&
-                                    isNormal(bestMove) &&
-                                    c.move.from === bestMove.from &&
-                                    c.move.to === bestMove.to &&
-                                    c.move.promotion === bestMove.promotion,
-                            );
+            if (
+                options?.showBestMoves &&
+                parent &&
+                i > 0 &&
+                analysis[i - 1].best.length > 0 &&
+                (options.bestMovesMode === "always" ||
+                    annotation === "??" ||
+                    annotation === "?" ||
+                    annotation === "?!")
+            ) {
+                const candidates = analysis[i - 1].best.slice(0, options.bestMovesCount);
+                for (const [rank, line] of candidates.entries()) {
+                    const candidateMove = parseUci(line.uciMoves[0]);
+                    const playedMatches =
+                        candidateMove &&
+                        cur.move &&
+                        isNormal(candidateMove) &&
+                        isNormal(cur.move) &&
+                        candidateMove.from === cur.move.from &&
+                        candidateMove.to === cur.move.to &&
+                        candidateMove.promotion === cur.move.promotion;
 
-                            if (!existingChild) {
-                                const san = makeSan(parentPos, bestMove);
-                                parentPos.play(bestMove);
-                                const newFen = makeFen(parentPos.toSetup());
-                                const variationNode = createNode({
-                                    fen: newFen,
-                                    move: bestMove,
-                                    san,
-                                    halfMoves: parent.halfMoves + 1,
-                                });
-
-                                let currentVarNode = variationNode;
-                                const currentVarPos = parentPos;
-
-                                const pv = analysis[i - 1].best[0].uciMoves;
-                                if (pv.length > 1) {
-                                    for (let j = 1; j < Math.min(pv.length, 10); j++) {
-                                        const nextMoveUci = pv[j];
-                                        const nextMove = parseUci(nextMoveUci);
-                                        if (nextMove) {
-                                            const nextSan = makeSan(currentVarPos, nextMove);
-                                            currentVarPos.play(nextMove);
-                                            const nextFen = makeFen(currentVarPos.toSetup());
-                                            const nextNode = createNode({
-                                                fen: nextFen,
-                                                move: nextMove,
-                                                san: nextSan,
-                                                halfMoves: currentVarNode.halfMoves + 1,
-                                            });
-                                            currentVarNode.children.push(nextNode);
-                                            currentVarNode = nextNode;
-                                        }
-                                    }
-                                }
-
-                                parent.children.push(variationNode);
-                            }
-                        }
+                    if (playedMatches) {
+                        // The played move already was this engine suggestion: tag it
+                        // directly instead of a redundant sibling variation, so it's
+                        // still visible as "this was the engine's Nth choice".
+                        cur.annotations = [...cur.annotations, `BM${rank + 1}` as Annotation];
+                    } else {
+                        addBestMoveVariation(parent, line, rank, options.bestMovesDepth);
                     }
                 }
             }

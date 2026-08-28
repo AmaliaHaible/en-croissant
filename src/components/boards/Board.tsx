@@ -24,6 +24,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Chessground, type ChessgroundRef } from "@/chessground/Chessground";
 import {
   autoPromoteAtom,
+  bestMoveColorAtom,
   bestMovesFamily,
   currentEvalOpenAtom,
   currentShowCommentsAtom,
@@ -47,7 +48,12 @@ import {
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
 import classes from "@/styles/Chessboard.module.css";
-import { ANNOTATION_INFO, isBasicAnnotation } from "@/utils/annotation";
+import {
+  ANNOTATION_INFO,
+  getBestMoveSuggestionRank,
+  isBasicAnnotation,
+  isBestMoveSuggestion,
+} from "@/utils/annotation";
 import { getVariationLine } from "@/utils/chess";
 import { chessopsError, forceEnPassant, positionFromFen } from "@/utils/chessops";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
@@ -290,18 +296,26 @@ function Board({
     }
   }
 
-  // Variation arrows: show all children moves when there are alternatives
-  if (showVariationArrows && currentNode.children.length > 1) {
+  // Variation arrows: show all children moves when there are alternatives. Best-move
+  // suggestion arrows always show (they're an explicit opt-in from the report settings);
+  // plain/manual variation arrows stay gated behind the general toggle.
+  if (currentNode.children.length > 1) {
     for (const child of currentNode.children) {
       if (child.move) {
         const m = child.move as NormalMove;
         const from = makeSquare(m.from);
         const to = makeSquare(m.to);
-        if (from && to && !shapes.find((s) => s.orig === from && s.dest === to)) {
+        const suggestionRank = getBestMoveSuggestionRank(child.annotations);
+        if (
+          (suggestionRank !== null || showVariationArrows) &&
+          from &&
+          to &&
+          !shapes.find((s) => s.orig === from && s.dest === to)
+        ) {
           shapes.push({
             orig: from,
             dest: to,
-            brush: "variation",
+            brush: suggestionRank !== null ? `bestMove${suggestionRank}` : "variation",
             modifiers: {
               lineWidth: MEDIUM_BRUSH,
             },
@@ -339,14 +353,30 @@ function Board({
   }, [practiceLock, editingMode, movable, turn]);
 
   const theme = useMantineTheme();
-  const color = ANNOTATION_INFO[currentNode.annotations[0]]?.color || "gray";
+  const visibleAnnotations = currentNode.annotations.filter((a) => !isBestMoveSuggestion(a));
+  const color = ANNOTATION_INFO[visibleAnnotations[0]]?.color || "gray";
   const lightColor = theme.colors[color][6];
   const darkColor = theme.colors[color][8];
+
+  const bestMoveColor = useAtomValue(bestMoveColorAtom);
+  const bestMoveBrushColor = theme.colors[bestMoveColor][6];
+  const bestMoveBrushOpacities = [0.85, 0.65, 0.5, 0.35];
+  const bestMoveBrushes = Object.fromEntries(
+    bestMoveBrushOpacities.map((opacity, rank) => [
+      `bestMove${rank}`,
+      {
+        key: `bm${rank}`,
+        color: bestMoveBrushColor,
+        opacity,
+        lineWidth: 10,
+      },
+    ]),
+  );
 
   const [enableBoardScroll] = useAtom(enableBoardScrollAtom);
   const [snapArrows] = useAtom(snapArrowsAtom);
   const showComments = useAtomValue(currentShowCommentsAtom);
-  const visualAnnotation = showComments ? currentNode.annotations[0] : "";
+  const visualAnnotation = showComments ? visibleAnnotations[0] : "";
 
   const setBoardFen = useCallback(
     (fen: string) => {
@@ -428,7 +458,7 @@ function Board({
             gap="sm"
           >
             {showComments &&
-              currentNode.annotations.length > 0 &&
+              visibleAnnotations.length > 0 &&
               currentNode.move &&
               square !== undefined && (
                 <Box pl="2.5rem" w="100%" h="100%" pos="absolute">
@@ -436,7 +466,7 @@ function Board({
                     <AnnotationHint
                       orientation={orientation}
                       square={square}
-                      annotation={currentNode.annotations[0]}
+                      annotation={visibleAnnotations[0]}
                     />
                   </Box>
                 </Box>
@@ -590,6 +620,7 @@ function Board({
                       opacity: 0.8,
                       lineWidth: 10,
                     },
+                    ...bestMoveBrushes,
                   } as unknown as DrawBrushes,
                   onChange: (shapes) => {
                     setShapes(shapes);

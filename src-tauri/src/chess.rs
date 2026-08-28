@@ -474,6 +474,7 @@ pub struct AnalysisOptions {
     pub annotate_novelties: bool,
     pub reference_db: Option<PathBuf>,
     pub reversed: bool,
+    pub best_moves_count: u16,
 }
 
 #[tauri::command]
@@ -556,16 +557,19 @@ pub async fn analyze_game(
             false,
         )?;
 
+        // At least 2 lines are needed even when best_moves_count is 1, since the
+        // second-best line is used to detect "only move" / sacrifice annotations.
+        let multipv_value = options.best_moves_count.max(2).to_string();
         let mut extra_options = uci_options.clone();
         if !extra_options.iter().any(|x| x.name == "MultiPV") {
             extra_options.push(EngineOption {
                 name: "MultiPV".to_string(),
-                value: "2".to_string(),
+                value: multipv_value,
             });
         } else {
             extra_options.iter_mut().for_each(|x| {
                 if x.name == "MultiPV" {
-                    x.value = "2".to_string();
+                    x.value = multipv_value.clone();
                 }
             });
         }

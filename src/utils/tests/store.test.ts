@@ -489,6 +489,101 @@ test("should handle addAnalysis", () => {
     });
 });
 
+test("should always add a best-move variation that differs from the played move, and tag the played move when it matches instead", () => {
+    store.setState({ ...treeE4D5(), position: [0] });
+    store.getState().addAnalysis(
+        [
+            {
+                best: [
+                    {
+                        depth: 1,
+                        multipv: 1,
+                        nodes: 1,
+                        score: { value: { type: "cp", value: 10 }, wdl: null },
+                        nps: 1000,
+                        sanMoves: ["d4"],
+                        uciMoves: ["d2d4"],
+                    },
+                    {
+                        depth: 1,
+                        multipv: 2,
+                        nodes: 1,
+                        score: { value: { type: "cp", value: 8 }, wdl: null },
+                        nps: 1000,
+                        sanMoves: ["e4"],
+                        uciMoves: ["e2e4"],
+                    },
+                ],
+                novelty: false,
+                is_sacrifice: false,
+            },
+            {
+                best: [
+                    {
+                        depth: 1,
+                        multipv: 1,
+                        nodes: 1,
+                        score: { value: { type: "cp", value: 20 }, wdl: null },
+                        nps: 1000,
+                        sanMoves: ["d5"],
+                        uciMoves: ["d7d5"],
+                    },
+                ],
+                novelty: false,
+                is_sacrifice: false,
+            },
+        ],
+        {
+            showBestMoves: true,
+            bestMovesMode: "always",
+            bestMovesCount: 2,
+            bestMovesDepth: 1,
+        },
+    );
+
+    expect(getNewState()).toStrictEqual({
+        ...treeE4D5(),
+        dirty: true,
+        position: [0],
+        root: {
+            ...treeE4D5().root,
+            children: [
+                {
+                    ...treeE4D5().root.children[0],
+                    score: {
+                        value: {
+                            type: "cp",
+                            value: 20,
+                        },
+                        wdl: null,
+                    },
+                    annotations: ["BM2"],
+                },
+                {
+                    fen: "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1",
+                    move: parseUci("d2d4"),
+                    san: "d4",
+                    clock: undefined,
+                    children: [],
+                    score: null,
+                    depth: null,
+                    halfMoves: 1,
+                    shapes: [],
+                    annotations: ["BM1"],
+                    comment: "",
+                },
+            ],
+            score: {
+                value: {
+                    type: "cp",
+                    value: 10,
+                },
+                wdl: null,
+            },
+        },
+    });
+});
+
 test("should handle promoteVariation", () => {
     store.setState(treeE4D5Nf3());
     store.getState().promoteVariation([1]);

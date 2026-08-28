@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { ANNOTATION_INFO, type Annotation, NAG_INFO } from "../annotation";
-import { defaultPGN, hasMorePriority, headersToPGN } from "../chess";
+import { defaultPGN, getMoveText, hasMorePriority, headersToPGN } from "../chess";
+import type { TreeNode } from "../treeReducer";
 
 test("NAGs are consistent", () => {
     for (const k of Object.keys(ANNOTATION_INFO)) {
@@ -8,6 +9,26 @@ test("NAGs are consistent", () => {
         const nag = ANNOTATION_INFO[k as Annotation].nag!;
         expect(NAG_INFO.get(`$${nag}`)).toBe(k);
     }
+});
+
+test("best-move suggestion annotations are written as NAGs, not literal glyph text", () => {
+    const node: TreeNode = {
+        fen: "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1",
+        move: { from: 11, to: 27 } as TreeNode["move"],
+        san: "d4",
+        children: [],
+        score: null,
+        depth: null,
+        halfMoves: 1,
+        shapes: [],
+        annotations: ["BM1"],
+        comment: "",
+    };
+
+    const moveText = getMoveText(node, { glyphs: true, comments: false, extraMarkups: false });
+
+    expect(moveText).toContain("$220");
+    expect(moveText).not.toContain("BM1");
 });
 
 test("priority comparison", () => {
