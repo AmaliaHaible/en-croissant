@@ -69,10 +69,20 @@ import EvalBar from "./EvalBar";
 import MoveInput from "./MoveInput";
 import PromotionModal from "./PromotionModal";
 
-const LARGE_BRUSH = 11;
-const MEDIUM_BRUSH = 7.5;
-const SMALL_BRUSH = 4;
+const LARGE_BRUSH = 12;
+const MEDIUM_BRUSH = 9;
+const SMALL_BRUSH = 6;
+const TINY_BRUSH = 4;
 const BAR_HEIGHT = "1.9rem";
+
+// Rank 0 (the engine's top choice) is fully opaque and thickest; each lower rank gets
+// progressively thinner and more transparent, so the best suggestion stands out clearly.
+const BEST_MOVE_BRUSH_TIERS = [
+  { opacity: 1, lineWidth: LARGE_BRUSH },
+  { opacity: 0.75, lineWidth: MEDIUM_BRUSH },
+  { opacity: 0.55, lineWidth: SMALL_BRUSH },
+  { opacity: 0.4, lineWidth: TINY_BRUSH },
+];
 
 interface ChessboardProps {
   editingMode: boolean;
@@ -317,7 +327,10 @@ function Board({
             dest: to,
             brush: suggestionRank !== null ? `bestMove${suggestionRank}` : "variation",
             modifiers: {
-              lineWidth: MEDIUM_BRUSH,
+              lineWidth:
+                suggestionRank !== null
+                  ? BEST_MOVE_BRUSH_TIERS[suggestionRank].lineWidth
+                  : MEDIUM_BRUSH,
             },
           });
         }
@@ -360,15 +373,14 @@ function Board({
 
   const bestMoveColor = useAtomValue(bestMoveColorAtom);
   const bestMoveBrushColor = theme.colors[bestMoveColor][6];
-  const bestMoveBrushOpacities = [0.85, 0.65, 0.5, 0.35];
   const bestMoveBrushes = Object.fromEntries(
-    bestMoveBrushOpacities.map((opacity, rank) => [
+    BEST_MOVE_BRUSH_TIERS.map(({ opacity, lineWidth }, rank) => [
       `bestMove${rank}`,
       {
         key: `bm${rank}`,
         color: bestMoveBrushColor,
         opacity,
-        lineWidth: 10,
+        lineWidth,
       },
     ]),
   );
