@@ -756,6 +756,9 @@ function addBestMoveVariation(parent: TreeNode, line: BestMoves, rank: number, d
         halfMoves: parent.halfMoves + 1,
     });
     variationNode.annotations = [`BM${rank + 1}` as Annotation];
+    // The engine only gives us one eval for the whole PV (as of the first move), not a
+    // score per ply, so every node in this suggested line shows that same evaluation.
+    variationNode.score = line.score;
 
     let currentVarNode = variationNode;
     const currentVarPos = parentPos;
@@ -773,6 +776,7 @@ function addBestMoveVariation(parent: TreeNode, line: BestMoves, rank: number, d
             san: nextSan,
             halfMoves: currentVarNode.halfMoves + 1,
         });
+        nextNode.score = line.score;
         currentVarNode.children.push(nextNode);
         currentVarNode = nextNode;
     }
