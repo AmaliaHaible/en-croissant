@@ -1,12 +1,12 @@
 import { Button, Modal, SimpleGrid, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { useLoaderData } from "@tanstack/react-router";
 import { resolve, dirname } from "@tauri-apps/api/path";
-import { exists, mkdir, rename, writeTextFile } from "@tauri-apps/plugin-fs";
+import { exists, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFile } from "@/utils/files";
 import GenericCard from "../common/GenericCard";
-import type { Directory, FileMetadata, FileType } from "./file";
+import { type Directory, type FileMetadata, type FileType, getDisplayName } from "./file";
 
 const FILE_TYPES = [
   { label: "Game", value: "game" },
@@ -141,34 +141,22 @@ export function EditModal({
 }) {
   const { t } = useTranslation();
 
-  const [filename, setFilename] = useState(metadata.name);
+  const [filename, setFilename] = useState(getDisplayName(metadata));
   const [filetype, setFiletype] = useState<FileType>(metadata.metadata.type);
   const [error, setError] = useState("");
 
   async function editFile() {
     const metadataPath = metadata.path.replace(".pgn", ".info");
     const newMetadata = {
+      ...metadata.metadata,
       type: filetype,
-      tags: [],
+      displayName: filename.trim() || metadata.metadata.displayName,
     };
     await writeTextFile(metadataPath, JSON.stringify(newMetadata));
 
-    const newPGNPath = metadata.path.replace(`${metadata.name}.pgn`, `${filename}.pgn`);
-
-    await rename(metadata.path, newPGNPath);
-    await rename(metadataPath.replace(".pgn", ".info"), newPGNPath.replace(".pgn", ".info"));
-
     mutate();
     setSelected((selected) =>
-      selected?.path === metadata.path
-        ? {
-            ...metadata,
-            name: filename,
-            path: newPGNPath,
-            numGames: metadata.numGames,
-            metadata: newMetadata,
-          }
-        : selected,
+      selected?.path === metadata.path ? { ...metadata, metadata: newMetadata } : selected,
     );
 
     setError("");

@@ -228,6 +228,8 @@ export async function saveToFile({
                         metadata: {
                             tags: [],
                             type: "game",
+                            displayName: filePath,
+                            createdAt: Date.now(),
                         },
                         lastModified: Date.now(),
                     },

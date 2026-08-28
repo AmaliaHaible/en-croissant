@@ -1,4 +1,4 @@
-import { Badge, Box } from "@mantine/core";
+import { Badge, Box, Text, Tooltip } from "@mantine/core";
 import {
   IconChevronRight,
   IconEye,
@@ -11,6 +11,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { basename, join, sep } from "@tauri-apps/api/path";
 import { rename } from "@tauri-apps/plugin-fs";
 import clsx from "clsx";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
 import Fuse from "fuse.js";
 import { useAtom, useSetAtom } from "jotai";
 import { useContextMenu } from "mantine-contextmenu";
@@ -27,9 +29,15 @@ import {
 import { activeTabAtom, deckAtomFamily, tabsAtom, expandedDirectoriesAtom } from "@/state/atoms";
 import { openFile } from "@/utils/files";
 import classes from "./DirectoryTree.module.css";
-import type { Directory, FileMetadata } from "./file";
+import { getDisplayName, type Directory, type FileMetadata } from "./file";
 import { getStats } from "./opening";
+import { computeRangeSelection, flattenVisibleEntries } from "./selection";
 import { FileIcon } from "./FileIcon";
+
+dayjs.extend(relativeTime);
+
+export type SortBy = "name" | "date";
+export type SortDirection = "asc" | "desc";
 
 type DragContextType = {
   draggingPath: string | null;
@@ -79,35 +87,39 @@ function getEventPoint(event: DraggableEvent): { x: number; y: number } | null {
   return null;
 }
 
-function recursiveSort(files: Entry[], pruneEmpty = false): Entry[] {
+function recursiveSort(
+  files: Entry[],
+  pruneEmpty = false,
+  sortBy: SortBy = "name",
+  sortDir: SortDirection = "asc",
+): Entry[] {
+  const dirMultiplier = sortDir === "asc" ? 1 : -1;
+
   return files
     .map((f) => {
       if (f.type === "file") return f;
       return {
         ...f,
-        children: recursiveSort(f.children, pruneEmpty),
+        children: recursiveSort(f.children, pruneEmpty, sortBy, sortDir),
       };
     })
+    .filter((f) => f.type === "file" || !pruneEmpty || f.children.length > 0)
     .sort((a, b) => {
-      return b.name.localeCompare(a.name, "en", { sensitivity: "base" });
-    })
-    .filter((f) => {
-      return f.type === "file" || !pruneEmpty || f.children.length > 0;
-    })
-    .sort((a, b) => {
-      return a.name.localeCompare(b.name);
-    })
-    .sort((a, b) => {
-      if (a.type === "directory" && b.type === "file") {
-        return -1;
-      }
+      if (a.type === "directory" && b.type === "file") return -1;
+      if (a.type === "file" && b.type === "directory") return 1;
       if (a.type === "directory" && b.type === "directory") {
-        return 0;
+        return a.name.localeCompare(b.name) * dirMultiplier;
       }
-      if (a.type === "file" && b.type === "file") {
-        return 0;
+      if (sortBy === "date") {
+        return (
+          ((a as FileMetadata).metadata.createdAt - (b as FileMetadata).metadata.createdAt) *
+          dirMultiplier
+        );
       }
-      return 1;
+      return (
+        getDisplayName(a as FileMetadata).localeCompare(getDisplayName(b as FileMetadata)) *
+        dirMultiplier
+      );
     });
 }
 
@@ -115,19 +127,26 @@ export default function DirectoryTree({
   files,
   refreshDirectory,
   selectedFile,
-  setSelectedFile,
+  selectedPaths,
+  onSelectionChange,
   onRequestDelete,
   search,
   filter,
+  sortBy,
+  sortDir,
 }: {
   files: Entry[] | undefined;
   refreshDirectory: () => Promise<unknown>;
   selectedFile: Entry | null;
-  setSelectedFile: (file: Entry | null) => void;
+  selectedPaths: Set<string>;
+  onSelectionChange: (paths: Set<string>, focused: Entry | null) => void;
   onRequestDelete: (file: Entry) => void;
   search: string;
   filter: string;
+  sortBy: SortBy;
+  sortDir: SortDirection;
 }) {
+  const [expandedIds] = useAtom(expandedDirectoriesAtom);
   const flattedFiles = useMemo(() => flattenFiles(files ?? []), [files]);
   const fuse = useMemo(
     () =>
@@ -136,6 +155,8 @@ export default function DirectoryTree({
       }),
     [flattedFiles],
   );
+
+  const expandedByDefault = !!(search || filter);
 
   const filteredFiles = useMemo(() => {
     let next = files ?? [];
@@ -149,8 +170,48 @@ export default function DirectoryTree({
       next = filterTree(next, (file) => file.metadata.type === filter);
     }
 
-    return recursiveSort(next, !!(search || filter));
-  }, [files, search, filter, fuse]);
+    return recursiveSort(next, expandedByDefault, sortBy, sortDir);
+  }, [files, search, filter, fuse, expandedByDefault, sortBy, sortDir]);
+
+  const visibleOrder = useMemo(
+    () =>
+      flattenVisibleEntries(
+        filteredFiles,
+        (path) => expandedByDefault || expandedIds.includes(path),
+      ),
+    [filteredFiles, expandedByDefault, expandedIds],
+  );
+
+  const anchorRef = useRef<string | null>(null);
+
+  const handleNodeClick = useCallback(
+    (node: Entry, event: React.MouseEvent) => {
+      const ctrl = event.ctrlKey || event.metaKey;
+      const shift = event.shiftKey;
+
+      if (shift && anchorRef.current) {
+        const range = computeRangeSelection(visibleOrder, anchorRef.current, node.path);
+        onSelectionChange(new Set(range), node);
+        return;
+      }
+
+      if (ctrl) {
+        const next = new Set(selectedPaths);
+        if (next.has(node.path)) {
+          next.delete(node.path);
+        } else {
+          next.add(node.path);
+        }
+        anchorRef.current = node.path;
+        onSelectionChange(next, node);
+        return;
+      }
+
+      anchorRef.current = node.path;
+      onSelectionChange(new Set([node.path]), node);
+    },
+    [selectedPaths, visibleOrder, onSelectionChange],
+  );
 
   return (
     <Box className={classes.tree}>
@@ -159,9 +220,11 @@ export default function DirectoryTree({
         refreshDirectory={refreshDirectory}
         depth={0}
         selected={selectedFile}
-        setSelectedFile={setSelectedFile}
+        selectedPaths={selectedPaths}
+        onNodeClick={handleNodeClick}
+        onSelectionChange={onSelectionChange}
         onRequestDelete={onRequestDelete}
-        expandedByDefault={!!(search || filter)}
+        expandedByDefault={expandedByDefault}
       />
     </Box>
   );
@@ -172,7 +235,9 @@ function Tree({
   depth,
   refreshDirectory,
   selected,
-  setSelectedFile,
+  selectedPaths,
+  onNodeClick,
+  onSelectionChange,
   onRequestDelete,
   expandedByDefault,
 }: {
@@ -180,7 +245,9 @@ function Tree({
   depth: number;
   refreshDirectory: () => Promise<unknown>;
   selected: Entry | null;
-  setSelectedFile: (file: Entry | null) => void;
+  selectedPaths: Set<string>;
+  onNodeClick: (node: Entry, event: React.MouseEvent) => void;
+  onSelectionChange: (paths: Set<string>, focused: Entry | null) => void;
   onRequestDelete: (file: Entry) => void;
   expandedByDefault?: boolean;
 }) {
@@ -216,7 +283,7 @@ function Tree({
     <>
       {files.map((node) => {
         const isExpanded = expandedByDefault || expandedIds.includes(node.path);
-        const isSelected = selected?.path === node.path;
+        const isSelected = selectedPaths.has(node.path);
 
         return (
           <DirectoryNode
@@ -225,10 +292,12 @@ function Tree({
             depth={depth}
             isSelected={isSelected}
             selectedFile={selected}
+            selectedPaths={selectedPaths}
             isExpanded={isExpanded}
             setExpandedIds={setExpandedIds}
             toggleExpand={(e) => toggleExpand(node.path, e)}
-            setSelectedFile={setSelectedFile}
+            onNodeClick={onNodeClick}
+            onSelectionChange={onSelectionChange}
             handleOpenFile={handleOpenFile}
             onRequestDelete={onRequestDelete}
             refreshDirectory={refreshDirectory}
@@ -240,7 +309,9 @@ function Tree({
                 refreshDirectory={refreshDirectory}
                 depth={depth + 1}
                 selected={selected}
-                setSelectedFile={setSelectedFile}
+                selectedPaths={selectedPaths}
+                onNodeClick={onNodeClick}
+                onSelectionChange={onSelectionChange}
                 onRequestDelete={onRequestDelete}
                 expandedByDefault={expandedByDefault}
               />
@@ -257,10 +328,12 @@ function DirectoryNode({
   depth,
   isSelected,
   selectedFile,
+  selectedPaths,
   isExpanded,
   setExpandedIds,
   toggleExpand,
-  setSelectedFile,
+  onNodeClick,
+  onSelectionChange,
   handleOpenFile,
   onRequestDelete,
   refreshDirectory,
@@ -271,10 +344,12 @@ function DirectoryNode({
   depth: number;
   isSelected: boolean;
   selectedFile: Entry | null;
+  selectedPaths: Set<string>;
   isExpanded: boolean;
   setExpandedIds: React.Dispatch<React.SetStateAction<string[]>>;
   toggleExpand: (e: React.MouseEvent) => void;
-  setSelectedFile: (file: Entry | null) => void;
+  onNodeClick: (node: Entry, event: React.MouseEvent) => void;
+  onSelectionChange: (paths: Set<string>, focused: Entry | null) => void;
   handleOpenFile: (file: FileMetadata) => Promise<void>;
   onRequestDelete: (file: Entry) => void;
   refreshDirectory: () => Promise<unknown>;
@@ -353,43 +428,59 @@ function DirectoryNode({
 
     if (!wasDragging || !targetId) return;
 
-    const sourcePath = node.path;
-    if (sourcePath === targetId) return;
+    const isMultiMove = selectedPaths.has(node.path) && selectedPaths.size > 1;
+    const sourcePaths = isMultiMove ? Array.from(selectedPaths) : [node.path];
 
     const handleDrop = async () => {
       const separator = sep();
-      if (targetId!.startsWith(sourcePath + separator)) return;
+      let movedAny = false;
 
-      const sourceBasename = await basename(sourcePath);
-      const targetPath = await join(targetId!, sourceBasename);
+      for (const sourcePath of sourcePaths) {
+        if (sourcePath === targetId) continue;
+        if (targetId!.startsWith(sourcePath + separator)) continue;
 
-      if (sourcePath === targetPath) return;
+        const sourceBasename = await basename(sourcePath);
+        const targetPath = await join(targetId!, sourceBasename);
+        if (sourcePath === targetPath) continue;
 
-      try {
-        await rename(sourcePath, targetPath);
-        if (node.type !== "directory" && sourcePath.endsWith(".pgn")) {
-          await rename(
-            sourcePath.replace(".pgn", ".info"),
-            targetPath.replace(".pgn", ".info"),
-          ).catch(() => {});
-        }
-        await refreshDirectory();
-        setExpandedIds((prev) => (prev.includes(targetId!) ? prev : [...prev, targetId!]));
-
-        if (selectedFile) {
-          if (selectedFile.path === sourcePath) {
-            const newName = sourceBasename.endsWith(".pgn")
-              ? sourceBasename.slice(0, -4)
-              : sourceBasename;
-            setSelectedFile({ ...selectedFile, path: targetPath, name: newName });
-          } else if (selectedFile.path.startsWith(sourcePath + separator)) {
-            const trailingPath = selectedFile.path.slice(sourcePath.length + separator.length);
-            const newPath = await join(targetPath, trailingPath);
-            setSelectedFile({ ...selectedFile, path: newPath });
+        try {
+          await rename(sourcePath, targetPath);
+          if (sourcePath.endsWith(".pgn")) {
+            await rename(
+              sourcePath.replace(".pgn", ".info"),
+              targetPath.replace(".pgn", ".info"),
+            ).catch(() => {});
           }
+          movedAny = true;
+
+          if (!isMultiMove && selectedFile) {
+            if (selectedFile.path === sourcePath) {
+              const newName = sourceBasename.endsWith(".pgn")
+                ? sourceBasename.slice(0, -4)
+                : sourceBasename;
+              onSelectionChange(new Set([targetPath]), {
+                ...selectedFile,
+                path: targetPath,
+                name: newName,
+              });
+            } else if (selectedFile.path.startsWith(sourcePath + separator)) {
+              const trailingPath = selectedFile.path.slice(sourcePath.length + separator.length);
+              const newPath = await join(targetPath, trailingPath);
+              onSelectionChange(new Set([newPath]), { ...selectedFile, path: newPath });
+            }
+          }
+        } catch (err) {
+          console.error("Drop failed", err);
         }
-      } catch (err) {
-        console.error("Drop failed", err);
+      }
+
+      if (!movedAny) return;
+
+      await refreshDirectory();
+      setExpandedIds((prev) => (prev.includes(targetId!) ? prev : [...prev, targetId!]));
+
+      if (isMultiMove) {
+        onSelectionChange(new Set(), null);
       }
     };
 
@@ -432,12 +523,10 @@ function DirectoryNode({
               return;
             }
 
-            if (node.type === "directory") {
+            if (node.type === "directory" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
               toggleExpand(e);
-              setSelectedFile(node);
-            } else {
-              setSelectedFile(node);
             }
+            onNodeClick(node, e);
           }}
           onDoubleClick={() => {
             if (node.type === "file") {
@@ -500,7 +589,16 @@ function DirectoryNode({
           ) : (
             <FileIcon type={node.metadata.type} className={classes.typeIcon} />
           )}
-          <span className={classes.label}>{node.name}</span>
+          <span className={classes.label}>
+            {node.type === "file" ? getDisplayName(node) : node.name}
+          </span>
+          {node.type === "file" && (
+            <Tooltip label={dayjs(node.metadata.createdAt).format("YYYY-MM-DD HH:mm")}>
+              <Text size="xs" c="dimmed" className={classes.date}>
+                {dayjs(node.metadata.createdAt).fromNow()}
+              </Text>
+            </Tooltip>
+          )}
           {node.type === "file" && node.metadata.type === "repertoire" && (
             <div className={classes.badge}>
               <DuePositions file={node.path} />

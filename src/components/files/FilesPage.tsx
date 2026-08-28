@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Button,
   Center,
   Chip,
   Divider,
@@ -7,6 +8,7 @@ import {
   Input,
   Paper,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   ThemeIcon,
@@ -20,6 +22,8 @@ import {
   IconFolderPlus,
   IconSearch,
   IconFolder,
+  IconSortAscending,
+  IconSortDescending,
 } from "@tabler/icons-react";
 import { useLoaderData } from "@tanstack/react-router";
 import { readDir, remove } from "@tauri-apps/plugin-fs";
@@ -29,13 +33,14 @@ import useSWR from "swr";
 import { capitalize } from "@/utils/format";
 import ConfirmModal from "../common/ConfirmModal";
 import OpenFolderButton from "../common/OpenFolderButton";
-import DirectoryTree from "./DirectoryTree";
+import DirectoryTree, { type SortBy, type SortDirection } from "./DirectoryTree";
 import { DragContext } from "./DirectoryTree";
 import FileCard from "./FileCard";
 import {
   type Directory,
   type FileMetadata,
   type FileType,
+  getEntryDisplayName,
   processEntriesRecursively,
 } from "./file";
 import { CreateDirectoryModal, CreateModal, EditModal } from "./Modals";
@@ -83,8 +88,21 @@ function FilesPage() {
 
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Entry | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [games, setGames] = useState<Map<number, string>>(new Map());
   const [filter, setFilter] = useState<FileType | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>("name");
+  const [sortDir, setSortDir] = useState<SortDirection>("asc");
+
+  const effectiveSelectedPaths = useMemo(
+    () =>
+      selectedPaths.size > 0
+        ? selectedPaths
+        : selected
+          ? new Set([selected.path])
+          : new Set<string>(),
+    [selectedPaths, selected],
+  );
 
   const [deleteModal, toggleDeleteModal] = useToggle();
   const [createModal, toggleCreateModal] = useToggle();
@@ -93,12 +111,17 @@ function FilesPage() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const handleSelectionChange = useCallback((paths: Set<string>, focused: Entry | null) => {
+    setSelectedPaths(paths);
+    setSelected(focused);
+  }, []);
+
   useHotkeys([
     ["mod+f", () => searchInputRef.current?.focus()],
     [
       "Delete",
       () => {
-        if (selected && !deleteModal) {
+        if (effectiveSelectedPaths.size > 0 && !deleteModal) {
           toggleDeleteModal();
         }
       },
@@ -185,6 +208,7 @@ function FilesPage() {
   const requestDelete = useCallback(
     (entry: Entry) => {
       setSelected(entry);
+      setSelectedPaths(new Set([entry.path]));
       if (!deleteModal) {
         toggleDeleteModal();
       }
@@ -195,21 +219,28 @@ function FilesPage() {
   const refreshDirectory = useCallback(() => mutate(), [mutate]);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!selected) {
+    if (!files || effectiveSelectedPaths.size === 0) {
       return;
     }
 
-    if (selected.type === "directory") {
-      await remove(selected.path, { recursive: true });
-    } else {
-      await remove(selected.path);
-      await remove(selected.path.replace(".pgn", ".info")).catch(() => {});
+    const targets = Array.from(effectiveSelectedPaths)
+      .map((path) => findEntryByPath(files, path))
+      .filter((entry): entry is Entry => entry !== null);
+
+    for (const entry of targets) {
+      if (entry.type === "directory") {
+        await remove(entry.path, { recursive: true });
+      } else {
+        await remove(entry.path);
+        await remove(entry.path.replace(".pgn", ".info")).catch(() => {});
+      }
     }
 
     await mutate();
     toggleDeleteModal();
     setSelected(null);
-  }, [selected, mutate, toggleDeleteModal]);
+    setSelectedPaths(new Set());
+  }, [files, effectiveSelectedPaths, mutate, toggleDeleteModal]);
 
   const dragContextValue = useMemo(
     () => ({
@@ -305,6 +336,60 @@ function FilesPage() {
               ))}
             </Group>
             <Divider />
+            <Group px="xs" py={6} gap="xs" justify="space-between" wrap="wrap">
+              <Group gap="xs">
+                <Text size="xs" c="dimmed">
+                  {t("Files.Sort.Label", "Sort by")}
+                </Text>
+                <SegmentedControl
+                  size="xs"
+                  value={sortBy}
+                  onChange={(value) => setSortBy(value as SortBy)}
+                  data={[
+                    { label: t("Common.Name"), value: "name" },
+                    { label: t("Common.Date"), value: "date" },
+                  ]}
+                />
+                <Tooltip
+                  label={
+                    sortDir === "asc"
+                      ? t("Files.Sort.Ascending", "Ascending")
+                      : t("Files.Sort.Descending", "Descending")
+                  }
+                >
+                  <ActionIcon
+                    variant="default"
+                    size="sm"
+                    onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+                  >
+                    {sortDir === "asc" ? (
+                      <IconSortAscending size="1rem" />
+                    ) : (
+                      <IconSortDescending size="1rem" />
+                    )}
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              {selectedPaths.size > 1 && (
+                <Group gap="xs">
+                  <Text size="sm">{t("Files.Selection.Count", { count: selectedPaths.size })}</Text>
+                  <Button
+                    size="xs"
+                    color="red"
+                    variant="light"
+                    onClick={() => {
+                      if (!deleteModal) toggleDeleteModal();
+                    }}
+                  >
+                    {t("Common.Delete")}
+                  </Button>
+                  <Button size="xs" variant="subtle" onClick={() => setSelectedPaths(new Set())}>
+                    {t("Files.Selection.Clear", "Clear")}
+                  </Button>
+                </Group>
+              )}
+            </Group>
+            <Divider />
             <ScrollArea flex={1}>
               {error ? (
                 <Center h="100%">
@@ -320,10 +405,13 @@ function FilesPage() {
                     files={files}
                     refreshDirectory={refreshDirectory}
                     selectedFile={selected}
-                    setSelectedFile={setSelected}
+                    selectedPaths={effectiveSelectedPaths}
+                    onSelectionChange={handleSelectionChange}
                     onRequestDelete={requestDelete}
                     search={search}
                     filter={filter || ""}
+                    sortBy={sortBy}
+                    sortDir={sortDir}
                   />
                 </DragContext.Provider>
               )}
@@ -335,9 +423,11 @@ function FilesPage() {
           <>
             <ConfirmModal
               title={t("Files.Delete.Title")}
-              description={t("Files.Delete.Message", {
-                fileName: selected.name,
-              })}
+              description={
+                effectiveSelectedPaths.size > 1
+                  ? t("Files.Delete.MessageMultiple", { count: effectiveSelectedPaths.size })
+                  : t("Files.Delete.Message", { fileName: getEntryDisplayName(selected) })
+              }
               opened={deleteModal}
               onClose={toggleDeleteModal}
               onConfirm={handleConfirmDelete}

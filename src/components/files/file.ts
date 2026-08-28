@@ -11,6 +11,8 @@ export type FileType = z.infer<typeof fileTypeSchema>;
 const fileInfoMetadataSchema = z.object({
     type: fileTypeSchema,
     tags: z.array(z.string()),
+    displayName: z.string(),
+    createdAt: z.number(),
 });
 
 export type FileInfoMetadata = z.infer<typeof fileInfoMetadataSchema>;
@@ -31,27 +33,55 @@ export type FileData = {
     games: string[];
 };
 
+export function normalizeFileInfoMetadata(
+    raw: Partial<FileInfoMetadata> | null | undefined,
+    fallback: { displayName: string; createdAt: number },
+): FileInfoMetadata {
+    return {
+        type: raw?.type ?? "other",
+        tags: raw?.tags ?? [],
+        displayName: raw?.displayName ?? fallback.displayName,
+        createdAt: raw?.createdAt ?? fallback.createdAt,
+    };
+}
+
+export function getDisplayName(file: Pick<FileMetadata, "name" | "metadata">): string {
+    return file.metadata.displayName || file.name;
+}
+
+export function getEntryDisplayName(entry: FileMetadata | Directory): string {
+    return entry.type === "file" ? getDisplayName(entry) : entry.name;
+}
+
 async function readFileMetadata(path: string): Promise<FileMetadata | null> {
     if (!path.endsWith(".pgn")) {
         return null;
     }
     const metadataPath = path.replace(".pgn", ".info");
-    let metadata: FileInfoMetadata;
+    const name = (await basename(path)).replace(".pgn", "");
+    const fileMetadata = unwrap(await commands.getFileMetadata(path));
+
+    let rawMetadata: Partial<FileInfoMetadata> | null = null;
     if (await exists(metadataPath)) {
-        metadata = JSON.parse(await readTextFile(metadataPath));
-    } else {
-        metadata = {
-            type: "other",
-            tags: [],
-        };
+        rawMetadata = JSON.parse(await readTextFile(metadataPath));
+    }
+    const metadata = normalizeFileInfoMetadata(rawMetadata, {
+        displayName: name,
+        createdAt: fileMetadata.last_modified * 1000,
+    });
+    if (
+        !rawMetadata ||
+        rawMetadata.displayName === undefined ||
+        rawMetadata.createdAt === undefined
+    ) {
         await writeTextFile(metadataPath, JSON.stringify(metadata));
     }
-    const fileMetadata = unwrap(await commands.getFileMetadata(path));
+
     const numGames = unwrap(await commands.countPgnGames(path));
     return {
         type: "file",
         path,
-        name: (await basename(path)).replace(".pgn", ""),
+        name,
         numGames,
         metadata,
         lastModified: fileMetadata.last_modified,

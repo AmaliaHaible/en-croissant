@@ -6,7 +6,7 @@ import { defaultGame, makePgn } from "chessops/pgn";
 import { getDefaultStore } from "jotai";
 import useSWR from "swr";
 import { commands } from "@/bindings";
-import type { FileMetadata } from "@/components/files/file";
+import { getDisplayName, type FileMetadata } from "@/components/files/file";
 import { addRecentFileAtom, tabFamily } from "@/state/atoms";
 import { unwrap } from "@/utils/unwrap";
 import { parsePGN } from "./chess";
@@ -49,6 +49,8 @@ export async function openFile(
             metadata: {
                 tags: [],
                 type: "game" as const,
+                displayName: file,
+                createdAt: Date.now(),
             },
             name: file,
             path: file,
@@ -70,7 +72,7 @@ export async function openFile(
         if (pgn === undefined) {
             pgn = unwrap(await commands.readGames(file.path, gameNumber, gameNumber))[0];
         }
-        tabName = file.name || "Untitled";
+        tabName = getDisplayName(file) || "Untitled";
         recentName = tabName;
     }
 
@@ -117,9 +119,11 @@ export async function createFile({
     if (await exists(file)) {
         return Result.err(Error("File already exists"));
     }
-    const metadata = {
+    const metadata: FileMetadata["metadata"] = {
         type: filetype,
         tags: [],
+        displayName: filename,
+        createdAt: Date.now(),
     };
     await writeTextFile(file, pgn || makePgn(defaultGame()));
     await writeTextFile(file.replace(".pgn", ".info"), JSON.stringify(metadata));
@@ -130,6 +134,6 @@ export async function createFile({
         path: file,
         numGames,
         metadata,
-        lastModified: new Date().getUTCSeconds(),
+        lastModified: Math.floor(Date.now() / 1000),
     });
 }

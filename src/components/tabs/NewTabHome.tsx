@@ -165,7 +165,12 @@ export default function NewTabHome({ id }: { id: string }) {
             name: file.name,
             path: file.path,
             numGames: 1,
-            metadata: { type: file.type, tags: [] },
+            metadata: {
+              type: file.type,
+              tags: [],
+              displayName: file.name,
+              createdAt: Date.now(),
+            },
             lastModified: Math.floor(Date.now() / 1000),
           },
         },

@@ -11,7 +11,7 @@ import { capitalize } from "@/utils/format";
 import { unwrap } from "@/utils/unwrap";
 import GamePreview from "../databases/GamePreview";
 import GameSelector from "../panels/info/GameSelector";
-import type { FileMetadata } from "./file";
+import { getDisplayName, type FileMetadata } from "./file";
 
 function FileCard({
   selected,
@@ -58,7 +58,7 @@ function FileCard({
     <Stack h="100%">
       <Stack align="center">
         <Text ta="center" fz="xl" fw="bold">
-          {selected?.name}
+          {getDisplayName(selected)}
         </Text>
         <Badge>{t(`Files.FileType.${capitalize(selected.metadata.type)}`)}</Badge>
       </Stack>

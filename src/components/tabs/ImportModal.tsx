@@ -100,6 +100,8 @@ export default function ImportModal({
               metadata: {
                 type: "game",
                 tags: [],
+                displayName: filename,
+                createdAt: Date.now(),
               },
             };
           }
