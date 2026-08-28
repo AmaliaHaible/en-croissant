@@ -60,6 +60,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import ErrorComponent from "@/components/ErrorComponent";
+import { ensureCollectionFolders } from "@/utils/collections";
 import { getDatabasesDir, getDocumentDir, getEnginesDir, getPuzzlesDir } from "@/utils/directories";
 import { initUserAgent } from "@/utils/http";
 import { getPostHog } from "@/utils/telemetry";
@@ -101,6 +102,8 @@ const router = createRouter({
       if (!store.get(storedPuzzlesDirAtom)) {
         store.set(storedPuzzlesDirAtom, puzzlesDir);
       }
+
+      await ensureCollectionFolders(documentDir);
 
       return {
         documentDir,

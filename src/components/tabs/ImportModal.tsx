@@ -15,7 +15,6 @@ import { useLoaderData } from "@tanstack/react-router";
 import { resolve, tempDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { makeFen, parseFen } from "chessops/fen";
 import { useAtom, useStore } from "jotai";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,10 +22,8 @@ import { match } from "ts-pattern";
 import { commands } from "@/bindings";
 import { addRecentFileAtom, currentTabAtom } from "@/state/atoms";
 import { parsePGN } from "@/utils/chess";
-import { getChesscomGame } from "@/utils/chess.com/api";
-import { chessopsError } from "@/utils/chessops";
 import { createFile, openFile } from "@/utils/files";
-import { getLichessGame } from "@/utils/lichess/api";
+import { parseFenInput, resolveGameLink } from "@/utils/importGame";
 import { isInTempDir, type Tab } from "@/utils/tabs";
 import { defaultTree, getGameName } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
@@ -140,24 +137,10 @@ export default function ImportModal({
         setLoading(false);
         return;
       }
-      let pgn = "";
-      if (link.includes("chess.com")) {
-        const res = await getChesscomGame(link);
-        if (res === null) {
-          setLoading(false);
-          return;
-        }
-        pgn = res;
-      } else if (link.includes("lichess")) {
-        const excludedPathParts = ["game", "export", "white", "black"];
-        const gameId = new URL(link).pathname
-          .split("/")
-          .find((x) => x && !excludedPathParts.includes(x));
-        if (!gameId) {
-          setLoading(false);
-          return;
-        }
-        pgn = await getLichessGame(gameId);
+      const pgn = await resolveGameLink(link);
+      if (pgn === null) {
+        setLoading(false);
+        return;
       }
 
       const tree = await parsePGN(pgn);
@@ -173,14 +156,14 @@ export default function ImportModal({
         };
       });
     } else if (importType === "FEN") {
-      const res = parseFen(fen.trim());
-      if (res.isErr) {
-        setFenError(chessopsError(res.error));
+      const res = parseFenInput(fen);
+      if (!res.ok) {
+        setFenError(res.error);
         setLoading(false);
         return;
       }
       setFenError("");
-      const parsedFen = makeFen(res.value);
+      const parsedFen = res.parsedFen;
       setCurrentTab((prev) => {
         const tree = defaultTree(parsedFen);
         tree.headers.fen = parsedFen;

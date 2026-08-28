@@ -77,6 +77,7 @@ import {
 } from "@/state/atoms";
 import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
+import { classifyPlayers, getCollectionDir } from "@/utils/collections";
 import { getDocumentDir } from "@/utils/directories";
 import { getDefaultVariant } from "@/utils/engines";
 import type { GameHeaders } from "@/utils/treeReducer";
@@ -421,7 +422,9 @@ function BoardGame() {
 
       let targetPath = filePathOverride || matchSavePath;
       if (!targetPath) {
-        targetPath = await resolve(docDir, defaultFileName);
+        const category = classifyPlayers(players.white.type, players.black.type);
+        const collectionDir = await getCollectionDir(docDir, category);
+        targetPath = await resolve(collectionDir, defaultFileName);
         setMatchSavePath(targetPath);
       }
 
@@ -476,6 +479,8 @@ function BoardGame() {
       matchScores.totalGames,
       matchSeriesEnabled,
       matchTournamentName,
+      players.white.type,
+      players.black.type,
       setMatchSavePath,
       store,
     ],

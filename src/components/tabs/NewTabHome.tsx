@@ -11,19 +11,26 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { useAtom, useSetAtom, useStore } from "jotai";
 import { useCallback, useEffect, useState } from "react";
 import {
   activeTabAtom,
   addRecentFileAtom,
+  currentTabAtom,
   deckAtomFamily,
   type RecentFile,
   recentFilesAtom,
   tabFamily,
   tabsAtom,
 } from "@/state/atoms";
+import { getCollectionDir } from "@/utils/collections";
+import { parseFenInput, resolveGameLink } from "@/utils/importGame";
+import { detectPasteType } from "@/utils/pasteImport";
 import type { Tab } from "@/utils/tabs";
 import { createTab } from "@/utils/tabs";
+import { defaultTree, getGameName } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import CreateRepertoireModal from "./CreateRepertoireModal";
 import ImportModal from "./ImportModal";
@@ -36,12 +43,14 @@ import {
   IconTarget,
   IconTargetArrow,
 } from "@tabler/icons-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useLoaderData, useNavigate } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useTranslation } from "react-i18next";
 import { commands } from "@/bindings";
 import { getStats } from "@/components/files/opening";
+import { parsePGN } from "@/utils/chess";
+import { createFile } from "@/utils/files";
 import Chessboard from "../icons/Chessboard";
 import { FileIcon } from "@/components/files/FileIcon";
 
@@ -111,6 +120,8 @@ export default function NewTabHome({ id }: { id: string }) {
   const [openRepertoireModal, setOpenRepertoireModal] = useState(false);
   const [, setTabs] = useAtom(tabsAtom);
   const setActiveTab = useSetAtom(activeTabAtom);
+  const [, setCurrentTab] = useAtom(currentTabAtom);
+  const { documentDir } = useLoaderData({ from: "/" });
 
   const [recentFiles, setRecentFiles] = useAtom(recentFilesAtom);
   const store = useStore();
@@ -172,6 +183,102 @@ export default function NewTabHome({ id }: { id: string }) {
     [setTabs, setActiveTab, store, navigate],
   );
 
+  const handlePasteImport = useCallback(async () => {
+    let text: string;
+    try {
+      text = (await readText()) ?? "";
+    } catch {
+      notifications.show({
+        title: t("Import.Paste.Failed", "Paste Failed"),
+        message: t("Import.Paste.ClipboardUnavailable", "Could not read the clipboard."),
+        color: "red",
+      });
+      return;
+    }
+
+    if (!text.trim()) {
+      notifications.show({
+        title: t("Import.Paste.Failed", "Paste Failed"),
+        message: t("Import.Paste.ClipboardEmpty", "Clipboard is empty."),
+        color: "red",
+      });
+      return;
+    }
+
+    const type = detectPasteType(text);
+
+    if (type === "fen") {
+      const result = parseFenInput(text);
+      if (!result.ok) {
+        notifications.show({
+          title: t("Import.Paste.Failed", "Paste Failed"),
+          message: t("Import.Paste.InvalidFen", "Clipboard text is not a valid FEN."),
+          color: "red",
+        });
+        return;
+      }
+      setCurrentTab((prev) => {
+        const tree = defaultTree(result.parsedFen);
+        tree.headers.fen = result.parsedFen;
+        sessionStorage.setItem(prev.value, JSON.stringify({ version: 0, state: tree }));
+        return {
+          ...prev,
+          name: t("Home.Card.AnalysisBoard.Title"),
+          gameOrigin: { kind: "none" },
+          type: "analysis",
+        };
+      });
+      return;
+    }
+
+    let pgn = text;
+    if (type === "link") {
+      const resolved = await resolveGameLink(text.trim());
+      if (!resolved) {
+        notifications.show({
+          title: t("Import.Paste.Failed", "Paste Failed"),
+          message: t("Import.Paste.LinkUnrecognized", "Could not fetch the game from that link."),
+          color: "red",
+        });
+        return;
+      }
+      pgn = resolved;
+    }
+
+    let tree: Awaited<ReturnType<typeof parsePGN>>;
+    try {
+      tree = await parsePGN(pgn);
+    } catch {
+      // parsePGN already surfaces its own error notification
+      return;
+    }
+
+    setCurrentTab((prev) => {
+      sessionStorage.setItem(prev.value, JSON.stringify({ version: 0, state: tree }));
+      return {
+        ...prev,
+        name: getGameName(tree.headers),
+        gameOrigin: { kind: "none" },
+        type: "analysis",
+      };
+    });
+
+    try {
+      const dir = await getCollectionDir(documentDir, "imported");
+      const white = (tree.headers.white || "White").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const black = (tree.headers.black || "Black").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss-SSS");
+      await createFile({
+        filename: `${white}_vs_${black}_${timestamp}`,
+        filetype: "game",
+        pgn,
+        dir,
+      });
+    } catch {
+      // best-effort save into the collection; the game is already open regardless
+    }
+  }, [documentDir, setCurrentTab, t]);
+
   const cards = [
     {
       icon: <IconChess size={60} />,
@@ -220,6 +327,8 @@ export default function NewTabHome({ id }: { id: string }) {
       onClick: () => {
         setOpenModal(true);
       },
+      secondaryLabel: t("Home.Card.ImportGame.PasteButton", "Paste"),
+      onSecondaryClick: handlePasteImport,
     },
     {
       icon: <IconPuzzle size={60} />,
@@ -261,9 +370,20 @@ export default function NewTabHome({ id }: { id: string }) {
                   </Text>
                 </Box>
 
-                <Button variant="light" fullWidth mt="md" radius="md" onClick={card.onClick}>
-                  {card.label}
-                </Button>
+                {card.onSecondaryClick ? (
+                  <Group grow w="100%" mt="md" gap="xs">
+                    <Button variant="light" radius="md" onClick={card.onClick}>
+                      {card.label}
+                    </Button>
+                    <Button variant="light" radius="md" onClick={card.onSecondaryClick}>
+                      {card.secondaryLabel}
+                    </Button>
+                  </Group>
+                ) : (
+                  <Button variant="light" fullWidth mt="md" radius="md" onClick={card.onClick}>
+                    {card.label}
+                  </Button>
+                )}
               </Stack>
             </Card>
           ))}

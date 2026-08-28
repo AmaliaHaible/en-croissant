@@ -31,6 +31,7 @@
         "fs:default",
         "fs:write-all",
         "window-state:default",
+        "clipboard-manager:allow-read-text",
         {
             "identifier": "fs:scope-appdata-recursive",
             "allow": [
