@@ -24,7 +24,7 @@ use diesel::{
     prelude::*,
     r2d2::{ConnectionManager, Pool},
     sql_query,
-    sql_types::Text,
+    sql_types::{Integer, Text},
 };
 use pgn_reader::{BufferedReader, Nag, RawHeader, SanPlus, Skip, Visitor};
 use rayon::prelude::*;
@@ -762,6 +762,57 @@ fn check_index_exists(conn: &mut SqliteConnection) -> Result<bool, Error> {
     let query = sql_query("SELECT name FROM pragma_index_list('Games');");
     let indexes: Vec<IndexInfo> = query.load(conn)?;
     Ok(!indexes.is_empty())
+}
+
+fn ensure_game_analysis_table(db: &mut SqliteConnection) -> Result<(), Error> {
+    db.batch_execute(
+        "CREATE TABLE IF NOT EXISTS GameAnalysis (
+            GameID INTEGER PRIMARY KEY,
+            Label TEXT NOT NULL
+        );",
+    )?;
+    Ok(())
+}
+
+#[derive(QueryableByName, Debug)]
+struct GameAnalysisLabelRow {
+    #[diesel(sql_type = Text, column_name = "Label")]
+    label: String,
+}
+
+fn get_game_analysis_label_query(
+    db: &mut SqliteConnection,
+    game_id: i32,
+) -> Result<Option<String>, Error> {
+    let rows: Vec<GameAnalysisLabelRow> =
+        sql_query("SELECT Label FROM GameAnalysis WHERE GameID = ?")
+            .bind::<Integer, _>(game_id)
+            .load(db)?;
+    Ok(rows.into_iter().next().map(|r| r.label))
+}
+
+fn set_game_analysis_label_query(
+    db: &mut SqliteConnection,
+    game_id: i32,
+    label: Option<&str>,
+) -> Result<(), Error> {
+    match label {
+        Some(label) => {
+            sql_query(
+                "INSERT INTO GameAnalysis (GameID, Label) VALUES (?, ?)
+                 ON CONFLICT(GameID) DO UPDATE SET Label = excluded.Label",
+            )
+            .bind::<Integer, _>(game_id)
+            .bind::<Text, _>(label)
+            .execute(db)?;
+        }
+        None => {
+            sql_query("DELETE FROM GameAnalysis WHERE GameID = ?")
+                .bind::<Integer, _>(game_id)
+                .execute(db)?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2265,5 +2316,38 @@ mod tests {
             "import_metadata iterations={iterations} elapsed_ns={}",
             start.elapsed().as_nanos()
         );
+    }
+
+    #[test]
+    fn ensure_game_analysis_table_is_idempotent() {
+        let db = &mut setup_test_db();
+        ensure_game_analysis_table(db).unwrap();
+        ensure_game_analysis_table(db).unwrap();
+    }
+
+    #[test]
+    fn game_analysis_label_roundtrip() {
+        let db = &mut setup_test_db();
+        ensure_game_analysis_table(db).unwrap();
+
+        assert_eq!(get_game_analysis_label_query(db, 1).unwrap(), None);
+
+        set_game_analysis_label_query(db, 1, Some("Stockfish 16, depth 20 — 2026-08-29")).unwrap();
+        assert_eq!(
+            get_game_analysis_label_query(db, 1).unwrap(),
+            Some("Stockfish 16, depth 20 — 2026-08-29".to_string())
+        );
+
+        set_game_analysis_label_query(db, 1, Some("Stockfish 17, depth 24 — 2026-08-30")).unwrap();
+        assert_eq!(
+            get_game_analysis_label_query(db, 1).unwrap(),
+            Some("Stockfish 17, depth 24 — 2026-08-30".to_string())
+        );
+
+        // A different game's row is untouched.
+        assert_eq!(get_game_analysis_label_query(db, 2).unwrap(), None);
+
+        set_game_analysis_label_query(db, 1, None).unwrap();
+        assert_eq!(get_game_analysis_label_query(db, 1).unwrap(), None);
     }
 }
