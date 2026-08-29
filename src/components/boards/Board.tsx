@@ -25,6 +25,8 @@ import { Chessground, type ChessgroundRef } from "@/chessground/Chessground";
 import {
   autoPromoteAtom,
   bestMoveColorAtom,
+  bestMoveMatchColorAtom,
+  bestMoveMissColorAtom,
   bestMovesFamily,
   currentEvalOpenAtom,
   currentShowCommentsAtom,
@@ -310,32 +312,48 @@ function Board({
   // suggestion arrows always show (they're an explicit opt-in from the report settings);
   // plain/manual variation arrows stay gated behind the general toggle.
   if (currentNode.children.length > 1) {
-    for (const child of currentNode.children) {
-      if (child.move) {
-        const m = child.move as NormalMove;
-        const from = makeSquare(m.from);
-        const to = makeSquare(m.to);
-        const suggestionRank = getBestMoveSuggestionRank(child.annotations);
-        if (
-          (suggestionRank !== null || showVariationArrows) &&
-          from &&
-          to &&
-          !shapes.find((s) => s.orig === from && s.dest === to)
-        ) {
-          shapes.push({
-            orig: from,
-            dest: to,
-            brush: suggestionRank !== null ? `bestMove${suggestionRank}` : "variation",
-            modifiers: {
-              lineWidth:
-                suggestionRank !== null
-                  ? BEST_MOVE_BRUSH_TIERS[suggestionRank].lineWidth
-                  : MEDIUM_BRUSH,
-            },
-          });
+    const suggestionRanks = currentNode.children.map((c) =>
+      getBestMoveSuggestionRank(c.annotations),
+    );
+    const hasSuggestionSiblings = suggestionRanks.some((r, idx) => idx !== 0 && r !== null);
+
+    currentNode.children.forEach((child, idx) => {
+      if (!child.move) return;
+      const m = child.move as NormalMove;
+      const from = makeSquare(m.from);
+      const to = makeSquare(m.to);
+      if (!from || !to || shapes.find((s) => s.orig === from && s.dest === to)) return;
+
+      const suggestionRank = suggestionRanks[idx];
+      let brush: string | undefined;
+      let lineWidth: number | undefined;
+
+      if (idx === 0) {
+        // The move actually played: green when it matched an engine suggestion,
+        // yellow (small) when the position was analyzed but this move wasn't one of
+        // the top choices, otherwise the plain manual-variation arrow (if enabled).
+        if (suggestionRank !== null) {
+          brush = `bestMoveMatch${suggestionRank}`;
+          lineWidth = BEST_MOVE_BRUSH_TIERS[suggestionRank].lineWidth;
+        } else if (hasSuggestionSiblings) {
+          brush = "bestMoveMiss";
+          lineWidth = SMALL_BRUSH;
+        } else if (showVariationArrows) {
+          brush = "variation";
+          lineWidth = MEDIUM_BRUSH;
         }
+      } else if (suggestionRank !== null) {
+        brush = `bestMove${suggestionRank}`;
+        lineWidth = BEST_MOVE_BRUSH_TIERS[suggestionRank].lineWidth;
+      } else if (showVariationArrows) {
+        brush = "variation";
+        lineWidth = MEDIUM_BRUSH;
       }
-    }
+
+      if (brush) {
+        shapes.push({ orig: from, dest: to, brush, modifiers: { lineWidth } });
+      }
+    });
   }
 
   if (currentNode.shapes.length > 0) {
@@ -384,6 +402,30 @@ function Board({
       },
     ]),
   );
+
+  const bestMoveMatchColor = useAtomValue(bestMoveMatchColorAtom);
+  const bestMoveMatchBrushColor = theme.colors[bestMoveMatchColor][6];
+  const bestMoveMatchBrushes = Object.fromEntries(
+    BEST_MOVE_BRUSH_TIERS.map(({ opacity, lineWidth }, rank) => [
+      `bestMoveMatch${rank}`,
+      {
+        key: `bmm${rank}`,
+        color: bestMoveMatchBrushColor,
+        opacity,
+        lineWidth,
+      },
+    ]),
+  );
+
+  const bestMoveMissColor = useAtomValue(bestMoveMissColorAtom);
+  const bestMoveMissBrush = {
+    bestMoveMiss: {
+      key: "bmx",
+      color: theme.colors[bestMoveMissColor][6],
+      opacity: 0.75,
+      lineWidth: SMALL_BRUSH,
+    },
+  };
 
   const [enableBoardScroll] = useAtom(enableBoardScrollAtom);
   const [snapArrows] = useAtom(snapArrowsAtom);
@@ -633,6 +675,8 @@ function Board({
                       lineWidth: 10,
                     },
                     ...bestMoveBrushes,
+                    ...bestMoveMatchBrushes,
+                    ...bestMoveMissBrush,
                   } as unknown as DrawBrushes,
                   onChange: (shapes) => {
                     setShapes(shapes);

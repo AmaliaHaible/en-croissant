@@ -11,6 +11,8 @@ import { enginesAtom, referenceDbAtom } from "@/state/atoms";
 import { buildAnalysisLabel } from "@/utils/analysisLabel";
 import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 
+const MAX_BEST_MOVES_COUNT = 3;
+
 const defaultReportSettings = {
   novelty: true,
   reversed: true,
@@ -23,6 +25,12 @@ const defaultReportSettings = {
 };
 
 const reportSettingsAtom = atomWithStorage("report-settings", defaultReportSettings);
+
+function withDefaults(settings: Partial<typeof defaultReportSettings>) {
+  const merged = { ...defaultReportSettings, ...settings };
+  merged.bestMovesCount = Math.min(merged.bestMovesCount, MAX_BEST_MOVES_COUNT);
+  return merged;
+}
 
 function ReportModal({
   tab,
@@ -59,7 +67,7 @@ function ReportModal({
   const [reportSettings, setReportSettings] = useAtom(reportSettingsAtom);
 
   const form = useForm({
-    initialValues: { ...defaultReportSettings, ...reportSettings },
+    initialValues: withDefaults(reportSettings),
     validate: {
       engine: (value) => {
         if (!value) return t("Board.Analysis.EngineRequired");
@@ -78,7 +86,7 @@ function ReportModal({
           ? localEngines[0].id
           : reportSettings.engine;
 
-    form.setValues({ ...defaultReportSettings, ...reportSettings, engine });
+    form.setValues({ ...withDefaults(reportSettings), engine });
   }, [localEngines, reportSettings]);
 
   function analyze() {
@@ -207,7 +215,7 @@ function ReportModal({
                 label={t("Board.Analysis.BestMovesCount")}
                 description={t("Board.Analysis.BestMovesCount.Desc")}
                 min={1}
-                max={4}
+                max={MAX_BEST_MOVES_COUNT}
                 {...form.getInputProps("bestMovesCount")}
               />
               <NumberInput

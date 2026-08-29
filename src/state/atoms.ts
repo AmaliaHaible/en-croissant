@@ -263,6 +263,14 @@ export const pieceSetAtom = atomWithStorage<string>("piece-set", "staunty");
 export const boardImageAtom = atomWithStorage<string>("board-image", "gray.svg");
 export const primaryColorAtom = atomWithStorage<MantineColor>("mantine-primary-color", "blue");
 export const bestMoveColorAtom = atomWithStorage<MantineColor>("best-move-color", "teal");
+export const bestMoveMatchColorAtom = atomWithStorage<MantineColor>(
+    "best-move-match-color",
+    "green",
+);
+export const bestMoveMissColorAtom = atomWithStorage<MantineColor>(
+    "best-move-miss-color",
+    "yellow",
+);
 export const sessionsAtom = atomWithStorage<Session[]>("sessions", []);
 export const nativeBarAtom = atomWithStorage<boolean>("native-bar", false);
 export const telemetryEnabledAtom = atomWithStorage<boolean>("telemetry-enabled", true, undefined, {

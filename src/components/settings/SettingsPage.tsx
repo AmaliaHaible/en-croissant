@@ -37,6 +37,8 @@ import {
   autoPromoteAtom,
   autoSaveAtom,
   bestMoveColorAtom,
+  bestMoveMatchColorAtom,
+  bestMoveMissColorAtom,
   enableBoardScrollAtom,
   eraseDrawablesOnClickAtom,
   forcedEnPassantAtom,
@@ -517,6 +519,30 @@ export default function Page() {
         render: () => (
           <div style={{ width: 200 }}>
             <ColorControl colorAtom={bestMoveColorAtom} />
+          </div>
+        ),
+      },
+      {
+        id: "best-move-match-color",
+        category: "appearance",
+        title: t("Settings.Appearance.BestMoveMatchColor"),
+        description: t("Settings.Appearance.BestMoveMatchColor.Desc"),
+        keywords: ["best", "move", "color", "arrow", "match", "report"],
+        render: () => (
+          <div style={{ width: 200 }}>
+            <ColorControl colorAtom={bestMoveMatchColorAtom} />
+          </div>
+        ),
+      },
+      {
+        id: "best-move-miss-color",
+        category: "appearance",
+        title: t("Settings.Appearance.BestMoveMissColor"),
+        description: t("Settings.Appearance.BestMoveMissColor.Desc"),
+        keywords: ["best", "move", "color", "arrow", "miss", "off-book", "report"],
+        render: () => (
+          <div style={{ width: 200 }}>
+            <ColorControl colorAtom={bestMoveMissColorAtom} />
           </div>
         ),
       },
