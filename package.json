@@ -1,6 +1,6 @@
 {
   "name": "en-croissant",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "En Croissant 2.0 - The Ultimate Modern Chess Toolkit & Database",
   "author": "Jai Kapoor <jaipkapoor99@gmail.com>",
@@ -20,6 +20,7 @@
     "build": "tauri build --no-bundle",
     "build:frontend": "pnpm build-vite",
     "build:desktop": "tauri build --no-bundle",
+    "build:installer": "tauri build --bundles nsis",
     "tauri": "tauri",
     "format": "oxfmt",
     "test": "vitest run",

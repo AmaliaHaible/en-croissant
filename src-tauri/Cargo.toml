@@ -1,6 +1,6 @@
 [package]
 name = "en-croissant"
-version = "2.0.0"
+version = "2.1.0"
 description = "En Croissant 2.0 - The Ultimate Modern Chess Toolkit & Database"
 authors = ["Jai Kapoor <jaipkapoor99@gmail.com>"]
 license = "GPL-3.0-only"

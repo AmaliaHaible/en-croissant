@@ -46,7 +46,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
-  "version": "2.0.0",
+  "version": "2.1.0",
   "productName": "En Croissant 2.0",
   "mainBinaryName": "en-croissant-2",
   "identifier": "org.encroissant.v2",
