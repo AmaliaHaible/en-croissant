@@ -433,13 +433,11 @@ function BoardGame() {
       }
 
       let targetPath = filePathOverride || matchSavePath;
-      let isNewFile = false;
       if (!targetPath) {
         const category = classifyPlayers(players.white.type, players.black.type);
         const collectionDir = await getCollectionDir(docDir, category);
         targetPath = await resolve(collectionDir, defaultFileName);
         setMatchSavePath(targetPath);
-        isNewFile = true;
       }
 
       try {
@@ -449,6 +447,7 @@ function BoardGame() {
         } catch {
           // File does not exist yet
         }
+        const isNewFile = !existing.trim();
         const updated = existing.trim() ? `${existing.trim()}\n\n${pgnText}` : pgnText;
         await writeTextFile(targetPath, updated);
 
@@ -629,7 +628,11 @@ function BoardGame() {
           effectiveGameCount > 1
             ? `${customPrefix}_${timestamp}.pgn`
             : `${p1Name}_vs_${p2Name}_${timestamp}.pgn`;
-        const defaultMatchFile = await resolve(docDir, seriesFileName);
+        const collectionDir = await getCollectionDir(
+          docDir,
+          classifyPlayers(playerSettings.white.type, playerSettings.black.type),
+        );
+        const defaultMatchFile = await resolve(collectionDir, seriesFileName);
         setMatchSavePath(defaultMatchFile);
       });
     }
