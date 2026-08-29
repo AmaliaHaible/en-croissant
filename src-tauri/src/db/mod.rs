@@ -47,7 +47,7 @@ use std::{
 };
 use tauri::{Emitter, State};
 
-use log::info;
+use log::{info, warn};
 use tauri_specta::Event as _;
 
 use self::encoding::{
@@ -205,7 +205,9 @@ fn get_db_or_create(
                 .build(ConnectionManager::<SqliteConnection>::new(db_path))?;
             {
                 let mut conn = pool.get()?;
-                ensure_game_analysis_table(&mut conn)?;
+                if let Err(e) = ensure_game_analysis_table(&mut conn) {
+                    warn!("could not ensure GameAnalysis table for {db_path}: {e}");
+                }
             }
             state
                 .connection_pool

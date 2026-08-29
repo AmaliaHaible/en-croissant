@@ -40,3 +40,8 @@ test("resolveAnalysisLabel returns null when there is no analysis label", () => 
     expect(resolveAnalysisLabel(baseHeaders)).toBeNull();
     expect(resolveAnalysisLabel({ ...baseHeaders, other: { ECO: "B90" } })).toBeNull();
 });
+
+test("resolveAnalysisLabel returns null (not empty string) when Analysis is an empty string", () => {
+    const headers: GameHeaders = { ...baseHeaders, other: { Analysis: "" } };
+    expect(resolveAnalysisLabel(headers)).toBeNull();
+});

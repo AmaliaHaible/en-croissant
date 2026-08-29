@@ -99,7 +99,7 @@ export function mergeAnalysisLabel(headers: GameHeaders, label: string | null): 
 }
 
 export function resolveAnalysisLabel(headers: GameHeaders): string | null {
-    return headers.other?.Analysis ?? null;
+    return headers.other?.Analysis || null;
 }
 
 export async function createTab({
