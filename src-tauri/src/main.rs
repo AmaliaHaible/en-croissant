@@ -62,8 +62,8 @@ use crate::sound::get_sound_server_port;
 use crate::{
     chess::get_best_moves,
     db::{
-        delete_duplicated_games, edit_db_info, get_db_info, get_games, get_players, merge_players,
-        write_db_game,
+        delete_duplicated_games, edit_db_info, get_db_info, get_game_analysis_label, get_games,
+        get_players, merge_players, set_game_analysis_label, write_db_game,
     },
     fs::{download_file, file_exists, get_file_metadata},
     opening::{
@@ -147,6 +147,8 @@ fn main() {
             edit_db_info,
             delete_db_game,
             write_db_game,
+            get_game_analysis_label,
+            set_game_analysis_label,
             delete_database,
             export_to_pgn,
             authenticate,

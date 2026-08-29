@@ -270,6 +270,22 @@ async writeDbGame(file: string, gameId: number, pgn: string) : Promise<Result<nu
     else return { status: "error", error: e  as any };
 }
 },
+async getGameAnalysisLabel(file: string, gameId: number) : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_game_analysis_label", { file, gameId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setGameAnalysisLabel(file: string, gameId: number, label: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_game_analysis_label", { file, gameId, label }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async deleteDatabase(file: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_database", { file }) };
