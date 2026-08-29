@@ -2,7 +2,13 @@ import { fetch } from "@tauri-apps/plugin-http";
 import type { Platform } from "@tauri-apps/plugin-os";
 import useSWR from "swr";
 import { z } from "zod";
-import { type BestMoves, commands, type EngineOptions, type GoMode, type UciOptionConfig } from "@/bindings";
+import {
+    type BestMoves,
+    commands,
+    type EngineOptions,
+    type GoMode,
+    type UciOptionConfig,
+} from "@/bindings";
 import { type EngineSettings, engineVariantSchema } from "./engineVariants";
 import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
@@ -49,7 +55,9 @@ export function backfillRequiredSettings(
         }
     }
 
-    const syzygyOption = uciOptions.find((option) => option.value.name.toLowerCase() === "syzygypath");
+    const syzygyOption = uciOptions.find(
+        (option) => option.value.name.toLowerCase() === "syzygypath",
+    );
     if (
         syzygyOption &&
         globalSyzygyPath &&
@@ -97,6 +105,33 @@ export const engineSchema = z.preprocess(
     z.union([localEngineSchema, remoteEngineSchema]),
 );
 export type Engine = z.output<typeof engineSchema>;
+
+/**
+ * Resolves a persisted engine selection (a bare engine id, e.g. the coach's
+ * `hint-engine-config` / `live-eval-engine-config`) against the current engine
+ * list.
+ *
+ * Resolves against *every* local engine, not just loaded ones: an engine that
+ * merely isn't loaded right now is still the user's choice. The coach settings
+ * dropdown only offers loaded engines, so if this collapsed an
+ * unloaded-but-configured selection to `null`, `EnginesSelect`'s
+ * auto-select-first-engine effect would mistake it for "no choice made" and
+ * overwrite the stored id with whatever engine happens to be loaded.
+ *
+ * Returns `null` only when nothing is configured or the configured engine no
+ * longer exists at all (deleted) — the cases where auto-selecting a default is
+ * genuinely the right thing to do.
+ */
+export function resolveConfiguredEngine(
+    engineId: string | null | undefined,
+    engines: Engine[] | null | undefined,
+): LocalEngine | null {
+    if (!engineId) return null;
+    return (
+        (engines ?? []).find((e): e is LocalEngine => e.type === "local" && e.id === engineId) ??
+        null
+    );
+}
 
 export function stopEngine(engine: LocalEngine, tab: string): Promise<void> {
     return commands.stopEngine(engine.id, tab).then((r) => {

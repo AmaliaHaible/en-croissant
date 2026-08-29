@@ -54,16 +54,25 @@ export function EnginesSelect({
     }
   }, [engine, engines, setEngine]);
 
+  // The selected engine may not pass `filter` (e.g. the coach's configured
+  // engine is currently unloaded). It's still the real selection, so keep it in
+  // the option list — otherwise the Select renders blank and picking anything
+  // from `onChange` couldn't resolve back to it either.
+  const optionEngines = useMemo(
+    () => (engine && !engines.some((e) => e.id === engine.id) ? [engine, ...engines] : engines),
+    [engine, engines],
+  );
+
   return (
     <Select
       allowDeselect={false}
-      data={engines.map((e) => ({
+      data={optionEngines.map((e) => ({
         label: e.name,
         value: e.id,
       }))}
       value={engine?.id ?? ""}
       onChange={(e) => {
-        setEngine(engines.find((engine) => engine.id === e) ?? null);
+        setEngine(optionEngines.find((engine) => engine.id === e) ?? null);
       }}
     />
   );

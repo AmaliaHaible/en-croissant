@@ -13,6 +13,16 @@ describe("pickAutoEngine", () => {
         expect(pickAutoEngine(a, [])).toBe(a);
     });
 
+    it("keeps a selected engine that is no longer among the offered engines (e.g. it was unloaded)", () => {
+        // The coach settings dropdown only offers loaded engines. When the
+        // user's configured engine is unloaded it won't be in `engines`, but it
+        // is still a real, intentional selection and must not be replaced with
+        // the first loaded engine.
+        const configured = { id: "sf" };
+        const offered = [{ id: "lc0" }];
+        expect(pickAutoEngine(configured, offered)).toBe(configured);
+    });
+
     it("keeps the current engine when the list re-fetches a new object with the same id", () => {
         // Regression test: enginesAtom's async storage re-parses JSON on every
         // refetch, so the "same" engine comes back as a brand-new object

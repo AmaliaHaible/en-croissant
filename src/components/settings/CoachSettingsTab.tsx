@@ -14,7 +14,7 @@ import {
   reportSettingsAtom,
   withReportSettingsDefaults,
 } from "@/state/atoms";
-import type { LocalEngine } from "@/utils/engines";
+import { type LocalEngine, resolveConfiguredEngine } from "@/utils/engines";
 
 function CoachEngineSection({
   configAtom,
@@ -28,14 +28,17 @@ function CoachEngineSection({
   const { t } = useTranslation();
   const [config, setConfig] = useAtom(configAtom);
   const allEngines = useAtomValue(enginesAtom);
-  // Must match what `useLiveCoachEngine`/`useCoachHint` accept: they only ever
-  // use loaded local engines and silently fall back to the first loaded one
-  // otherwise, so offering unloaded engines here would let the user "select" an
-  // engine the coach never actually runs.
-  const localEngines = (allEngines ?? []).filter(
+  // The dropdown only *offers* loaded engines — that's what
+  // `useLiveCoachEngine`/`useCoachHint` can actually run. But the currently
+  // configured engine is resolved against every local engine: an engine that's
+  // merely unloaded right now is still the user's choice, and collapsing it to
+  // `null` here would make `EnginesSelect` auto-select (and persist) a
+  // different engine. See `resolveConfiguredEngine`.
+  const loadedEngines = (allEngines ?? []).filter(
     (e): e is LocalEngine => e.type === "local" && !!e.loaded,
   );
-  const selectedEngine = localEngines.find((e) => e.id === config.engineId) ?? null;
+  const selectedEngine = resolveConfiguredEngine(config.engineId, allEngines);
+  const selectedEngineUnloaded = !!selectedEngine && !selectedEngine.loaded;
 
   const setEngine = (engine: LocalEngine | null) => {
     setConfig((prev: CoachEngineConfig) => ({
@@ -55,12 +58,17 @@ function CoachEngineSection({
       <Text size="xs" c="dimmed">
         {description}
       </Text>
-      {localEngines.length === 0 ? (
+      {loadedEngines.length === 0 && !selectedEngine ? (
         <Text size="xs" c="dimmed">
           {t("Settings.Coach.NoEngines")}
         </Text>
       ) : (
         <EnginesSelect engine={selectedEngine} setEngine={setEngine} filter={(e) => !!e.loaded} />
+      )}
+      {selectedEngineUnloaded && (
+        <Text size="xs" c="orange">
+          {t("Settings.Coach.EngineNotLoaded")}
+        </Text>
       )}
       {selectedEngine && (
         <EngineVariantSelect

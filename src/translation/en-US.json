@@ -574,6 +574,7 @@
     "Settings.Coach.AutoGenerateReport": "Auto-generate report",
     "Settings.Coach.AutoGenerateReport.Desc": "Automatically generate a report when opening a game that doesn't have one yet",
     "Settings.Coach.Desc": "Configure the engines used for live evaluation and hints during play, and set the defaults for generated reports",
+    "Settings.Coach.EngineNotLoaded": "This engine isn't loaded right now. Your choice is kept, but the coach falls back to another loaded engine until you load it in Settings > Engines.",
     "Settings.Coach.Hint": "Hint",
     "Settings.Coach.Hint.Desc": "Setting the go mode to \"Infinite\" makes the hint run continuously in the background for the whole game (better hints, more CPU). Any other go mode searches only when you click Hint, and reveals the move once that search finishes.",
     "Settings.Coach.LiveEval": "Live Evaluation",
