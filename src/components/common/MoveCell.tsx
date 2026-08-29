@@ -21,7 +21,7 @@ interface MoveCellProps {
   onContextMenu: (e: React.MouseEvent) => void;
   fullWidth?: boolean;
   rightAccessory?: ReactNode;
-  ref?: RefObject<HTMLButtonElement>;
+  ref?: RefObject<HTMLButtonElement | null>;
 }
 
 function MoveCell(props: MoveCellProps) {
