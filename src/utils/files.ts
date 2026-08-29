@@ -9,7 +9,7 @@ import { commands } from "@/bindings";
 import { getDisplayName, type FileMetadata } from "@/components/files/file";
 import { addRecentFileAtom, tabFamily } from "@/state/atoms";
 import { unwrap } from "@/utils/unwrap";
-import { parsePGN } from "./chess";
+import { parsePGNHeaders } from "./chess";
 import { createTab, isInTempDir, type Tab } from "./tabs";
 import { getGameName } from "./treeReducer";
 
@@ -59,8 +59,8 @@ export async function openFile(
         };
 
         if (pgn) {
-            const tree = await parsePGN(pgn);
-            tabName = getGameName(tree.headers);
+            const headers = await parsePGNHeaders(pgn);
+            tabName = getGameName(headers);
             recentName = tabName;
         } else {
             tabName = file;

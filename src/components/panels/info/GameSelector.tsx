@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { commands } from "@/bindings";
 import ConfirmModal from "@/components/common/ConfirmModal";
 import { fontSizeAtom } from "@/state/atoms";
-import { parsePGN } from "@/utils/chess";
+import { parsePGNHeaders } from "@/utils/chess";
 import { formatNumber } from "@/utils/format";
 import { getGameName } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
@@ -40,7 +40,7 @@ export default function GameSelector({
       const data = unwrap(await commands.readGames(path, startIndex, stopIndex));
       const newGames = new Map(games);
       data.forEach(async (game, index) => {
-        const { headers } = await parsePGN(game);
+        const headers = await parsePGNHeaders(game);
         newGames.set(startIndex + index, getGameName(headers));
       });
       setGames(newGames);

@@ -361,6 +361,11 @@ function innerParsePGN(tokens: Token[], fen: string = INITIAL_FEN, halfMoves = 0
         root.halfMoves += 1;
     }
 
+    // Kept in sync with `root` by playing moves directly on it, instead of
+    // re-parsing it from `root.fen` on every San token (which was the
+    // dominant cost when parsing heavily annotated/long PGNs).
+    let [pos] = positionFromFen(fen);
+
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
 
@@ -426,8 +431,7 @@ function innerParsePGN(tokens: Token[], fen: string = INITIAL_FEN, halfMoves = 0
                 return ANNOTATION_INFO[a].nag - ANNOTATION_INFO[b].nag;
             });
         } else if (token.type === "San") {
-            const [pos, error] = positionFromFen(root.fen);
-            if (error) {
+            if (!pos) {
                 continue;
             }
             let move = parseSan(pos, token.value);
@@ -455,6 +459,17 @@ function innerParsePGN(tokens: Token[], fen: string = INITIAL_FEN, halfMoves = 0
         }
     }
     return tree;
+}
+
+/**
+ * Extracts only the headers from a PGN, without building the move tree.
+ * Prefer this over `parsePGN` when only the headers are needed (e.g. game
+ * list labels), since building the tree is much more expensive for long or
+ * heavily annotated games.
+ */
+export async function parsePGNHeaders(pgn: string): Promise<GameHeaders> {
+    const tokens = unwrap(await commands.lexPgn(pgn));
+    return getPgnHeaders(tokens);
 }
 
 export async function parsePGN(pgn: string, initialFen?: string): Promise<TreeState> {
