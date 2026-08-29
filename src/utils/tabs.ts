@@ -93,6 +93,15 @@ export function genID() {
     return S4() + S4();
 }
 
+export function mergeAnalysisLabel(headers: GameHeaders, label: string | null): GameHeaders {
+    if (!label) return headers;
+    return { ...headers, other: { ...headers.other, Analysis: label } };
+}
+
+export function resolveAnalysisLabel(headers: GameHeaders): string | null {
+    return headers.other?.Analysis ?? null;
+}
+
 export async function createTab({
     tab,
     setTabs,
@@ -119,6 +128,19 @@ export async function createTab({
             if (position) {
                 tree.position = position;
             }
+        }
+        if (gameOrigin?.kind === "database") {
+            let label: string | null = null;
+            try {
+                const result = await commands.getGameAnalysisLabel(
+                    gameOrigin.database,
+                    gameOrigin.gameId,
+                );
+                label = result.status === "ok" ? result.data : null;
+            } catch {
+                label = null;
+            }
+            tree.headers = mergeAnalysisLabel(tree.headers, label);
         }
         sessionStorage.setItem(id, JSON.stringify({ version: 0, state: tree }));
     }
@@ -178,6 +200,11 @@ export async function saveToFile({
 
     if (databaseOrigin) {
         await commands.writeDbGame(databaseOrigin.database, databaseOrigin.gameId, pgn);
+        await commands.setGameAnalysisLabel(
+            databaseOrigin.database,
+            databaseOrigin.gameId,
+            resolveAnalysisLabel(store.getState().headers),
+        );
         store.getState().save();
         return;
     }
