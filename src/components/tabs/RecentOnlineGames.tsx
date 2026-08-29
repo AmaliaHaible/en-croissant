@@ -18,11 +18,18 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NormalizedGame } from "@/bindings";
-import { activeTabAtom, databaseConversionStateAtom, sessionsAtom, tabsAtom } from "@/state/atoms";
+import {
+  activeTabAtom,
+  databaseConversionStateAtom,
+  excludedOnlinePlayersAtom,
+  sessionsAtom,
+  tabsAtom,
+} from "@/state/atoms";
 import {
   downloadAccountGames,
   getAccountDbFilename,
   getLinkedAccounts,
+  getPlayerGroups,
   getSessionTotalGames,
 } from "@/utils/account";
 import { getDatabases, query_games } from "@/utils/db";
@@ -91,6 +98,7 @@ export default function RecentOnlineGames() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const sessions = useAtomValue(sessionsAtom);
+  const excludedPlayers = useAtomValue(excludedOnlinePlayersAtom);
   const [, setTabs] = useAtom(tabsAtom);
   const setActiveTab = useSetAtom(activeTabAtom);
   const [, setConversionState] = useAtom(databaseConversionStateAtom);
@@ -98,8 +106,15 @@ export default function RecentOnlineGames() {
   const [games, setGames] = useState<OnlineGameRow[]>([]);
   const [downloading, setDownloading] = useState(false);
 
+  const includedPlayerGroups = getPlayerGroups(sessions).filter(
+    (group) => !excludedPlayers.includes(group.name),
+  );
+
   const loadGames = useCallback(async () => {
-    const accounts = getLinkedAccounts(sessions);
+    const includedSessions = getPlayerGroups(sessions)
+      .filter((group) => !excludedPlayers.includes(group.name))
+      .flatMap((group) => group.sessions);
+    const accounts = getLinkedAccounts(includedSessions);
     if (accounts.length === 0) {
       setGames([]);
       return;
@@ -131,7 +146,7 @@ export default function RecentOnlineGames() {
 
     rows.sort((a, b) => parseGameTimestamp(b.game) - parseGameTimestamp(a.game));
     setGames(rows.slice(0, RECENT_ONLINE_GAMES_LIMIT));
-  }, [sessions]);
+  }, [sessions, excludedPlayers]);
 
   useEffect(() => {
     loadGames();
@@ -211,6 +226,14 @@ export default function RecentOnlineGames() {
         <Stack align="center" justify="center" h={200} gap="xs">
           <IconClock size={48} style={{ opacity: 0.3 }} />
           <Text c="dimmed">{t("Home.RecentOnlineGames.NoAccounts")}</Text>
+          <Button variant="light" size="xs" onClick={() => navigate({ to: "/accounts" })}>
+            {t("Home.RecentOnlineGames.GoToAccounts")}
+          </Button>
+        </Stack>
+      ) : includedPlayerGroups.length === 0 ? (
+        <Stack align="center" justify="center" h={200} gap="xs">
+          <IconClock size={48} style={{ opacity: 0.3 }} />
+          <Text c="dimmed">{t("Home.RecentOnlineGames.AllPlayersExcluded")}</Text>
           <Button variant="light" size="xs" onClick={() => navigate({ to: "/accounts" })}>
             {t("Home.RecentOnlineGames.GoToAccounts")}
           </Button>

@@ -3,16 +3,19 @@ import {
   Divider,
   Group,
   ScrollArea,
-  SimpleGrid,
   Stack,
+  Switch,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { IconCheck, IconEdit, IconX } from "@tabler/icons-react";
 import { useAtom, useAtomValue } from "jotai";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { DatabaseInfo } from "@/bindings";
-import { sessionsAtom } from "@/state/atoms";
+import { excludedOnlinePlayersAtom, sessionsAtom } from "@/state/atoms";
+import { getPlayerGroups } from "@/utils/account";
 import { getChessComAccount, getStats } from "@/utils/chess.com/api";
 import { getLichessAccount } from "@/utils/lichess/api";
 import type { Session } from "@/utils/session";
@@ -29,16 +32,7 @@ function AccountCards({
   onAddAccount: () => void;
 }) {
   const sessions = useAtomValue(sessionsAtom);
-  const playerNames = Array.from(
-    new Set(sessions.map((s) => s.player ?? s.lichess?.username ?? s.chessCom?.username)),
-  );
-
-  const playerSessions = playerNames.map((name) => ({
-    name,
-    sessions: sessions.filter(
-      (s) => s.player === name || s.lichess?.username === name || s.chessCom?.username === name,
-    ),
-  }));
+  const playerSessions = getPlayerGroups(sessions);
 
   if (sessions.length === 0) {
     return <EmptyAccounts onAddAccount={onAddAccount} />;
@@ -50,7 +44,7 @@ function AccountCards({
         {playerSessions.map(({ name, sessions }) => (
           <PlayerSession
             key={name}
-            name={name!}
+            name={name}
             sessions={sessions}
             databases={databases}
             setDatabases={setDatabases}
@@ -72,7 +66,10 @@ function PlayerSession({
   databases: DatabaseInfo[];
   setDatabases: React.Dispatch<React.SetStateAction<DatabaseInfo[]>>;
 }) {
+  const { t } = useTranslation();
   const [, setSessions] = useAtom(sessionsAtom);
+  const [excludedPlayers, setExcludedPlayers] = useAtom(excludedOnlinePlayersAtom);
+  const included = !excludedPlayers.includes(name);
   const [edit, setEdit] = useState(false);
   const [text, setText] = useState(name);
   useEffect(() => {
@@ -104,6 +101,18 @@ function PlayerSession({
           </Text>
         )}
         <Group>
+          <Tooltip label={t("Home.Accounts.IncludeInStartScreen")}>
+            <Switch
+              size="sm"
+              checked={included}
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
+                setExcludedPlayers((prev) =>
+                  checked ? prev.filter((p) => p !== name) : [...prev, name],
+                );
+              }}
+            />
+          </Tooltip>
           {edit ? (
             <ActionIcon
               size="sm"
@@ -122,6 +131,11 @@ function PlayerSession({
                     return s;
                   }),
                 );
+                if (text !== name) {
+                  setExcludedPlayers((prev) =>
+                    prev.includes(name) ? [...prev.filter((p) => p !== name), text] : prev,
+                  );
+                }
               }}
             >
               <IconCheck />
@@ -142,7 +156,7 @@ function PlayerSession({
             size="sm"
             variant="subtle"
             color="red"
-            onClick={() =>
+            onClick={() => {
               setSessions((sessions) =>
                 sessions.filter(
                   (s) =>
@@ -150,8 +164,9 @@ function PlayerSession({
                     s.lichess?.username !== name &&
                     s.chessCom?.username !== name,
                 ),
-              )
-            }
+              );
+              setExcludedPlayers((prev) => prev.filter((p) => p !== name));
+            }}
           >
             <IconX />
           </ActionIcon>

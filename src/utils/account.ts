@@ -15,6 +15,25 @@ export type LinkedAccount = {
     token?: string;
 };
 
+export type PlayerGroup = {
+    name: string;
+    sessions: Session[];
+};
+
+export function getPlayerGroups(sessions: Session[]): PlayerGroup[] {
+    const playerNames = Array.from(
+        new Set(sessions.map((s) => s.player ?? s.lichess?.username ?? s.chessCom?.username)),
+    ).filter((name): name is string => !!name);
+
+    return playerNames.map((name) => ({
+        name,
+        sessions: sessions.filter(
+            (s) =>
+                s.player === name || s.lichess?.username === name || s.chessCom?.username === name,
+        ),
+    }));
+}
+
 export function getLinkedAccounts(sessions: Session[]): LinkedAccount[] {
     const accounts: LinkedAccount[] = [];
     for (const session of sessions) {

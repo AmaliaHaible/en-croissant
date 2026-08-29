@@ -300,6 +300,7 @@ export const bestMoveMissColorAtom = atomWithStorage<MantineColor>(
     "yellow",
 );
 export const sessionsAtom = atomWithStorage<Session[]>("sessions", []);
+export const excludedOnlinePlayersAtom = atomWithStorage<string[]>("excluded-online-players", []);
 export const nativeBarAtom = atomWithStorage<boolean>("native-bar", false);
 export const telemetryEnabledAtom = atomWithStorage<boolean>("telemetry-enabled", true, undefined, {
     getOnInit: true,
