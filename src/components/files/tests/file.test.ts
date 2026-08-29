@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { getDisplayName, getEntryDisplayName, normalizeFileInfoMetadata } from "../file";
+import {
+    getDisplayName,
+    getEntryDisplayName,
+    normalizeFileInfoMetadata,
+    parseInfoDisplayName,
+} from "../file";
 
 test("normalizeFileInfoMetadata fills in missing fields from the fallback", () => {
     const result = normalizeFileInfoMetadata(null, {
@@ -50,6 +55,20 @@ test("getDisplayName falls back to the technical name when displayName is empty"
         metadata: { type: "game" as const, tags: [], displayName: "", createdAt: 0 },
     };
     expect(getDisplayName(file)).toBe("Alice_vs_Bob_2026-08-28");
+});
+
+test("parseInfoDisplayName returns the stored display name", () => {
+    expect(
+        parseInfoDisplayName(
+            JSON.stringify({ type: "game", tags: [], displayName: "Alice vs Bob", createdAt: 0 }),
+        ),
+    ).toBe("Alice vs Bob");
+});
+
+test("parseInfoDisplayName returns null for empty or missing display names and invalid JSON", () => {
+    expect(parseInfoDisplayName(JSON.stringify({ displayName: "" }))).toBeNull();
+    expect(parseInfoDisplayName(JSON.stringify({ type: "game" }))).toBeNull();
+    expect(parseInfoDisplayName("not json")).toBeNull();
 });
 
 test("getEntryDisplayName uses the display name for files and the raw name for directories", () => {

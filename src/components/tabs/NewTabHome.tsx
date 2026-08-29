@@ -53,6 +53,7 @@ import { parsePGN } from "@/utils/chess";
 import { createFile } from "@/utils/files";
 import Chessboard from "../icons/Chessboard";
 import { FileIcon } from "@/components/files/FileIcon";
+import { readInfoDisplayName } from "@/components/files/file";
 import RecentOnlineGames from "./RecentOnlineGames";
 
 dayjs.extend(relativeTime);
@@ -77,7 +78,20 @@ function RecentFileDuePositions({ file }: { file: string }) {
 }
 
 function RecentFileRow({ file, onOpen }: { file: RecentFile; onOpen: (file: RecentFile) => void }) {
-  const displayName = file.name.replace(/\.pgn$/i, "");
+  const fallbackName = file.name.replace(/\.pgn$/i, "");
+  const [displayName, setDisplayName] = useState(fallbackName);
+
+  useEffect(() => {
+    let active = true;
+    readInfoDisplayName(file.path)
+      .then((name) => {
+        if (active) setDisplayName(name || fallbackName);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [file.path, fallbackName]);
 
   return (
     <UnstyledButton
@@ -150,9 +164,10 @@ export default function NewTabHome({ id }: { id: string }) {
   const openRecentFile = useCallback(
     async (file: RecentFile) => {
       const pgn = unwrap(await commands.readGames(file.path, 0, 0));
+      const displayName = (await readInfoDisplayName(file.path)) || file.name;
       const tabId = await createTab({
         tab: {
-          name: file.name,
+          name: displayName,
           type: "analysis",
         },
         setTabs,
@@ -169,7 +184,7 @@ export default function NewTabHome({ id }: { id: string }) {
             metadata: {
               type: file.type,
               tags: [],
-              displayName: file.name,
+              displayName,
               createdAt: Date.now(),
             },
             lastModified: Math.floor(Date.now() / 1000),
@@ -180,7 +195,7 @@ export default function NewTabHome({ id }: { id: string }) {
         store.set(tabFamily(tabId), "practice");
       }
       store.set(addRecentFileAtom, {
-        name: file.name,
+        name: displayName,
         path: file.path,
         type: file.type,
       });

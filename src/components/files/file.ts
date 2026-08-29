@@ -49,6 +49,28 @@ export function getDisplayName(file: Pick<FileMetadata, "name" | "metadata">): s
     return file.metadata.displayName || file.name;
 }
 
+/** Extracts a non-empty `displayName` from the raw contents of a `.info` file, or null. */
+export function parseInfoDisplayName(rawJson: string): string | null {
+    try {
+        const displayName = (JSON.parse(rawJson) as Partial<FileInfoMetadata> | null)?.displayName;
+        return typeof displayName === "string" && displayName.length > 0 ? displayName : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Reads the pretty display name stored alongside a `.pgn` in its `.info` file, or null. */
+export async function readInfoDisplayName(path: string): Promise<string | null> {
+    if (!path.endsWith(".pgn")) {
+        return null;
+    }
+    const metadataPath = path.replace(".pgn", ".info");
+    if (!(await exists(metadataPath))) {
+        return null;
+    }
+    return parseInfoDisplayName(await readTextFile(metadataPath));
+}
+
 export function getEntryDisplayName(entry: FileMetadata | Directory): string {
     return entry.type === "file" ? getDisplayName(entry) : entry.name;
 }
