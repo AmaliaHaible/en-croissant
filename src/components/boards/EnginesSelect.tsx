@@ -4,6 +4,21 @@ import { useEffect, useMemo } from "react";
 import { enginesAtom } from "@/state/atoms";
 import type { LocalEngine } from "@/utils/engines";
 
+/**
+ * Picks which engine should be considered selected, auto-selecting the first
+ * available one when nothing is selected yet. Must return the exact same
+ * `engine` reference (not just an equal-by-id one) when no auto-selection is
+ * needed: the async engines list is re-parsed from disk on every refetch, so
+ * a same-id-but-new-reference engine here does NOT mean the user picked a
+ * different engine, and callers reset engine-specific settings (like variant)
+ * whenever this causes them to call `setEngine`.
+ */
+export function pickAutoEngine<T extends { id: string }>(engine: T | null, engines: T[]): T | null {
+  if (engines.length === 0) return engine;
+  if (engine === null) return engines[0];
+  return engine;
+}
+
 export function EnginesSelect({
   engine,
   setEngine,
@@ -33,14 +48,9 @@ export function EnginesSelect({
   }, [rawEngines]);
 
   useEffect(() => {
-    if (engines.length === 0) return;
-    if (engine === null) {
-      setEngine(engines[0]);
-    } else {
-      const updatedEngine = engines.find((e) => e.id === engine.id);
-      if (updatedEngine && updatedEngine !== engine) {
-        setEngine(updatedEngine);
-      }
+    const next = pickAutoEngine(engine, engines);
+    if (next !== engine) {
+      setEngine(next);
     }
   }, [engine, engines, setEngine]);
 

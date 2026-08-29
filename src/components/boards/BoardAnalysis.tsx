@@ -101,6 +101,8 @@ function BoardAnalysis() {
   const reportInProgress = useStore(store, (s) => s.report.inProgress);
   const setReportInProgress = useStore(store, (s) => s.setReportInProgress);
   const autoReportAttempted = useRef<Set<string>>(new Set());
+  const [, setAnalysisTab] = useAtom(currentAnalysisTabAtom);
+  const [currentTabSelected, setCurrentTabSelected] = useAtom(currentTabSelectedAtom);
 
   useEffect(() => {
     if (!autoGenerateReport || !hasPersistentOrigin || !currentTab) return;
@@ -112,6 +114,8 @@ function BoardAnalysis() {
     if (!engine) return;
 
     autoReportAttempted.current.add(currentTab.value);
+    setCurrentTabSelected("analysis");
+    setAnalysisTab("report");
     generateReport({
       tab: currentTab.value,
       initialFen: root.fen,
@@ -134,6 +138,8 @@ function BoardAnalysis() {
     referenceDb,
     addAnalysis,
     setReportInProgress,
+    setCurrentTabSelected,
+    setAnalysisTab,
   ]);
 
   const addGame = useCallback(() => {
@@ -165,8 +171,6 @@ function BoardAnalysis() {
 
   const keyMap = useAtomValue(keyMapAtom);
 
-  const [, setAnalysisTab] = useAtom(currentAnalysisTabAtom);
-  const [currentTabSelected, setCurrentTabSelected] = useAtom(currentTabSelectedAtom);
   const [, setReportModalOpen] = useAtom(currentReportModalOpenAtom);
   const practiceTabSelected = useAtomValue(currentPracticeTabAtom);
   const isRepertoire = tabFile?.metadata.type === "repertoire";
