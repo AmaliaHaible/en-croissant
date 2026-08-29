@@ -53,6 +53,7 @@ import { parsePGN } from "@/utils/chess";
 import { createFile } from "@/utils/files";
 import Chessboard from "../icons/Chessboard";
 import { FileIcon } from "@/components/files/FileIcon";
+import RecentOnlineGames from "./RecentOnlineGames";
 
 dayjs.extend(relativeTime);
 
@@ -397,25 +398,28 @@ export default function NewTabHome({ id }: { id: string }) {
           ))}
         </SimpleGrid>
 
-        <Card shadow="sm" p="md" radius="md" withBorder>
-          <Text fw={600} size="lg" mb="xs">
-            {t("Home.RecentFiles.Title")}
-          </Text>
-          {recentFiles.length === 0 ? (
-            <Stack align="center" justify="center" h={200} gap="xs">
-              <IconClock size={48} style={{ opacity: 0.3 }} />
-              <Text c="dimmed">{t("Home.RecentFiles.NoRecentFiles")}</Text>
-            </Stack>
-          ) : (
-            <ScrollArea.Autosize mah={300}>
-              <Stack gap={2}>
-                {recentFiles.map((file) => (
-                  <RecentFileRow key={file.path} file={file} onOpen={openRecentFile} />
-                ))}
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          <Card shadow="sm" p="md" radius="md" withBorder>
+            <Text fw={600} size="lg" mb="xs">
+              {t("Home.RecentFiles.Title")}
+            </Text>
+            {recentFiles.length === 0 ? (
+              <Stack align="center" justify="center" h={200} gap="xs">
+                <IconClock size={48} style={{ opacity: 0.3 }} />
+                <Text c="dimmed">{t("Home.RecentFiles.NoRecentFiles")}</Text>
               </Stack>
-            </ScrollArea.Autosize>
-          )}
-        </Card>
+            ) : (
+              <ScrollArea.Autosize mah={300}>
+                <Stack gap={2}>
+                  {recentFiles.map((file) => (
+                    <RecentFileRow key={file.path} file={file} onOpen={openRecentFile} />
+                  ))}
+                </Stack>
+              </ScrollArea.Autosize>
+            )}
+          </Card>
+          <RecentOnlineGames />
+        </SimpleGrid>
       </Stack>
     </>
   );
