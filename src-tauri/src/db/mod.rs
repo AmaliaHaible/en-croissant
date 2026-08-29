@@ -203,6 +203,10 @@ fn get_db_or_create(
                 .max_size(16)
                 .connection_customizer(Box::new(options))
                 .build(ConnectionManager::<SqliteConnection>::new(db_path))?;
+            {
+                let mut conn = pool.get()?;
+                ensure_game_analysis_table(&mut conn)?;
+            }
             state
                 .connection_pool
                 .insert(db_path.to_string(), pool.clone());
@@ -1950,6 +1954,29 @@ pub async fn write_db_game(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_game_analysis_label(
+    file: PathBuf,
+    game_id: i32,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, Error> {
+    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    get_game_analysis_label_query(db, game_id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_game_analysis_label(
+    file: PathBuf,
+    game_id: i32,
+    label: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), Error> {
+    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    set_game_analysis_label_query(db, game_id, label.as_deref())
 }
 
 #[tauri::command]
