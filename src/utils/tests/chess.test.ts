@@ -58,6 +58,7 @@ test("headersToPGN produces standard PGN metadata block", () => {
         time_control: "300+2",
         eco: "B90",
         variant: "Standard",
+        time: "12:34:56",
     });
 
     expect(pgn).toContain('[White "Magnus Carlsen"]');
@@ -69,6 +70,7 @@ test("headersToPGN produces standard PGN metadata block", () => {
     expect(pgn).toContain('[BlackElo "2875"]');
     expect(pgn).toContain('[TimeControl "300+2"]');
     expect(pgn).toContain('[ECO "B90"]');
+    expect(pgn).toContain('[UTCTime "12:34:56"]');
     expect(pgn).toContain('[Variant "Standard"]');
     expect(pgn).toContain('[Result "1-0"]');
 });
