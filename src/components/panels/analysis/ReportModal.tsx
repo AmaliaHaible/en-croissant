@@ -1,36 +1,19 @@
 import { Button, Checkbox, Group, Modal, NumberInput, Select, Stack } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useAtom, useAtomValue } from "jotai";
-import { atomWithStorage } from "jotai/utils";
 import { memo, useContext, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
-import { commands, type GoMode } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import { enginesAtom, referenceDbAtom } from "@/state/atoms";
-import { buildAnalysisLabel } from "@/utils/analysisLabel";
-import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
-
-const MAX_BEST_MOVES_COUNT = 3;
-
-const defaultReportSettings = {
-  novelty: true,
-  reversed: true,
-  showBestMoves: true,
-  bestMovesMode: "mistakes" as "mistakes" | "always",
-  bestMovesCount: 1,
-  bestMovesDepth: 10,
-  goMode: { t: "Time", c: 500 } as Exclude<GoMode, { t: "Infinite" }>,
-  engine: "",
-};
-
-const reportSettingsAtom = atomWithStorage("report-settings", defaultReportSettings);
-
-function withDefaults(settings: Partial<typeof defaultReportSettings>) {
-  const merged = { ...defaultReportSettings, ...settings };
-  merged.bestMovesCount = Math.min(merged.bestMovesCount, MAX_BEST_MOVES_COUNT);
-  return merged;
-}
+import {
+  enginesAtom,
+  MAX_BEST_MOVES_COUNT,
+  referenceDbAtom,
+  reportSettingsAtom,
+  withReportSettingsDefaults,
+} from "@/state/atoms";
+import type { LocalEngine } from "@/utils/engines";
+import { generateReport } from "@/utils/report";
 
 function ReportModal({
   tab,
@@ -67,7 +50,7 @@ function ReportModal({
   const [reportSettings, setReportSettings] = useAtom(reportSettingsAtom);
 
   const form = useForm({
-    initialValues: withDefaults(reportSettings),
+    initialValues: withReportSettingsDefaults(reportSettings),
     validate: {
       engine: (value) => {
         if (!value) return t("Board.Analysis.EngineRequired");
@@ -86,46 +69,24 @@ function ReportModal({
           ? localEngines[0].id
           : reportSettings.engine;
 
-    form.setValues({ ...withDefaults(reportSettings), engine });
+    form.setValues({ ...withReportSettingsDefaults(reportSettings), engine });
   }, [localEngines, reportSettings]);
 
   function analyze() {
     setReportSettings(form.values);
-    setInProgress(true);
     closeReportingMode();
     const engine = localEngines.find((e) => e.id === form.values.engine);
-    const engineSettings = (engine ? getDefaultVariant(engine).settings : []).map((s) => ({
-      ...s,
-      value: s.value?.toString() ?? "",
-    }));
 
-    commands
-      .analyzeGame(
-        `report_${tab}`,
-        engine?.path ?? "",
-        form.values.goMode,
-        {
-          annotateNovelties: form.values.novelty,
-          fen: initialFen,
-          referenceDb,
-          reversed: form.values.reversed,
-          moves,
-          bestMovesCount: form.values.showBestMoves ? form.values.bestMovesCount : 0,
-        },
-        engineSettings,
-      )
-      .then((analysis) => {
-        if (analysis.status === "ok") {
-          addAnalysis(analysis.data, {
-            showBestMoves: form.values.showBestMoves,
-            bestMovesMode: form.values.bestMovesMode,
-            bestMovesCount: form.values.bestMovesCount,
-            bestMovesDepth: form.values.bestMovesDepth,
-            analysisLabel: engine ? buildAnalysisLabel(engine.name, form.values.goMode) : undefined,
-          });
-        }
-      })
-      .finally(() => setInProgress(false));
+    generateReport({
+      tab,
+      initialFen,
+      moves,
+      referenceDb,
+      engine,
+      settings: form.values,
+      addAnalysis,
+      setInProgress,
+    });
   }
 
   return (

@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import {
   allEnabledAtom,
+  autoGenerateReportAtom,
   autoSaveAtom,
   currentAnalysisTabAtom,
   currentPracticeTabAtom,
@@ -23,10 +24,15 @@ import {
   currentTabAtom,
   currentTabSelectedAtom,
   enableAllAtom,
+  enginesAtom,
   practiceStateAtom,
+  referenceDbAtom,
+  reportSettingsAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
-import { defaultPGN } from "@/utils/chess";
+import { defaultPGN, getMainLine } from "@/utils/chess";
+import type { LocalEngine } from "@/utils/engines";
+import { generateReport } from "@/utils/report";
 import { getTabFile, saveToFile } from "@/utils/tabs";
 import DetachedEval from "../common/DetachedEval";
 import GameNotation from "../common/GameNotation";
@@ -84,6 +90,51 @@ function BoardAnalysis() {
       saveFile();
     }
   }, [hasPersistentOrigin, saveFile, autoSave, dirty]);
+
+  const autoGenerateReport = useAtomValue(autoGenerateReportAtom);
+  const reportSettings = useAtomValue(reportSettingsAtom);
+  const referenceDb = useAtomValue(referenceDbAtom);
+  const engines = useAtomValue(enginesAtom);
+  const headers = useStore(store, (s) => s.headers);
+  const root = useStore(store, (s) => s.root);
+  const addAnalysis = useStore(store, (s) => s.addAnalysis);
+  const reportInProgress = useStore(store, (s) => s.report.inProgress);
+  const setReportInProgress = useStore(store, (s) => s.setReportInProgress);
+  const autoReportAttempted = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!autoGenerateReport || !hasPersistentOrigin || !currentTab) return;
+    if (headers.other?.Analysis || root.children.length === 0 || reportInProgress) return;
+    if (autoReportAttempted.current.has(currentTab.value)) return;
+
+    const localEngines = (engines ?? []).filter((e): e is LocalEngine => e.type === "local");
+    const engine = localEngines.find((e) => e.id === reportSettings.engine) ?? localEngines[0];
+    if (!engine) return;
+
+    autoReportAttempted.current.add(currentTab.value);
+    generateReport({
+      tab: currentTab.value,
+      initialFen: root.fen,
+      moves: getMainLine(root),
+      referenceDb,
+      engine,
+      settings: reportSettings,
+      addAnalysis,
+      setInProgress: setReportInProgress,
+    });
+  }, [
+    autoGenerateReport,
+    hasPersistentOrigin,
+    currentTab,
+    headers,
+    root,
+    reportInProgress,
+    engines,
+    reportSettings,
+    referenceDb,
+    addAnalysis,
+    setReportInProgress,
+  ]);
 
   const addGame = useCallback(() => {
     if (!tabFile) return;

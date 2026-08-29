@@ -237,6 +237,34 @@ export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>("hint-eng
     variantId: null,
 });
 
+export const MAX_BEST_MOVES_COUNT = 3;
+
+export const defaultReportSettings = {
+    novelty: true,
+    reversed: true,
+    showBestMoves: true,
+    bestMovesMode: "mistakes" as "mistakes" | "always",
+    bestMovesCount: 1,
+    bestMovesDepth: 10,
+    goMode: { t: "Time", c: 500 } as Exclude<GoMode, { t: "Infinite" }>,
+    engine: "",
+};
+
+export type ReportSettings = typeof defaultReportSettings;
+
+export function withReportSettingsDefaults(settings: Partial<ReportSettings>): ReportSettings {
+    const merged = { ...defaultReportSettings, ...settings };
+    merged.bestMovesCount = Math.min(merged.bestMovesCount, MAX_BEST_MOVES_COUNT);
+    return merged;
+}
+
+export const reportSettingsAtom = atomWithStorage<ReportSettings>(
+    "report-settings",
+    defaultReportSettings,
+);
+
+export const autoGenerateReportAtom = atomWithStorage<boolean>("auto-generate-report", false);
+
 export const enableBoardScrollAtom = atomWithStorage<boolean>("board-scroll", true);
 export const materialDisplayAtom = atomWithStorage<"diff" | "all">("material-display", "diff");
 export const forcedEnPassantAtom = atomWithStorage<boolean>("forced-ep", false);
