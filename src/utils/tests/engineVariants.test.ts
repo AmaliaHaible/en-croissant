@@ -7,6 +7,7 @@ import {
     duplicateVariant,
     engineVariantSchema,
     getDefaultVariant,
+    summarizeImportantSettings,
     withDefaultVariant,
 } from "../engineVariants";
 
@@ -114,4 +115,36 @@ test("applySettingOverrides with no overrides returns an equal copy", () => {
     const result = applySettingOverrides(base, []);
     expect(result).toEqual(base);
     expect(result).not.toBe(base);
+});
+
+test("summarizeImportantSettings returns null when the variant flags no important options", () => {
+    expect(
+        summarizeImportantSettings(
+            { settings: [{ name: "Skill Level", value: 5 }], importantSettings: [] },
+            [],
+        ),
+    ).toBeNull();
+});
+
+test("summarizeImportantSettings lists effective values (variant value plus overrides)", () => {
+    const variant = {
+        settings: [
+            { name: "Skill Level", value: 20 },
+            { name: "Threads", value: 4 },
+        ],
+        importantSettings: ["Skill Level", "UCI_Elo"],
+    };
+    const result = summarizeImportantSettings(variant, [
+        { name: "Skill Level", value: 5 },
+        { name: "UCI_Elo", value: 2000 },
+    ]);
+    expect(result).toBe("Skill Level=5, UCI_Elo=2000");
+});
+
+test("summarizeImportantSettings omits important options that have no explicit value", () => {
+    const variant = { settings: [], importantSettings: ["Skill Level"] };
+    expect(summarizeImportantSettings(variant, [])).toBeNull();
+    expect(summarizeImportantSettings(variant, [{ name: "Skill Level", value: 3 }])).toBe(
+        "Skill Level=3",
+    );
 });

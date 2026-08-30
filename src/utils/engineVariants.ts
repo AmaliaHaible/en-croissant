@@ -91,6 +91,28 @@ export function applySettingOverrides(
     return result;
 }
 
+/**
+ * Human-readable "Name=value, Name=value" summary of the effective values of a variant's
+ * "important" options (after applying this game's overrides), for recording in the saved PGN
+ * so the played configuration is recoverable. Only options that have an explicit value (in the
+ * variant or as an override) are listed; ones left at the engine's UCI default are omitted.
+ * Returns `null` when there is nothing to record.
+ */
+export function summarizeImportantSettings(
+    variant: Pick<EngineVariant, "settings" | "importantSettings">,
+    overrides: EngineSettings,
+): string | null {
+    if (variant.importantSettings.length === 0) return null;
+    const effective = applySettingOverrides(variant.settings, overrides);
+    const parts = variant.importantSettings
+        .map((name) => {
+            const entry = effective.find((s) => s.name === name);
+            return entry && entry.value !== null ? `${name}=${entry.value}` : null;
+        })
+        .filter((part): part is string => part !== null);
+    return parts.length > 0 ? parts.join(", ") : null;
+}
+
 /** The implicit default variant used wherever no explicit picker exists (e.g. the Analysis panel). */
 export function getDefaultVariant<E extends EngineLike>(engine: E): EngineVariant {
     return engine.variants[0];

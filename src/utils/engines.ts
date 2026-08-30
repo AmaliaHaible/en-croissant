@@ -23,6 +23,7 @@ export {
     engineSettingsSchema,
     type EngineVariant,
     getDefaultVariant,
+    summarizeImportantSettings,
     withDefaultVariant,
 } from "./engineVariants";
 

@@ -79,7 +79,11 @@ import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { classifyPlayers, getCollectionDir } from "@/utils/collections";
 import { getDocumentDir } from "@/utils/directories";
-import { applySettingOverrides, getDefaultVariant } from "@/utils/engines";
+import {
+  applySettingOverrides,
+  getDefaultVariant,
+  summarizeImportantSettings,
+} from "@/utils/engines";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import { useCoachHint } from "@/hooks/useCoachHint";
@@ -104,6 +108,20 @@ function gameResultToOutcome(result: GameResult): Outcome {
 function getPlayerDisplayName(settings: OpponentSettings): string {
   if (settings.type === "human") return settings.name || "Player";
   return settings.engine?.name || "Engine";
+}
+
+/**
+ * "Name=value, ..." summary of the important engine options actually in effect for this game
+ * (variant values plus per-game overrides), or `null` when there is nothing to record. Written
+ * to the saved PGN so the played configuration isn't lost.
+ */
+function importantSettingsHeader(settings: OpponentSettings): string | null {
+  if (settings.type !== "engine" || !settings.engine) return null;
+  const engine = settings.engine;
+  const variant =
+    engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine);
+  if (!variant) return null;
+  return summarizeImportantSettings(variant, settings.settingOverrides ?? []);
 }
 
 type BackendMove = { uci: string; clock: number | null };
@@ -747,6 +765,16 @@ function BoardGame() {
       } else {
         newHeaders.white_time_control = whiteTimeControl;
         newHeaders.black_time_control = blackTimeControl;
+      }
+
+      const whiteEngineOptions = importantSettingsHeader(playerSettings.white);
+      const blackEngineOptions = importantSettingsHeader(playerSettings.black);
+      if (whiteEngineOptions || blackEngineOptions) {
+        newHeaders.other = {
+          ...(headers.other ?? {}),
+          ...(whiteEngineOptions ? { WhiteEngineOptions: whiteEngineOptions } : {}),
+          ...(blackEngineOptions ? { BlackEngineOptions: blackEngineOptions } : {}),
+        };
       }
 
       setHeaders({
