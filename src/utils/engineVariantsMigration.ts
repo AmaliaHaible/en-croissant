@@ -191,7 +191,11 @@ export function migrateEngineRecord(raw: unknown): unknown {
     if (RODENT_II_NAME_RE.test(name)) {
         for (const personality of RODENT_II_PERSONALITIES) {
             variants.push(
-                createVariant(personality.name, mergeSettings(baseSettings, personality.options), baseGo),
+                createVariant(
+                    personality.name,
+                    mergeSettings(baseSettings, personality.options),
+                    baseGo,
+                ),
             );
         }
     }

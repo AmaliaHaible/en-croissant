@@ -10,9 +10,10 @@ import {
 import { IconCpu, IconUser } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
+import { ImportantEngineSettings } from "@/components/common/ImportantEngineSettings";
 import TimeInput, { type TimeType } from "@/components/common/TimeInput";
 import type { TimeControlField } from "@/utils/clock";
-import type { LocalEngine } from "@/utils/engines";
+import type { EngineSettings, LocalEngine } from "@/utils/engines";
 import { EnginesSelect } from "./EnginesSelect";
 
 export type OpponentSettings =
@@ -28,6 +29,8 @@ export type OpponentSettings =
       timeControl?: TimeControlField;
       engine: LocalEngine | null;
       variantId: string | null;
+      /** Per-game overrides for the variant's "important" UCI options. Reset on engine/variant change. */
+      settingOverrides?: EngineSettings;
       timeUnit?: TimeType;
       incrementUnit?: TimeType;
     };
@@ -109,6 +112,7 @@ export function OpponentForm({
               ...prev,
               engine,
               variantId: engine?.variants[0]?.id ?? null,
+              settingOverrides: [],
             }))
           }
         />
@@ -119,7 +123,22 @@ export function OpponentForm({
           engine={opponent.engine}
           variantId={opponent.variantId}
           setVariantId={(variantId) =>
-            setOpponent((prev) => (prev.type === "engine" ? { ...prev, variantId } : prev))
+            setOpponent((prev) =>
+              prev.type === "engine" ? { ...prev, variantId, settingOverrides: [] } : prev,
+            )
+          }
+        />
+      )}
+
+      {opponent.type === "engine" && opponent.engine && (
+        <ImportantEngineSettings
+          engine={opponent.engine}
+          variantId={opponent.variantId}
+          overrides={opponent.settingOverrides ?? []}
+          setOverrides={(next) =>
+            setOpponent((prev) =>
+              prev.type === "engine" ? { ...prev, settingOverrides: next } : prev,
+            )
           }
         />
       )}

@@ -91,11 +91,18 @@ function MoveContextMenuItems({ movePath }: { movePath: number[] }) {
         {t("Menu.PromoteVariation")}
       </Menu.Item>
 
-      <Menu.Item leftSection={<IconCopy size="0.875rem" />} onClick={() => copyVariationPgn(movePath)}>
+      <Menu.Item
+        leftSection={<IconCopy size="0.875rem" />}
+        onClick={() => copyVariationPgn(movePath)}
+      >
         {t("Menu.CopyVariationPGN")}
       </Menu.Item>
 
-      <Menu.Item color="red" leftSection={<IconX size="0.875rem" />} onClick={() => deleteMove(movePath)}>
+      <Menu.Item
+        color="red"
+        leftSection={<IconX size="0.875rem" />}
+        onClick={() => deleteMove(movePath)}
+      >
         {t("Menu.DeleteMove")}
       </Menu.Item>
     </Menu.Dropdown>

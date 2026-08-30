@@ -51,7 +51,8 @@ export function useLiveCoachEngine(): {
     const variant = useMemo(
         () =>
             engine
-                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+                ? (engine.variants.find((v) => v.id === config.variantId) ??
+                  getDefaultVariant(engine))
                 : null,
         [engine, config.variantId],
     );
@@ -61,10 +62,7 @@ export function useLiveCoachEngine(): {
     // it when nothing is configured: any UI write of the engine's own UCI
     // defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
     // permanently disable "Good" move detection. See `withMultiPvFloor`.
-    const extraOptions = useMemo(
-        () => withMultiPvFloor(variant?.settings ?? []),
-        [variant],
-    );
+    const extraOptions = useMemo(() => withMultiPvFloor(variant?.settings ?? []), [variant]);
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;

@@ -60,7 +60,8 @@ export function useCoachHint(requested: boolean): {
     const variant = useMemo(
         () =>
             engine
-                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+                ? (engine.variants.find((v) => v.id === config.variantId) ??
+                  getDefaultVariant(engine))
                 : null,
         [engine, config.variantId],
     );

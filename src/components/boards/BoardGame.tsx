@@ -79,7 +79,7 @@ import { getPGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { classifyPlayers, getCollectionDir } from "@/utils/collections";
 import { getDocumentDir } from "@/utils/directories";
-import { getDefaultVariant } from "@/utils/engines";
+import { applySettingOverrides, getDefaultVariant } from "@/utils/engines";
 import type { GameHeaders } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
 import { useCoachHint } from "@/hooks/useCoachHint";
@@ -535,13 +535,17 @@ function BoardGame() {
       engine?.variants && engine.variants.length > 0
         ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
         : null;
-    const engineOptions = (variant?.settings ?? []).filter((s) => s.name !== "MultiPV");
+    const engineOptions = applySettingOverrides(
+      variant?.settings ?? [],
+      settings.settingOverrides ?? [],
+    ).filter((s) => s.name !== "MultiPV");
 
     // The chosen variant isn't otherwise visible in the saved PGN, so fold its name into the
     // White/Black headers - but only when it isn't the engine's own default variant, matching
     // the old "no suffix at full strength" behavior.
     const isDefaultVariant = engine && variant ? variant.id === getDefaultVariant(engine).id : true;
-    const name = engine && variant && !isDefaultVariant ? `${baseName} (${variant.name})` : baseName;
+    const name =
+      engine && variant && !isDefaultVariant ? `${baseName} (${variant.name})` : baseName;
 
     return {
       type: "engine",
@@ -1178,9 +1182,7 @@ function BoardGame() {
                                     label="Play a match series (multiple games)"
                                     description="Off: play a single one-off game. On: run a series of games back to back."
                                     checked={matchSeriesEnabled}
-                                    onChange={(e) =>
-                                      setMatchSeriesEnabled(e.currentTarget.checked)
-                                    }
+                                    onChange={(e) => setMatchSeriesEnabled(e.currentTarget.checked)}
                                   />
                                   {matchSeriesEnabled && (
                                     <>
@@ -1212,8 +1214,8 @@ function BoardGame() {
                                       {matchGameCount % 2 !== 0 && (
                                         <Text size="xs" c="yellow.5">
                                           💡 Note: An even number of games (e.g. 2, 4, 6... 100) is
-                                          recommended so both engines play an equal number of
-                                          games as White and Black.
+                                          recommended so both engines play an equal number of games
+                                          as White and Black.
                                         </Text>
                                       )}
                                       <Checkbox
@@ -1268,9 +1270,7 @@ function BoardGame() {
                   </Box>
                   <Group gap="xs">
                     <Tooltip
-                      label={
-                        liveEvalEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")
-                      }
+                      label={liveEvalEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")}
                     >
                       <ActionIcon
                         variant={liveEvalEnabled ? "filled" : "default"}
@@ -1282,9 +1282,7 @@ function BoardGame() {
                     </Tooltip>
                     <Tooltip
                       label={
-                        liveEvalEngine
-                          ? t("Board.Coach.WhiteFeedback")
-                          : t("Board.Coach.NoEngine")
+                        liveEvalEngine ? t("Board.Coach.WhiteFeedback") : t("Board.Coach.NoEngine")
                       }
                     >
                       <ActionIcon
@@ -1299,9 +1297,7 @@ function BoardGame() {
                     </Tooltip>
                     <Tooltip
                       label={
-                        liveEvalEngine
-                          ? t("Board.Coach.BlackFeedback")
-                          : t("Board.Coach.NoEngine")
+                        liveEvalEngine ? t("Board.Coach.BlackFeedback") : t("Board.Coach.NoEngine")
                       }
                     >
                       <ActionIcon

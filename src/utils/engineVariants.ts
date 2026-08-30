@@ -35,6 +35,14 @@ export const engineVariantSchema = z.object({
     name: z.string(),
     go: goModeSchema.default(DEFAULT_GO_MODE),
     settings: engineSettingsSchema.default([]),
+    /**
+     * Names of UCI options the user flagged as "important" on this variant. These are surfaced
+     * as editable controls when the variant is picked for a New Game opponent, so a per-game
+     * value (e.g. Skill Level) can be set without editing the saved variant. Stored as names
+     * rather than a flag on each `settings` entry so a flagged option survives the
+     * "drop entry when it equals the UCI default" pruning in the engine settings editor.
+     */
+    importantSettings: z.array(z.string()).default([]),
 });
 
 export type EngineVariant = z.output<typeof engineVariantSchema>;
@@ -47,17 +55,40 @@ export function createVariant(
     settings: EngineSettings = [],
     go: GoMode = DEFAULT_GO_MODE,
 ): EngineVariant {
-    return { id: crypto.randomUUID(), name, go, settings };
+    return { id: crypto.randomUUID(), name, go, settings, importantSettings: [] };
 }
 
-/** Copies a variant's settings/go under a new id and name. */
+/** Copies a variant's settings/go/importantSettings under a new id and name. */
 export function duplicateVariant(variant: EngineVariant, name: string): EngineVariant {
     return {
         ...variant,
         id: crypto.randomUUID(),
         name,
         settings: variant.settings.map((s) => ({ ...s })),
+        importantSettings: [...variant.importantSettings],
     };
+}
+
+/**
+ * Merges per-game overrides onto a variant's saved settings: an override replaces the
+ * matching entry by name, or is appended if the variant has no entry for it. Neither input
+ * is mutated. Used when starting a New Game so a tweaked "important" setting takes effect
+ * for that game only.
+ */
+export function applySettingOverrides(
+    base: EngineSettings,
+    overrides: EngineSettings,
+): EngineSettings {
+    const result = base.map((s) => ({ ...s }));
+    for (const override of overrides) {
+        const idx = result.findIndex((s) => s.name === override.name);
+        if (idx >= 0) {
+            result[idx] = { ...override };
+        } else {
+            result.push({ ...override });
+        }
+    }
+    return result;
 }
 
 /** The implicit default variant used wherever no explicit picker exists (e.g. the Analysis panel). */

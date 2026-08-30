@@ -36,6 +36,8 @@ import {
   IconPlus,
   IconSearch,
   IconServer,
+  IconStar,
+  IconStarFilled,
   IconTrash,
 } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -475,7 +477,11 @@ function EngineSettings({
 
   useEffect(() => {
     if (options) {
-      const backfilled = backfillRequiredSettings(variant.settings, options.options, globalSyzygyPath);
+      const backfilled = backfillRequiredSettings(
+        variant.settings,
+        options.options,
+        globalSyzygyPath,
+      );
       if (backfilled) {
         setVariant({ settings: backfilled });
       }
@@ -549,6 +555,40 @@ function EngineSettings({
     } else {
       setVariant({ settings: newSettings.filter((setting) => setting.name !== name) });
     }
+  }
+
+  function toggleImportant(name: string) {
+    const current = variant.importantSettings;
+    setVariant({
+      importantSettings: current.includes(name)
+        ? current.filter((n) => n !== name)
+        : [...current, name],
+    });
+  }
+
+  function importantLabel(name: string) {
+    const marked = variant.importantSettings.includes(name);
+    return (
+      <Group gap={4} wrap="nowrap" component="span">
+        <span>{name}</span>
+        <Tooltip
+          label={t("Engines.Settings.MarkImportant", "Show this option in the New Game setup")}
+        >
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color={marked ? "yellow" : "gray"}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleImportant(name);
+            }}
+          >
+            {marked ? <IconStarFilled size="0.7rem" /> : <IconStar size="0.7rem" />}
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    );
   }
 
   const [deleteModal, toggleDeleteModal] = useToggle();
@@ -684,7 +724,7 @@ function EngineSettings({
                   return (
                     <NumberInput
                       key={v.name}
-                      label={v.name}
+                      label={importantLabel(v.name)}
                       disabled={disabled}
                       description={
                         disabled
@@ -705,7 +745,7 @@ function EngineSettings({
                   return (
                     <Select
                       key={v.name}
-                      label={v.name}
+                      label={importantLabel(v.name)}
                       data={Array.from(new Set(v.var ?? []))}
                       value={v.value}
                       onChange={(e) => setSetting(v.name, e, v.default)}
@@ -719,7 +759,7 @@ function EngineSettings({
                       <FileInput
                         key={v.name}
                         clearable
-                        label={v.name}
+                        label={importantLabel(v.name)}
                         value={file}
                         onClick={async () => {
                           const selected = await open({
@@ -739,7 +779,7 @@ function EngineSettings({
                   return (
                     <TextInput
                       key={v.name}
-                      label={v.name}
+                      label={importantLabel(v.name)}
                       value={v.value || ""}
                       onChange={(e) => setSetting(v.name, e.currentTarget.value, v.default)}
                     />
@@ -755,7 +795,7 @@ function EngineSettings({
               return (
                 <Checkbox
                   key={o.value.name}
-                  label={o.value.name}
+                  label={importantLabel(o.value.name)}
                   checked={!!o.value.value}
                   disabled={o.value.name === "UCI_Chess960"}
                   onChange={(e) => {

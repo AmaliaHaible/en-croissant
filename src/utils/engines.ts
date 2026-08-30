@@ -14,6 +14,7 @@ import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
 
 export {
+    applySettingOverrides,
     canDeleteVariant,
     createVariant,
     DEFAULT_GO_MODE,

@@ -1,9 +1,11 @@
 import { expect, test } from "vitest";
 import {
+    applySettingOverrides,
     canDeleteVariant,
     createVariant,
     DEFAULT_GO_MODE,
     duplicateVariant,
+    engineVariantSchema,
     getDefaultVariant,
     withDefaultVariant,
 } from "../engineVariants";
@@ -51,7 +53,10 @@ test("getDefaultVariant returns the first variant", () => {
 test("withDefaultVariant patches only the first variant, leaving others untouched", () => {
     const a = createVariant("A", [{ name: "Threads", value: 1 }]);
     const b = createVariant("B", [{ name: "Threads", value: 2 }]);
-    const result = withDefaultVariant({ variants: [a, b] }, { settings: [{ name: "Threads", value: 8 }] });
+    const result = withDefaultVariant(
+        { variants: [a, b] },
+        { settings: [{ name: "Threads", value: 8 }] },
+    );
     expect(result.variants[0].settings).toEqual([{ name: "Threads", value: 8 }]);
     expect(result.variants[0].id).toBe(a.id);
     expect(result.variants[1]).toBe(b);
@@ -61,4 +66,52 @@ test("canDeleteVariant is false at exactly one variant, true above that", () => 
     expect(canDeleteVariant(1)).toBe(false);
     expect(canDeleteVariant(2)).toBe(true);
     expect(canDeleteVariant(0)).toBe(false);
+});
+
+test("engineVariantSchema defaults importantSettings to an empty array for legacy records", () => {
+    const parsed = engineVariantSchema.parse({ name: "Default" });
+    expect(parsed.importantSettings).toEqual([]);
+});
+
+test("createVariant and duplicateVariant carry an importantSettings array", () => {
+    const v = createVariant("A");
+    expect(v.importantSettings).toEqual([]);
+    v.importantSettings.push("Skill Level");
+    const copy = duplicateVariant(v, "A (Copy)");
+    expect(copy.importantSettings).toEqual(["Skill Level"]);
+    // independent copy
+    copy.importantSettings.push("UCI_Elo");
+    expect(v.importantSettings).toEqual(["Skill Level"]);
+});
+
+test("applySettingOverrides replaces a matching entry by name", () => {
+    const base = [
+        { name: "Threads", value: 4 },
+        { name: "Skill Level", value: 20 },
+    ];
+    const result = applySettingOverrides(base, [{ name: "Skill Level", value: 5 }]);
+    expect(result).toEqual([
+        { name: "Threads", value: 4 },
+        { name: "Skill Level", value: 5 },
+    ]);
+    // base is untouched
+    expect(base[1].value).toBe(20);
+});
+
+test("applySettingOverrides appends an override the variant has no entry for", () => {
+    const result = applySettingOverrides(
+        [{ name: "Threads", value: 4 }],
+        [{ name: "Skill Level", value: 5 }],
+    );
+    expect(result).toEqual([
+        { name: "Threads", value: 4 },
+        { name: "Skill Level", value: 5 },
+    ]);
+});
+
+test("applySettingOverrides with no overrides returns an equal copy", () => {
+    const base = [{ name: "Threads", value: 4 }];
+    const result = applySettingOverrides(base, []);
+    expect(result).toEqual(base);
+    expect(result).not.toBe(base);
 });
