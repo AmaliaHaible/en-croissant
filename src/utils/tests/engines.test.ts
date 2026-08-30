@@ -1,6 +1,11 @@
 import { describe, expect, it, test } from "vitest";
 import type { UciOptionConfig } from "@/bindings";
-import { backfillRequiredSettings, type Engine, resolveConfiguredEngine } from "../engines";
+import {
+    backfillRequiredSettings,
+    type Engine,
+    isEloFieldInert,
+    resolveConfiguredEngine,
+} from "../engines";
 
 function localEngine(id: string, over: Partial<Engine> = {}): Engine {
     return {
@@ -26,6 +31,10 @@ function spin(name: string, def: number): UciOptionConfig {
 
 function stringOption(name: string, def: string | null = null): UciOptionConfig {
     return { type: "string", value: { name, default: def } };
+}
+
+function checkOption(name: string, def: boolean | null): UciOptionConfig {
+    return { type: "check", value: { name, default: def } };
 }
 
 const stockfishOptions: UciOptionConfig[] = [
@@ -98,6 +107,53 @@ test("returns null when the engine doesn't advertise a SyzygyPath option", () =>
     ];
     const result = backfillRequiredSettings(settings, optionsWithoutSyzygy, "/tablebases");
     expect(result).toBeNull();
+});
+
+describe("isEloFieldInert", () => {
+    const stockfishStrengthOptions: UciOptionConfig[] = [
+        checkOption("UCI_LimitStrength", false),
+        spin("UCI_Elo", 1320),
+    ];
+
+    it("is inert when the engine has UCI_LimitStrength and it is at its (off) default", () => {
+        expect(isEloFieldInert(stockfishStrengthOptions, [])).toBe(true);
+    });
+
+    it("is not inert once UCI_LimitStrength is turned on in the variant settings", () => {
+        expect(
+            isEloFieldInert(stockfishStrengthOptions, [{ name: "UCI_LimitStrength", value: true }]),
+        ).toBe(false);
+    });
+
+    it("respects an explicit UCI_LimitStrength override regardless of default", () => {
+        const onByDefault: UciOptionConfig[] = [
+            checkOption("UCI_LimitStrength", true),
+            spin("UCI_Elo", 1320),
+        ];
+        expect(isEloFieldInert(onByDefault, [])).toBe(false);
+        expect(isEloFieldInert(onByDefault, [{ name: "UCI_LimitStrength", value: false }])).toBe(
+            true,
+        );
+    });
+
+    it("matches the option name case-insensitively", () => {
+        const lowerCased: UciOptionConfig[] = [
+            checkOption("uci_limitstrength", false),
+            spin("uci_elo", 1320),
+        ];
+        expect(isEloFieldInert(lowerCased, [{ name: "UCI_LimitStrength", value: true }])).toBe(
+            false,
+        );
+    });
+
+    it("is never inert for an engine without a UCI_LimitStrength option (e.g. Maia3's Elo)", () => {
+        const maiaOptions: UciOptionConfig[] = [
+            spin("Elo", 1500),
+            spin("SelfElo", 1500),
+            spin("OppoElo", 1500),
+        ];
+        expect(isEloFieldInert(maiaOptions, [])).toBe(false);
+    });
 });
 
 describe("resolveConfiguredEngine", () => {

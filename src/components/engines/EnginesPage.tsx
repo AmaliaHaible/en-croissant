@@ -60,6 +60,7 @@ import {
   type EngineVariant,
   engineSchema,
   getDefaultVariant,
+  isEloFieldInert,
   type LocalEngine,
   type RemoteEngine,
   requiredEngineSettings,
@@ -505,6 +506,11 @@ function EngineSettings({
         };
       }) || [];
 
+  // UCI_Elo is inert unless UCI_LimitStrength is on; disable the field in that case so it's
+  // obvious the value won't do anything (a Maia3-style `Elo` option has no such gate and is
+  // unaffected).
+  const eloFieldInert = isEloFieldInert(options?.options ?? [], variant.settings);
+
   function changeImage() {
     open({
       title: "Select image",
@@ -674,10 +680,20 @@ function EngineSettings({
             .map((option: any) => {
               return match(option)
                 .with({ type: "spin", value: P.select() }, (v: any) => {
+                  const disabled = v.name.toLowerCase() === "uci_elo" && eloFieldInert;
                   return (
                     <NumberInput
                       key={v.name}
                       label={v.name}
+                      disabled={disabled}
+                      description={
+                        disabled
+                          ? t(
+                              "Engines.Settings.EloNeedsLimitStrength",
+                              "Enable UCI_LimitStrength to use this",
+                            )
+                          : undefined
+                      }
                       min={Number(v.min)}
                       max={Number(v.max)}
                       value={Number(v.value)}

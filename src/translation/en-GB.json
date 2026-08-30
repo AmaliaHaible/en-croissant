@@ -299,6 +299,7 @@
     "Engines.Selection.None": "",
     "Engines.Settings.AdvancedSettings": "Advanced settings",
     "Engines.Settings.EditJSON": "Edit JSON",
+    "Engines.Settings.EloNeedsLimitStrength": "Enable UCI_LimitStrength to use this",
     "Engines.Settings.NoEngine": "No engine selected",
     "Engines.Settings.NumOfCores": "Number of cores",
     "Engines.Settings.NumOfLines": "Number of lines",

@@ -28,6 +28,22 @@ export {
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
 
 /**
+ * Per the UCI spec, an engine's `UCI_Elo` only takes effect while `UCI_LimitStrength` is
+ * enabled. Returns true when the engine advertises that toggle and it is currently off, so
+ * the option editor can disable the (otherwise inert) Elo field. Engines that don't expose a
+ * `UCI_LimitStrength` option are never gated. Matching is case-insensitive on the option name.
+ */
+export function isEloFieldInert(options: UciOptionConfig[], settings: EngineSettings): boolean {
+    const limit = options.find(
+        (o) => o.type === "check" && o.value.name.toLowerCase() === "uci_limitstrength",
+    );
+    if (limit?.type !== "check") return false;
+    const override = settings.find((s) => s.name.toLowerCase() === "uci_limitstrength");
+    const current = override?.value ?? limit.value.default;
+    return !current;
+}
+
+/**
  * Backfills a variant's settings with UCI defaults for any required field it's missing, and
  * with the global Syzygy tablebase path if the engine supports it and none is set yet. Returns
  * `null` when nothing needs to change, so callers can skip writing back to the engine record
