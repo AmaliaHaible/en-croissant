@@ -27,7 +27,12 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "r
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import { coverageMinGamesAtom, currentTabAtom, referenceDbAtom } from "@/state/atoms";
+import {
+  coverageMinGamesAtom,
+  currentPracticeTabAtom,
+  currentTabAtom,
+  referenceDbAtom,
+} from "@/state/atoms";
 import { searchPosition } from "@/utils/db";
 import { roundKeepSum } from "@/utils/format";
 import { isPrefix } from "@/utils/misc";
@@ -64,6 +69,7 @@ function RepertoireInfo() {
   const referenceDb = useAtomValue(referenceDbAtom);
   const currentTab = useAtomValue(currentTabAtom);
   const minGames = useAtomValue(coverageMinGamesAtom);
+  const practiceTab = useAtomValue(currentPracticeTabAtom);
 
   const orientation = headers.orientation || "white";
 
@@ -125,7 +131,10 @@ function RepertoireInfo() {
   const isEmptyTree = root.children.length === 0;
 
   useEffect(() => {
-    if (!referenceDb) {
+    // Coverage only matters in the "build" view. Computing it walks the whole
+    // repertoire, one sequential full-index reference-DB scan per position, so
+    // it must not run just because the Practice tab is open for training.
+    if (!referenceDb || practiceTab !== "build") {
       setCoverageMap(new Map());
       setGamesMap(new Map());
       setMissingGamesMap(new Map());
@@ -133,16 +142,24 @@ function RepertoireInfo() {
       return;
     }
     const version = ++coverageVersionRef.current;
+    const controller = new AbortController();
     setCoverageLoading(true);
-    computeTreeCoverage(root, orientation, referenceDb, minGames, startPath).then((result) => {
-      if (version === coverageVersionRef.current) {
-        setCoverageMap(result.coverageMap);
-        setGamesMap(result.gamesMap);
-        setMissingGamesMap(result.missingGamesMap);
-        setCoverageLoading(false);
-      }
-    });
-  }, [rootStructureHash, orientation, referenceDb, startPathKey, minGames]);
+    computeTreeCoverage(root, orientation, referenceDb, minGames, startPath, controller.signal)
+      .then((result) => {
+        if (version === coverageVersionRef.current) {
+          setCoverageMap(result.coverageMap);
+          setGamesMap(result.gamesMap);
+          setMissingGamesMap(result.missingGamesMap);
+          setCoverageLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && version === coverageVersionRef.current) {
+          setCoverageLoading(false);
+        }
+      });
+    return () => controller.abort();
+  }, [rootStructureHash, orientation, referenceDb, startPathKey, minGames, practiceTab]);
 
   const positionMoves = useMemo(() => {
     const total = rawOpenings.reduce((acc, op) => acc + op.white + op.black + op.draw, 0);

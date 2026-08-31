@@ -23,11 +23,18 @@ export async function computeTreeCoverage(
     dbPath: string,
     minGames: number,
     startPath: number[] = [],
+    signal?: AbortSignal,
 ): Promise<{
     coverageMap: Map<string, number>;
     gamesMap: Map<string, number>;
     missingGamesMap: Map<string, number>;
 }> {
+    // Each visited position triggers a full-index scan of the reference database
+    // in the backend, run sequentially. Without a way to bail out, navigating
+    // away or changing a setting mid-traversal leaves a large repertoire pinning
+    // every CPU core for minutes. The caller aborts `signal` on cleanup.
+    signal?.throwIfAborted();
+
     const userParity = userColor === "white" ? 0 : 1;
     const coverageMap = new Map<string, number>();
     const gamesMap = new Map<string, number>();
@@ -46,6 +53,7 @@ export async function computeTreeCoverage(
         if (cached) return cached;
 
         const promise = (async () => {
+            signal?.throwIfAborted();
             try {
                 const [openings] = await searchPosition(
                     {

@@ -309,6 +309,7 @@ function PracticePanel() {
         placement="right"
         value={tab}
         onChange={(v) => setTab(v!)}
+        keepMounted={false}
         style={{
           display: "flex",
         }}
