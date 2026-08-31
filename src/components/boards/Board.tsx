@@ -16,12 +16,12 @@ import { makeFen, parseFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { memo, useCallback, useContext, useMemo, useState } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { Chessground, type ChessgroundRef } from "@/chessground/Chessground";
+import { useKeybind } from "@/hooks/useKeybind";
 import {
   autoPromoteAtom,
   bestMoveColorAtom,
@@ -176,7 +176,8 @@ function Board({
     });
 
   const keyMap = useAtomValue(keyMapAtom);
-  useHotkeys(keyMap.SWAP_ORIENTATION.keys, () => toggleOrientation());
+  useKeybind(keyMap.SWAP_ORIENTATION.keys, () => toggleOrientation());
+  useKeybind(keyMap.CLEAR_SHAPES.keys, () => clearShapes());
   const currentTab = useAtomValue(currentTabAtom);
   const tabFile = getTabFile(currentTab);
   const [evalOpen, setEvalOpen] = useAtom(currentEvalOpenAtom);
@@ -446,7 +447,7 @@ function Board({
     [editingMode, currentNode, setFen],
   );
 
-  useHotkeys(keyMap.TOGGLE_EVAL_BAR.keys, () => setEvalOpen((e) => !e));
+  useKeybind(keyMap.TOGGLE_EVAL_BAR.keys, () => setEvalOpen((e) => !e));
 
   const square = match(currentNode)
     .with({ san: "O-O" }, ({ halfMoves }) => parseSquare(halfMoves % 2 === 1 ? "g1" : "g8"))

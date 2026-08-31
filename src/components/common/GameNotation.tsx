@@ -28,11 +28,11 @@ import { INITIAL_FEN } from "chessops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import React, { memo, useContext, useEffect, useRef, useState } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import Comment from "@/components/common/Comment";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
+import { useKeybind } from "@/hooks/useKeybind";
 import {
   currentInvisibleAtom,
   currentShowCommentsAtom,
@@ -82,8 +82,8 @@ function GameNotation({ topBar, controls }: { topBar?: boolean; controls?: React
   const colorScheme = useColorScheme();
 
   const keyMap = useAtomValue(keyMapAtom);
-  useHotkeys(keyMap.TOGGLE_BLUR.keys, () => setInvisible((v) => !v));
-  useHotkeys(keyMap.COPY_PGN.keys, () => copyPgn());
+  useKeybind(keyMap.TOGGLE_BLUR.keys, () => setInvisible((v) => !v));
+  useKeybind(keyMap.COPY_PGN.keys, () => copyPgn());
 
   return (
     <Paper withBorder flex={1} style={{ position: "relative", overflow: "hidden" }}>

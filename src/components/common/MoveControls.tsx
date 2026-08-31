@@ -7,8 +7,8 @@ import {
 } from "@tabler/icons-react";
 import { useAtomValue } from "jotai";
 import { memo, useContext } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 import { useStore } from "zustand";
+import { useKeybind } from "@/hooks/useKeybind";
 import { keyMapAtom } from "@/state/keybinds";
 import { TreeStateContext } from "./TreeStateContext";
 
@@ -27,17 +27,17 @@ function MoveControls({ readOnly }: { readOnly?: boolean }) {
   const previousBranching = useStore(store, (s) => s.previousBranching);
 
   const keyMap = useAtomValue(keyMapAtom);
-  useHotkeys(keyMap.PREVIOUS_MOVE.keys, previous);
-  useHotkeys(keyMap.NEXT_MOVE.keys, next);
-  useHotkeys(keyMap.GO_TO_START.keys, start);
-  useHotkeys(keyMap.GO_TO_END.keys, end);
-  useHotkeys(keyMap.DELETE_MOVE.keys, readOnly ? () => {} : () => deleteMove());
-  useHotkeys(keyMap.GO_TO_BRANCH_START.keys, startBranch);
-  useHotkeys(keyMap.GO_TO_BRANCH_END.keys, endBranch);
-  useHotkeys(keyMap.NEXT_BRANCH.keys, nextBranch);
-  useHotkeys(keyMap.PREVIOUS_BRANCH.keys, previousBranch);
-  useHotkeys(keyMap.NEXT_BRANCHING.keys, nextBranching);
-  useHotkeys(keyMap.PREVIOUS_BRANCHING.keys, previousBranching);
+  useKeybind(keyMap.PREVIOUS_MOVE.keys, previous);
+  useKeybind(keyMap.NEXT_MOVE.keys, next);
+  useKeybind(keyMap.GO_TO_START.keys, start);
+  useKeybind(keyMap.GO_TO_END.keys, end);
+  useKeybind(keyMap.DELETE_MOVE.keys, readOnly ? () => {} : () => deleteMove());
+  useKeybind(keyMap.GO_TO_BRANCH_START.keys, startBranch);
+  useKeybind(keyMap.GO_TO_BRANCH_END.keys, endBranch);
+  useKeybind(keyMap.NEXT_BRANCH.keys, nextBranch);
+  useKeybind(keyMap.PREVIOUS_BRANCH.keys, previousBranch);
+  useKeybind(keyMap.NEXT_BRANCHING.keys, nextBranching);
+  useKeybind(keyMap.PREVIOUS_BRANCHING.keys, previousBranching);
 
   return (
     <Group grow gap="xs">

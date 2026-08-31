@@ -2,12 +2,19 @@ import { ActionIcon, Box, Group, Kbd } from "@mantine/core";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { platform } from "@tauri-apps/plugin-os";
 import cx from "clsx";
-import { useAtom } from "jotai";
-import { useState } from "react";
+import { useAtom, useSetAtom } from "jotai";
+import { useEffect, useState } from "react";
 import { useRecordHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { keyMapAtom } from "@/state/keybinds";
+import { mouseButtonToken, mouseEventToKeybind } from "@/utils/keybind";
 import classes from "./KeybindInput.module.css";
+
+const MOUSE_LABELS: Record<string, string> = {
+  mouse3: "MB3",
+  mouse4: "MB4",
+  mouse5: "MB5",
+};
 
 function KeybindInput({
   action,
@@ -22,6 +29,35 @@ function KeybindInput({
   const [hovering, setHovering] = useState(false);
 
   const [keys, { start, stop, isRecording }] = useRecordHotkeys();
+  const setKeymap = useSetAtom(keyMapAtom);
+
+  // `useRecordHotkeys` only listens for the keyboard; capture mouse buttons here
+  // so MB3/MB4/MB5 (optionally with modifiers) can be bound too.
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      const binding = mouseEventToKeybind(event);
+      if (!binding) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stop();
+      setKeymap((prev) => ({
+        ...prev,
+        [action]: { name: prev[action].name, keys: binding },
+      }));
+    };
+    const onAuxClick = (event: MouseEvent) => {
+      if (mouseButtonToken(event.button)) event.preventDefault();
+    };
+
+    window.addEventListener("mousedown", onMouseDown, { capture: true });
+    window.addEventListener("auxclick", onAuxClick, { capture: true });
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, { capture: true });
+      window.removeEventListener("auxclick", onAuxClick, { capture: true });
+    };
+  }, [isRecording, action, stop, setKeymap]);
 
   return (
     <>
@@ -41,6 +77,10 @@ function KeybindInput({
 }
 
 const mapToOs = (key: string): string => {
+  if (MOUSE_LABELS[key]) {
+    return MOUSE_LABELS[key];
+  }
+
   const isMacos = platform() === "macos";
 
   if (!isMacos) {

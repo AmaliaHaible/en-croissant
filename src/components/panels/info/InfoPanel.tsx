@@ -13,12 +13,12 @@ import { useToggle } from "@mantine/hooks";
 import { IconPlus } from "@tabler/icons-react";
 import { useAtom, useAtomValue } from "jotai";
 import { use, useState } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { commands } from "@/bindings";
 import GameInfo from "@/components/common/GameInfo";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
+import { useKeybind } from "@/hooks/useKeybind";
 import ConfirmChangesModal from "@/components/tabs/ConfirmChangesModal";
 import { currentTabAtom } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
@@ -151,7 +151,7 @@ function GameSelectorAccordion({
   const keyMap = useAtomValue(keyMapAtom);
   const { t } = useTranslation();
 
-  useHotkeys(
+  useKeybind(
     keyMap.NEXT_GAME.keys,
     () => {
       if (!tabFile?.numGames) return;
@@ -162,7 +162,7 @@ function GameSelectorAccordion({
     },
   );
 
-  useHotkeys(keyMap.PREVIOUS_GAME.keys, () => setPage(Math.max(0, gameNumber - 1)), {
+  useKeybind(keyMap.PREVIOUS_GAME.keys, () => setPage(Math.max(0, gameNumber - 1)), {
     enabled: !!tabFile,
   });
 
