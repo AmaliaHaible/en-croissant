@@ -105,6 +105,12 @@ function BoardAnalysis() {
 
   useEffect(() => {
     if (!autoGenerateReport || !hasPersistentOrigin || !currentTab) return;
+    // Only auto-generate for games. File-backed tabs record their kind in the
+    // sidecar `.info` file (`tabFile.metadata.type`); opening repertoires,
+    // puzzle files, tournaments, etc. must not trigger a report. Database-origin
+    // tabs are always individual games.
+    const isGame = currentTab.gameOrigin.kind === "database" || tabFile?.metadata.type === "game";
+    if (!isGame) return;
     if (headers.other?.Analysis || root.children.length === 0 || reportInProgress) return;
     if (autoReportAttempted.current.has(currentTab.value)) return;
 
@@ -129,6 +135,7 @@ function BoardAnalysis() {
     autoGenerateReport,
     hasPersistentOrigin,
     currentTab,
+    tabFile,
     headers,
     root,
     reportInProgress,
