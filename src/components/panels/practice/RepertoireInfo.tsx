@@ -14,6 +14,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import {
   IconCheck,
   IconChevronDown,
@@ -76,6 +77,11 @@ function RepertoireInfo() {
   const stats = useStore(store, getStats);
 
   const rootStructureHash = useMemo(() => getTreeStructureHash(root), [root]);
+  // Recomputing coverage walks the whole repertoire and scans the reference
+  // database for any position it has not seen before. While the user is adding
+  // moves this hash changes on every ply, so debounce it: only recompute once
+  // the repertoire stops changing, not once per keystroke.
+  const [debouncedRootStructureHash] = useDebouncedValue(rootStructureHash, 500);
 
   const [rawOpenings, setRawOpenings] = useState<
     { move: string; white: number; draw: number; black: number }[]
@@ -159,7 +165,7 @@ function RepertoireInfo() {
         }
       });
     return () => controller.abort();
-  }, [rootStructureHash, orientation, referenceDb, startPathKey, minGames, practiceTab]);
+  }, [debouncedRootStructureHash, orientation, referenceDb, startPathKey, minGames, practiceTab]);
 
   const positionMoves = useMemo(() => {
     const total = rawOpenings.reduce((acc, op) => acc + op.white + op.black + op.draw, 0);

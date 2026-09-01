@@ -38,6 +38,13 @@ use super::GameQuery;
 const MAX_LINE_CACHE_ENTRIES: usize = 256;
 const MAX_SEARCH_SAMPLES: usize = 500;
 
+/// Exact-position opening stats are small (a few dozen moves each), and a
+/// repertoire under construction touches thousands of distinct positions across
+/// successive coverage recomputes. Keep enough of them resident that an edit
+/// only has to scan the reference database for the handful of *new* positions
+/// instead of re-scanning the whole sub-repertoire every time.
+const MAX_BATCH_POSITION_CACHE_ENTRIES: usize = 20_000;
+
 pub type LineCacheKey = (GameQuery, PathBuf, std::time::SystemTime);
 pub type BatchCacheKey = (PathBuf, std::time::SystemTime, String);
 
@@ -65,6 +72,14 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> Default for LruCache<K, V> {
 }
 
 impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruCache<K, V> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            map: DashMap::new(),
+            clock: AtomicU64::new(0),
+            capacity,
+        }
+    }
+
     fn tick(&self) -> u64 {
         self.clock.fetch_add(1, Ordering::Relaxed)
     }
@@ -99,10 +114,27 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruCache<K, V> {
 
 /// Result cache for [`search_position`], keyed by the full query.
 pub type LineCache = LruCache<LineCacheKey, (Vec<PositionStats>, Vec<NormalizedGame>)>;
+
 /// Opening-move stats for a single exact position, populated by
 /// [`search_positions_batch`] so that re-running repertoire coverage (after an
-/// orientation flip, a min-games change, ...) is served from memory.
-pub type BatchPositionCache = LruCache<BatchCacheKey, Vec<PositionStats>>;
+/// orientation flip, a min-games change, an added move, ...) is served from
+/// memory. Sized for a whole repertoire rather than the small line cache — see
+/// [`MAX_BATCH_POSITION_CACHE_ENTRIES`].
+pub struct BatchPositionCache(LruCache<BatchCacheKey, Vec<PositionStats>>);
+
+impl Default for BatchPositionCache {
+    fn default() -> Self {
+        Self(LruCache::with_capacity(MAX_BATCH_POSITION_CACHE_ENTRIES))
+    }
+}
+
+impl std::ops::Deref for BatchPositionCache {
+    type Target = LruCache<BatchCacheKey, Vec<PositionStats>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Load (or build, then load) the mmap search index for `file`, reusing the
 /// process-wide cached index when it is still current. Shared by every
@@ -768,6 +800,43 @@ pub async fn positions_in_db(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lru_cache_with_capacity_retains_every_entry_below_capacity() {
+        // A repertoire under construction touches far more than the default 256
+        // distinct positions. Entries inserted early in a coverage pass must
+        // still be cached on the next recompute, otherwise every edit re-scans
+        // the whole reference database.
+        let cache: LruCache<usize, ()> = LruCache::with_capacity(5000);
+        for i in 0..5000 {
+            cache.insert(i, ());
+        }
+        for i in 0..5000 {
+            assert!(cache.get(&i).is_some(), "entry {i} evicted below capacity");
+        }
+    }
+
+    #[test]
+    fn lru_cache_evicts_only_down_to_capacity_on_overflow() {
+        let cache: LruCache<usize, ()> = LruCache::with_capacity(100);
+        for i in 0..150 {
+            cache.insert(i, ());
+        }
+        let retained = (0..150).filter(|i| cache.get(i).is_some()).count();
+        assert_eq!(retained, 100);
+    }
+
+    #[test]
+    fn batch_position_cache_default_holds_a_large_repertoire() {
+        let cache = BatchPositionCache::default();
+        let modified = std::time::SystemTime::now();
+        let key = |i: usize| (PathBuf::from("ref.db3"), modified, format!("fen-{i}"));
+        for i in 0..5000 {
+            cache.insert(key(i), vec![]);
+        }
+        assert!(cache.get(&key(0)).is_some());
+        assert!(cache.get(&key(4999)).is_some());
+    }
 
     fn assert_partial_match(fen1: &str, fen2: &str) {
         let query = PositionQuery::partial_from_fen(fen1).unwrap();
