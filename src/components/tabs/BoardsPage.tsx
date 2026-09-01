@@ -10,6 +10,7 @@ import { match } from "ts-pattern";
 import { commands } from "@/bindings";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
+import { reportsInProgressAtom } from "@/state/reportProgress";
 import { createTab, genID, isPersistentGameOrigin, type Tab } from "@/utils/tabs";
 import { unwrap } from "@/utils/unwrap";
 import BoardAnalysis from "../boards/BoardAnalysis";
@@ -32,6 +33,7 @@ export default function BoardsPage() {
 
   const [tabs, setTabs] = useAtom(tabsAtom);
   const [activeTab, setActiveTab] = useAtom(activeTabAtom);
+  const reportsInProgress = useAtomValue(reportsInProgressAtom);
   const [saveModalOpened, toggleSaveModal] = useToggle();
 
   useEffect(() => {
@@ -68,6 +70,9 @@ export default function BoardsPage() {
         setTabs((prev) => prev.filter((tab) => tab.value !== value));
         unwrap(await commands.killEngines(value));
         await commands.abortGame(`${value}-game`);
+        // A report analysis runs its own engine process; cancel it so closing
+        // the tab doesn't leave it churning in the background.
+        await commands.cancelAnalysis(`report_${value}`);
       }
     },
     [tabs, activeTab, setTabs, toggleSaveModal, setActiveTab],
@@ -250,7 +255,18 @@ export default function BoardsPage() {
         </DragDropContext>
       </ScrollArea>
       {tabs.map((tab) => (
-        <Tabs.Panel key={tab.value} value={tab.value} h="100%" w="100%" pb="sm" px="xs">
+        <Tabs.Panel
+          key={tab.value}
+          value={tab.value}
+          // A report keeps running in the backend after its tab is hidden, but
+          // delivers its result into the tab's tree store — which is destroyed
+          // when the panel unmounts. Keep the panel mounted until it finishes.
+          keepMounted={reportsInProgress.has(tab.value)}
+          h="100%"
+          w="100%"
+          pb="sm"
+          px="xs"
+        >
           <TabSwitch
             tab={tab}
             saveModalOpened={saveModalOpened}

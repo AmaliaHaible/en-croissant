@@ -1,5 +1,6 @@
 import { commands } from "@/bindings";
 import type { ReportSettings } from "@/state/atoms";
+import { setReportRunning } from "@/state/reportProgress";
 import type { TreeStoreState } from "@/state/store/tree";
 import { buildAnalysisLabel } from "@/utils/analysisLabel";
 import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
@@ -24,6 +25,9 @@ export function generateReport({
     setInProgress: (value: boolean) => void;
 }) {
     setInProgress(true);
+    // The backend keeps analysing even if this tab stops being viewed; keep its
+    // panel mounted until we're done so the result lands on the live tree store.
+    setReportRunning(tab, true);
     const engineSettings = (engine ? getDefaultVariant(engine).settings : []).map((s) => ({
         ...s,
         value: s.value?.toString() ?? "",
@@ -57,5 +61,8 @@ export function generateReport({
                 });
             }
         })
-        .finally(() => setInProgress(false));
+        .finally(() => {
+            setInProgress(false);
+            setReportRunning(tab, false);
+        });
 }
