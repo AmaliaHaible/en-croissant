@@ -318,46 +318,56 @@ function TabSwitch({
   activeTab: string | null;
 }) {
   const [windowsState, setWindowsState] = useAtom(windowsStateAtom);
+  const active = tab.value === activeTab;
 
-  return match(tab.type)
-    .with("new", () => <NewTabHome id={tab.value} />)
-    .with("play", () => (
-      <TreeStateProvider id={tab.value}>
-        <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
-          value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
-          resize={{ minimumPaneSizePercentage: 0 }}
-        />
-        <BoardGame />
-      </TreeStateProvider>
-    ))
-    .with("analysis", () => (
-      <TreeStateProvider id={tab.value}>
-        <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
-          value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
-          resize={{ minimumPaneSizePercentage: 0 }}
-        />
-        <BoardAnalysis />
-        <ConfirmChangesModal
-          opened={saveModalOpened}
-          toggle={toggleSaveModal}
-          closeTab={() => closeTab(activeTab, true)}
-        />
-      </TreeStateProvider>
-    ))
-    .with("puzzles", () => (
-      <TreeStateProvider id={tab.value}>
-        <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
-          value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
-          resize={{ minimumPaneSizePercentage: 0 }}
-        />
-        <Puzzles id={tab.value} />
-      </TreeStateProvider>
-    ))
-    .exhaustive();
+  if (tab.type === "new") {
+    return active ? <NewTabHome id={tab.value} /> : null;
+  }
+
+  // A tab kept mounted while inactive (e.g. a report still running in the
+  // background) keeps its `TreeStateProvider` — and therefore its tree store —
+  // alive so the report result lands and progress stays in sync. But the board
+  // UI must only render for the active tab: every `Mosaic` renders the same
+  // `#left`/`#topRight`/`#bottomRight` pane ids, and the `Portal`s in
+  // `BoardAnalysis`/`BoardGame`/`Puzzles` target them by id — two mounted board
+  // tabs would collide and the visible one would render into the hidden one.
+  const mosaic = (
+    <Mosaic<ViewId>
+      renderTile={(id) => fullLayout[id]}
+      value={windowsState.currentNode}
+      onChange={(currentNode) => setWindowsState({ currentNode })}
+      resize={{ minimumPaneSizePercentage: 0 }}
+    />
+  );
+
+  return (
+    <TreeStateProvider id={tab.value}>
+      {active &&
+        match(tab.type)
+          .with("play", () => (
+            <>
+              {mosaic}
+              <BoardGame />
+            </>
+          ))
+          .with("analysis", () => (
+            <>
+              {mosaic}
+              <BoardAnalysis />
+              <ConfirmChangesModal
+                opened={saveModalOpened}
+                toggle={toggleSaveModal}
+                closeTab={() => closeTab(activeTab, true)}
+              />
+            </>
+          ))
+          .with("puzzles", () => (
+            <>
+              {mosaic}
+              <Puzzles id={tab.value} />
+            </>
+          ))
+          .exhaustive()}
+    </TreeStateProvider>
+  );
 }
