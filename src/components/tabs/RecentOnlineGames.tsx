@@ -4,27 +4,34 @@ import {
   Button,
   Card,
   Group,
+  Loader,
   ScrollArea,
   Stack,
   Text,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconClock, IconDownload } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { IconClock, IconDownload, IconZoomCheck } from "@tabler/icons-react";
 import { resolve } from "@tauri-apps/api/path";
 import { exists } from "@tauri-apps/plugin-fs";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NormalizedGame } from "@/bindings";
+import { commands } from "@/bindings";
 import {
   activeTabAtom,
   databaseConversionStateAtom,
+  enginesAtom,
   excludedOnlinePlayersAtom,
+  referenceDbAtom,
+  reportSettingsAtom,
   sessionsAtom,
   tabsAtom,
 } from "@/state/atoms";
+import { backgroundReportKey, backgroundReportsAtom } from "@/state/backgroundReports";
 import {
   downloadAccountGames,
   getAccountDbFilename,
@@ -32,8 +39,10 @@ import {
   getPlayerGroups,
   getSessionTotalGames,
 } from "@/utils/account";
+import { runBackgroundReport } from "@/utils/backgroundReport";
 import { getDatabases, query_games } from "@/utils/db";
 import { getDatabasesDir } from "@/utils/directories";
+import type { LocalEngine } from "@/utils/engines";
 import { createTab } from "@/utils/tabs";
 import classes from "./NewTabHome.module.css";
 
@@ -42,6 +51,7 @@ const RECENT_ONLINE_GAMES_LIMIT = 10;
 interface OnlineGameRow {
   game: NormalizedGame;
   databasePath: string;
+  analysisLabel: string | null;
 }
 
 function parseGameTimestamp(game: NormalizedGame): number {
@@ -55,13 +65,24 @@ function parseGameTimestamp(game: NormalizedGame): number {
   return Date.UTC(year, month - 1, day);
 }
 
+function gameName(row: OnlineGameRow): string {
+  return `${row.game.white} vs ${row.game.black}`;
+}
+
 function OnlineGameRowItem({
   row,
   onOpen,
+  onGenerateReport,
+  reportRunning,
+  reportDisabledReason,
 }: {
   row: OnlineGameRow;
   onOpen: (row: OnlineGameRow) => void;
+  onGenerateReport: (row: OnlineGameRow) => void;
+  reportRunning: boolean;
+  reportDisabledReason: string | null;
 }) {
+  const { t } = useTranslation();
   const { game } = row;
 
   return (
@@ -84,6 +105,34 @@ function OnlineGameRowItem({
           </Badge>
         </Group>
         <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+          {row.analysisLabel ? (
+            <Tooltip label={row.analysisLabel}>
+              <Badge
+                size="sm"
+                variant="light"
+                color="teal"
+                leftSection={<IconZoomCheck size={12} />}
+              >
+                {t("Home.RecentOnlineGames.Analyzed")}
+              </Badge>
+            </Tooltip>
+          ) : reportRunning ? (
+            <Loader size={16} />
+          ) : (
+            <Tooltip label={reportDisabledReason ?? t("Home.RecentOnlineGames.GenerateReport")}>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                disabled={reportDisabledReason !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGenerateReport(row);
+                }}
+              >
+                <IconZoomCheck size="1rem" />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <IconClock size={14} style={{ color: "var(--mantine-color-dimmed)" }} />
           <Text size="xs" c="dimmed">
             {game.date ?? ""}
@@ -99,9 +148,13 @@ export default function RecentOnlineGames() {
   const navigate = useNavigate();
   const sessions = useAtomValue(sessionsAtom);
   const excludedPlayers = useAtomValue(excludedOnlinePlayersAtom);
-  const [, setTabs] = useAtom(tabsAtom);
+  const [tabs, setTabs] = useAtom(tabsAtom);
   const setActiveTab = useSetAtom(activeTabAtom);
   const [, setConversionState] = useAtom(databaseConversionStateAtom);
+  const engines = useAtomValue(enginesAtom);
+  const referenceDb = useAtomValue(referenceDbAtom);
+  const reportSettings = useAtomValue(reportSettingsAtom);
+  const backgroundReports = useAtomValue(backgroundReportsAtom);
 
   const [games, setGames] = useState<OnlineGameRow[]>([]);
   const [downloading, setDownloading] = useState(false);
@@ -109,6 +162,11 @@ export default function RecentOnlineGames() {
   const includedPlayerGroups = getPlayerGroups(sessions).filter(
     (group) => !excludedPlayers.includes(group.name),
   );
+
+  const reportEngine = useMemo<LocalEngine | undefined>(() => {
+    const localEngines = (engines ?? []).filter((e): e is LocalEngine => e.type === "local");
+    return localEngines.find((e) => e.id === reportSettings.engine) ?? localEngines[0];
+  }, [engines, reportSettings.engine]);
 
   const loadGames = useCallback(async () => {
     const includedSessions = getPlayerGroups(sessions)
@@ -136,7 +194,18 @@ export default function RecentOnlineGames() {
                 skipCount: true,
               },
             });
-            return result.data.map((game) => ({ game, databasePath: dbPath }));
+            return await Promise.all(
+              result.data.map(async (game) => {
+                let analysisLabel: string | null = null;
+                try {
+                  const label = await commands.getGameAnalysisLabel(dbPath, game.id);
+                  analysisLabel = label.status === "ok" ? label.data : null;
+                } catch {
+                  analysisLabel = null;
+                }
+                return { game, databasePath: dbPath, analysisLabel };
+              }),
+            );
           } catch {
             return [];
           }
@@ -172,6 +241,59 @@ export default function RecentOnlineGames() {
       navigate({ to: "/" });
     },
     [setTabs, setActiveTab, navigate],
+  );
+
+  const isGameOpenInTab = useCallback(
+    (row: OnlineGameRow) =>
+      tabs.some(
+        (tab) =>
+          tab.gameOrigin.kind === "database" &&
+          tab.gameOrigin.database === row.databasePath &&
+          tab.gameOrigin.gameId === row.game.id,
+      ),
+    [tabs],
+  );
+
+  const reportDisabledReason = useCallback(
+    (row: OnlineGameRow): string | null => {
+      if (!reportEngine) return t("Home.RecentOnlineGames.GenerateReport.NoEngine");
+      if (isGameOpenInTab(row)) return t("Home.RecentOnlineGames.GenerateReport.Open");
+      return null;
+    },
+    [reportEngine, isGameOpenInTab, t],
+  );
+
+  const handleGenerateReport = useCallback(
+    async (row: OnlineGameRow) => {
+      if (!reportEngine || isGameOpenInTab(row)) return;
+      notifications.show({
+        title: t("Home.RecentOnlineGames.GenerateReport.Started"),
+        message: t("Home.RecentOnlineGames.GenerateReport.StartedMessage", {
+          game: gameName(row),
+        }),
+      });
+      try {
+        await runBackgroundReport({
+          databasePath: row.databasePath,
+          game: row.game,
+          referenceDb,
+          engine: reportEngine,
+          settings: reportSettings,
+        });
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          title: t("Home.RecentOnlineGames.GenerateReport.Failed"),
+          message: t("Home.RecentOnlineGames.GenerateReport.FailedMessage", {
+            game: gameName(row),
+          }),
+          color: "red",
+        });
+      } finally {
+        await loadGames();
+      }
+    },
+    [reportEngine, isGameOpenInTab, referenceDb, reportSettings, loadGames, t],
   );
 
   const handleDownloadAll = useCallback(async () => {
@@ -251,6 +373,11 @@ export default function RecentOnlineGames() {
                 key={`${row.databasePath}-${row.game.id}`}
                 row={row}
                 onOpen={openGame}
+                onGenerateReport={handleGenerateReport}
+                reportRunning={backgroundReports.has(
+                  backgroundReportKey(row.databasePath, row.game.id),
+                )}
+                reportDisabledReason={reportDisabledReason(row)}
               />
             ))}
           </Stack>
