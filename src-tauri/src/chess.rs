@@ -27,7 +27,7 @@ use vampirc_uci::{
 };
 
 use crate::{
-    db::{is_position_in_db, GameQuery, PositionQueryJs},
+    db::positions_in_db,
     engine::{
         parse_fen_and_apply_moves, BaseEngine, EngineLog, EngineOption, EngineReader, GoMode,
     },
@@ -619,28 +619,25 @@ pub async fn analyze_game(
         fens.reverse();
     }
 
-    for (i, analysis) in analysis.iter_mut().enumerate() {
-        let fen = &fens[i].0;
-        // let query = PositionQuery::exact_from_fen(&fen.to_string())?;
-        let query = PositionQueryJs {
-            fen: fen.to_string(),
-            type_: "exact".to_string(),
+    // Novelty detection asks, for each position, whether it already appears in
+    // the reference database. Resolve the whole set in one pass over the search
+    // index instead of a full scan per move.
+    let in_reference_db: Vec<bool> = if options.annotate_novelties {
+        let Some(reference) = options.reference_db.clone() else {
+            return Err(Error::MissingReferenceDatabase);
         };
+        let position_fens: Vec<String> = fens.iter().map(|(fen, _, _)| fen.to_string()).collect();
+        positions_in_db(reference, position_fens, state.clone()).await?
+    } else {
+        Vec::new()
+    };
 
+    for (i, analysis) in analysis.iter_mut().enumerate() {
         analysis.is_sacrifice = fens[i].2;
         if options.annotate_novelties && !novelty_found {
-            if let Some(reference) = options.reference_db.clone() {
-                analysis.novelty = !is_position_in_db(
-                    reference,
-                    GameQuery::new().position(query.clone()).clone(),
-                    state.clone(),
-                )
-                .await?;
-                if analysis.novelty {
-                    novelty_found = true;
-                }
-            } else {
-                return Err(Error::MissingReferenceDatabase);
+            analysis.novelty = !in_reference_db.get(i).copied().unwrap_or(false);
+            if analysis.novelty {
+                novelty_found = true;
             }
         }
     }

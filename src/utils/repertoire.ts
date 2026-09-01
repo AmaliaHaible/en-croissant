@@ -1,8 +1,8 @@
-import type { LocalOptions } from "@/components/panels/database/DatabasePanel";
-import { searchPosition } from "./db";
-import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
-import { TreeStoreState } from "@/state/store/tree";
 import { memoize } from "proxy-memoize";
+import type { PositionStats } from "@/bindings";
+import { TreeStoreState } from "@/state/store/tree";
+import { searchPositionsBatch } from "./db";
+import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
 
 export type PositionMove = {
     san: string;
@@ -29,91 +29,76 @@ export async function computeTreeCoverage(
     gamesMap: Map<string, number>;
     missingGamesMap: Map<string, number>;
 }> {
-    // Each visited position triggers a full-index scan of the reference database
-    // in the backend, run sequentially. Without a way to bail out, navigating
-    // away or changing a setting mid-traversal leaves a large repertoire pinning
-    // every CPU core for minutes. The caller aborts `signal` on cleanup.
     signal?.throwIfAborted();
 
     const userParity = userColor === "white" ? 0 : 1;
     const coverageMap = new Map<string, number>();
     const gamesMap = new Map<string, number>();
     const missingGamesMap = new Map<string, number>();
-    const fenCoverageCache = new Map<string, Promise<number>>();
+    const fenCoverageCache = new Map<string, number>();
     const fenMissingCache = new Map<string, number>();
-    const dbMovesCache = new Map<
-        string,
-        Promise<{ moves: { move: string; games: number }[]; total: number }>
-    >();
 
-    function getDbMoves(
-        fen: string,
-    ): Promise<{ moves: { move: string; games: number }[]; total: number }> {
-        const cached = dbMovesCache.get(fen);
-        if (cached) return cached;
+    const startNode = getNodeAtPath(root, startPath);
 
-        const promise = (async () => {
-            signal?.throwIfAborted();
-            try {
-                const [openings] = await searchPosition(
-                    {
-                        path: dbPath,
-                        type: "exact",
-                        fen,
-                        color: "white",
-                        player: null,
-                        result: "any",
-                    } as LocalOptions,
-                    "coverage-calc",
-                );
-
-                const summary = openings.find((op) => op.move === "*");
-                const moves = openings
-                    .filter((op) => op.move !== "*")
-                    .map((op) => ({
-                        move: op.move,
-                        games: op.white + op.draw + op.black,
-                    }));
-
-                const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
-                const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
-                const total = gamesEndingHere + gamesContinuing;
-
-                return { moves, total };
-            } catch {
-                return { moves: [], total: 0 };
-            }
-        })();
-
-        dbMovesCache.set(fen, promise);
-        return promise;
+    // Resolve the database stats for every distinct position in the
+    // sub-repertoire with a single index scan. Previously this fired one
+    // sequential full-index search per position, which pinned every CPU core
+    // for minutes on a large reference database.
+    const uniqueFens = new Set<string>();
+    const collectStack: TreeNode[] = [startNode];
+    while (collectStack.length > 0) {
+        const n = collectStack.pop()!;
+        uniqueFens.add(n.fen);
+        for (const child of n.children) collectStack.push(child);
     }
+    const fenList = [...uniqueFens];
 
-    async function compute(node: TreeNode, path: number[]): Promise<number> {
+    signal?.throwIfAborted();
+    const batch = await searchPositionsBatch(dbPath, fenList);
+    signal?.throwIfAborted();
+
+    const dbMovesByFen = new Map<
+        string,
+        { moves: { move: string; games: number }[]; total: number }
+    >();
+    fenList.forEach((fen, i) => {
+        const openings: PositionStats[] = batch[i] ?? [];
+        const summary = openings.find((op) => op.move === "*");
+        const moves = openings
+            .filter((op) => op.move !== "*")
+            .map((op) => ({ move: op.move, games: op.white + op.draw + op.black }));
+        const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
+        const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
+        dbMovesByFen.set(fen, { moves, total: gamesEndingHere + gamesContinuing });
+    });
+
+    const getDbMoves = (fen: string) =>
+        dbMovesByFen.get(fen) ?? { moves: [] as { move: string; games: number }[], total: 0 };
+
+    function compute(node: TreeNode, path: number[]): number {
         const pathKey = path.join(",");
 
         if (node.children.length === 0 && fenCoverageCache.has(node.fen)) {
-            const transpositionCoverage = await fenCoverageCache.get(node.fen)!;
+            const transpositionCoverage = fenCoverageCache.get(node.fen)!;
             coverageMap.set(pathKey, transpositionCoverage);
-            const { total: totalGames } = await getDbMoves(node.fen);
-            gamesMap.set(pathKey, totalGames);
+            gamesMap.set(pathKey, getDbMoves(node.fen).total);
             missingGamesMap.set(pathKey, fenMissingCache.get(node.fen) ?? 0);
             return transpositionCoverage;
         }
 
         if (node.children.length > 0 && !fenCoverageCache.has(node.fen)) {
-            const promise = computeNode(node, path);
-            fenCoverageCache.set(node.fen, promise);
-            return promise;
+            const result = computeNode(node, path);
+            fenCoverageCache.set(node.fen, result);
+            return result;
         }
 
         return computeNode(node, path);
     }
 
-    async function computeNode(node: TreeNode, path: number[]): Promise<number> {
+    function computeNode(node: TreeNode, path: number[]): number {
         const pathKey = path.join(",");
 
-        const { moves: dbMoves, total: totalGames } = await getDbMoves(node.fen);
+        const { moves: dbMoves, total: totalGames } = getDbMoves(node.fen);
         gamesMap.set(pathKey, totalGames);
 
         if (totalGames < minGames) {
@@ -152,10 +137,7 @@ export async function computeTreeCoverage(
                 const childIdx = node.children.findIndex((c) => c.san === dbMove.move);
                 if (childIdx !== -1) {
                     const frequency = dbMove.games / significantTotal;
-                    const childCoverage = await compute(node.children[childIdx], [
-                        ...path,
-                        childIdx,
-                    ]);
+                    const childCoverage = compute(node.children[childIdx], [...path, childIdx]);
                     coverage += frequency * childCoverage;
                 } else {
                     if (dbMove.games > maxMissingChildGames) {
@@ -174,15 +156,14 @@ export async function computeTreeCoverage(
             fenMissingCache.set(node.fen, totalGames);
             return 0;
         }
-        const childCoverage = await compute(node.children[0], [...path, 0]);
+        const childCoverage = compute(node.children[0], [...path, 0]);
         coverageMap.set(pathKey, childCoverage);
         missingGamesMap.set(pathKey, 0);
         fenMissingCache.set(node.fen, 0);
         return childCoverage;
     }
 
-    const startNode = getNodeAtPath(root, startPath);
-    await compute(startNode, startPath);
+    compute(startNode, startPath);
     return { coverageMap, gamesMap, missingGamesMap };
 }
 

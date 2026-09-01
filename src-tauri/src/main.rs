@@ -24,11 +24,10 @@ mod sound;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
 use chess::{BestMovesPayload, EngineProcess};
 use dashmap::DashMap;
-use db::{DatabaseProgress, GameQuery, NormalizedGame, PositionStats};
+use db::{BatchPositionCache, DatabaseProgress, GameQuery, LineCache};
 use derivative::Derivative;
 use game::GameManager;
 use progress::{clear_progress, get_progress, ProgressEvent, ProgressStore};
@@ -49,7 +48,7 @@ use crate::chess::{
 use crate::db::{
     clear_games, convert_pgn, create_indexes, delete_database, delete_db_game, delete_empty_games,
     delete_indexes, export_to_pgn, get_player, get_players_game_info, get_tournaments,
-    preload_reference_db, search_position, MmapSearchIndex,
+    preload_reference_db, search_position, search_positions_batch, MmapSearchIndex,
 };
 use crate::game::{
     abort_game, get_game_engine_logs, get_game_state, make_game_move, resign_game, start_game,
@@ -86,8 +85,8 @@ pub struct AppState {
         String,
         diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::SqliteConnection>>,
     >,
-    line_cache:
-        DashMap<(GameQuery, PathBuf, SystemTime), (Vec<PositionStats>, Vec<NormalizedGame>)>,
+    line_cache: LineCache,
+    batch_position_cache: BatchPositionCache,
     db_cache: Mutex<Option<(PathBuf, MmapSearchIndex)>>,
     #[derivative(Default(value = "Arc::new(Semaphore::new(2))"))]
     new_request: Arc<Semaphore>,
@@ -164,6 +163,7 @@ fn main() {
             get_db_info,
             get_games,
             search_position,
+            search_positions_batch,
             get_players,
             get_puzzle_db_info,
             get_puzzle_themes,

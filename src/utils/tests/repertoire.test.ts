@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { NormalizedGame, PositionStats } from "@/bindings";
-import { searchPosition as realSearchPosition } from "../db";
+import type { PositionStats } from "@/bindings";
+import { searchPositionsBatch as realSearchPositionsBatch } from "../db";
 import { computeTreeCoverage } from "../repertoire";
 import type { TreeNode } from "../treeReducer";
 
 vi.mock("../db");
-const searchPosition = vi.mocked(realSearchPosition);
+const searchPositionsBatch = vi.mocked(realSearchPositionsBatch);
 
-function node(fen: string, halfMoves: number, child?: TreeNode): TreeNode {
+function node(fen: string, san: string | null, halfMoves: number, children: TreeNode[]): TreeNode {
     return {
         fen,
         move: null,
-        san: halfMoves === 0 ? null : "e4",
-        children: child ? [child] : [],
+        san,
+        children,
         score: null,
         depth: null,
         halfMoves,
@@ -22,57 +22,80 @@ function node(fen: string, halfMoves: number, child?: TreeNode): TreeNode {
     };
 }
 
-/** A linear repertoire line of `depth` plies, one child ("e4") per node. */
-function linearTree(depth: number): TreeNode {
-    let current = node(`fen-${depth}`, depth);
-    for (let i = depth - 1; i >= 0; i--) {
-        current = node(`fen-${i}`, i, current);
-    }
-    return current;
+/** root → e4 → e5 (leaf), from White's perspective. */
+function sampleTree(): TreeNode {
+    const e5 = node("fen-e5", "e5", 2, []);
+    const e4 = node("fen-e4", "e4", 1, [e5]);
+    return node("fen-root", null, 0, [e4]);
 }
 
-const dbResult: [PositionStats[], NormalizedGame[]] = [
-    [{ move: "e4", white: 50, draw: 30, black: 20 }],
-    [],
-];
+const stats = (move: string, n: number): PositionStats => ({
+    move,
+    white: n,
+    draw: 0,
+    black: 0,
+});
 
 beforeEach(() => {
-    searchPosition.mockReset();
+    searchPositionsBatch.mockReset();
 });
 
 describe("computeTreeCoverage", () => {
-    test("walks the whole line when not cancelled", async () => {
-        searchPosition.mockResolvedValue(dbResult);
+    test("resolves every position in one batch call, not one per node", async () => {
+        searchPositionsBatch.mockResolvedValue([]);
 
-        const result = await computeTreeCoverage(linearTree(8), "white", "db.db3", 1);
+        await computeTreeCoverage(sampleTree(), "white", "db.db3", 10);
 
-        expect(result.coverageMap.size).toBeGreaterThan(0);
-        expect(searchPosition.mock.calls.length).toBeGreaterThan(3);
+        expect(searchPositionsBatch).toHaveBeenCalledTimes(1);
+        expect(searchPositionsBatch).toHaveBeenCalledWith(
+            "db.db3",
+            expect.arrayContaining(["fen-root", "fen-e4", "fen-e5"]),
+        );
     });
 
-    test("stops issuing searches once the signal aborts mid-traversal", async () => {
-        const controller = new AbortController();
-        let calls = 0;
-        searchPosition.mockImplementation(async () => {
-            calls += 1;
-            if (calls === 3) controller.abort();
-            return dbResult;
-        });
+    test("weights coverage by database frequency of the covered move", async () => {
+        // At fen-e4 the DB has two significant replies; the repertoire only
+        // answers "e5", so it covers half the traffic and "c5" (15 games) is the
+        // biggest gap.
+        searchPositionsBatch.mockImplementation(async (_db: string, fens: string[]) =>
+            fens.map((fen) => {
+                if (fen === "fen-root") return [stats("e4", 100)];
+                if (fen === "fen-e4") return [stats("e5", 15), stats("c5", 15)];
+                return [];
+            }),
+        );
 
-        await expect(
-            computeTreeCoverage(linearTree(20), "white", "db.db3", 1, [], controller.signal),
-        ).rejects.toMatchObject({ name: "AbortError" });
+        const { coverageMap, missingGamesMap, gamesMap } = await computeTreeCoverage(
+            sampleTree(),
+            "white",
+            "db.db3",
+            10,
+        );
 
-        expect(searchPosition).toHaveBeenCalledTimes(3);
+        expect(coverageMap.get("0")).toBeCloseTo(0.5);
+        expect(missingGamesMap.get("0")).toBe(15);
+        expect(gamesMap.get("")).toBe(100);
     });
 
     test("rejects immediately when handed an already-aborted signal", async () => {
-        searchPosition.mockResolvedValue(dbResult);
+        searchPositionsBatch.mockResolvedValue([]);
 
         await expect(
-            computeTreeCoverage(linearTree(8), "white", "db.db3", 1, [], AbortSignal.abort()),
+            computeTreeCoverage(sampleTree(), "white", "db.db3", 10, [], AbortSignal.abort()),
         ).rejects.toMatchObject({ name: "AbortError" });
 
-        expect(searchPosition).not.toHaveBeenCalled();
+        expect(searchPositionsBatch).not.toHaveBeenCalled();
+    });
+
+    test("rejects if the signal aborts while the batch search is in flight", async () => {
+        const controller = new AbortController();
+        searchPositionsBatch.mockImplementation(async () => {
+            controller.abort();
+            return [];
+        });
+
+        await expect(
+            computeTreeCoverage(sampleTree(), "white", "db.db3", 10, [], controller.signal),
+        ).rejects.toMatchObject({ name: "AbortError" });
     });
 });

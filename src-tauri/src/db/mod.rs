@@ -60,7 +60,10 @@ pub use self::models::Puzzle;
 pub use self::schema::puzzle_themes;
 pub use self::schema::puzzles;
 pub use self::schema::themes;
-pub use self::search::{is_position_in_db, search_position, PositionQueryJs, PositionStats};
+pub use self::search::{
+    positions_in_db, search_position, search_positions_batch, BatchPositionCache, LineCache,
+    PositionQueryJs,
+};
 
 const DATABASE_VERSION: &str = "1.0.0";
 
@@ -993,16 +996,6 @@ pub struct GameQuery {
     pub position: Option<PositionQueryJs>,
     #[specta(optional)]
     pub wanted_result: Option<String>,
-}
-
-impl GameQuery {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn position(mut self, position: PositionQueryJs) -> Self {
-        self.position = Some(position);
-        self
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -2025,6 +2018,7 @@ pub fn clear_games(state: tauri::State<'_, AppState>) {
     *db_cache = None;
     drop(db_cache);
     state.line_cache.clear();
+    state.batch_position_cache.clear();
 }
 
 #[tauri::command]

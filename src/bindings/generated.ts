@@ -358,6 +358,25 @@ async searchPosition(file: string, query: GameQuery, tabId: string) : Promise<Re
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Exact-match every FEN in `fens` against the reference database in a single
+ * parallel pass over the search index, returning per-FEN opening-move stats
+ * index-aligned with the input.
+ * 
+ * Repertoire coverage and game-report novelty detection both need the DB stats
+ * for a whole set of positions at once. Doing that as one `search_position`
+ * call per position means one full-index scan per position, run sequentially —
+ * which pins every core for minutes on a large reference database. This walks
+ * the index once and tests every position against each entry as it goes.
+ */
+async searchPositionsBatch(file: string, fens: string[]) : Promise<Result<PositionStats[][], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search_positions_batch", { file, fens }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getPlayers(file: string, query: PlayerQuery) : Promise<Result<QueryResponse<Player[]>, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_players", { file, query }) };

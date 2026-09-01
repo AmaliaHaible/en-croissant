@@ -1,3 +1,4 @@
+use dashmap::DashMap;
 use diesel::prelude::*;
 use log::info;
 use rayon::prelude::*;
@@ -9,9 +10,9 @@ use specta::Type;
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
     time::Instant,
@@ -36,6 +37,119 @@ use super::GameQuery;
 
 const MAX_LINE_CACHE_ENTRIES: usize = 256;
 const MAX_SEARCH_SAMPLES: usize = 500;
+
+pub type LineCacheKey = (GameQuery, PathBuf, std::time::SystemTime);
+pub type BatchCacheKey = (PathBuf, std::time::SystemTime, String);
+
+/// Bounded cache with approximate-LRU eviction.
+///
+/// The position-search caches previously dropped *every* entry the moment they
+/// filled, so a repertoire coverage pass or a game report — each of which
+/// touches hundreds of distinct positions — kept re-paying the full search cost
+/// on every re-run. Now the single least-recently-used entry is evicted to make
+/// room instead.
+pub struct LruCache<K: Eq + std::hash::Hash + Clone, V: Clone> {
+    map: DashMap<K, (V, AtomicU64)>,
+    clock: AtomicU64,
+    capacity: usize,
+}
+
+impl<K: Eq + std::hash::Hash + Clone, V: Clone> Default for LruCache<K, V> {
+    fn default() -> Self {
+        Self {
+            map: DashMap::new(),
+            clock: AtomicU64::new(0),
+            capacity: MAX_LINE_CACHE_ENTRIES,
+        }
+    }
+}
+
+impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruCache<K, V> {
+    fn tick(&self) -> u64 {
+        self.clock.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn get(&self, key: &K) -> Option<V> {
+        let entry = self.map.get(key)?;
+        entry.1.store(self.tick(), Ordering::Relaxed);
+        Some(entry.0.clone())
+    }
+
+    pub fn insert(&self, key: K, value: V) {
+        while self.map.len() >= self.capacity && !self.map.contains_key(&key) {
+            let victim = self
+                .map
+                .iter()
+                .min_by_key(|e| e.value().1.load(Ordering::Relaxed))
+                .map(|e| e.key().clone());
+            match victim {
+                Some(victim) => {
+                    self.map.remove(&victim);
+                }
+                None => break,
+            }
+        }
+        self.map.insert(key, (value, AtomicU64::new(self.tick())));
+    }
+
+    pub fn clear(&self) {
+        self.map.clear();
+    }
+}
+
+/// Result cache for [`search_position`], keyed by the full query.
+pub type LineCache = LruCache<LineCacheKey, (Vec<PositionStats>, Vec<NormalizedGame>)>;
+/// Opening-move stats for a single exact position, populated by
+/// [`search_positions_batch`] so that re-running repertoire coverage (after an
+/// orientation flip, a min-games change, ...) is served from memory.
+pub type BatchPositionCache = LruCache<BatchCacheKey, Vec<PositionStats>>;
+
+/// Load (or build, then load) the mmap search index for `file`, reusing the
+/// process-wide cached index when it is still current. Shared by every
+/// position-search entry point.
+fn load_index(
+    state: &tauri::State<'_, AppState>,
+    file: &Path,
+    start: Instant,
+) -> Result<MmapSearchIndex, Error> {
+    let mut cache = state.db_cache.lock().unwrap();
+    let cache_is_current = cache
+        .as_ref()
+        .is_some_and(|(cached_file, _)| cached_file.as_path() == file)
+        && MmapSearchIndex::is_up_to_date(file);
+    if !cache_is_current {
+        let index_path = get_index_path(file);
+
+        if !MmapSearchIndex::is_up_to_date(file) {
+            info!("Search index not found, generating automatically...");
+            *cache = None;
+            drop(cache);
+            if let Err(e) = super::generate_search_index(file, state) {
+                return Err(Error::from(std::io::Error::other(format!(
+                    "Failed to generate search index: {}",
+                    e
+                ))));
+            }
+            cache = state.db_cache.lock().unwrap();
+        }
+
+        info!("Loading games from mmap binary search index");
+        match MmapSearchIndex::open(&index_path) {
+            Ok(index) => {
+                info!(
+                    "Opened mmap index with {} games: {:?}",
+                    index.len(),
+                    start.elapsed()
+                );
+                *cache = Some((file.to_path_buf(), index));
+            }
+            Err(e) => {
+                return Err(Error::from(e));
+            }
+        }
+    }
+    Ok(cache.as_ref().unwrap().1.clone())
+}
 
 #[derive(Default)]
 struct SearchAccumulator {
@@ -71,17 +185,6 @@ impl SearchAccumulator {
         }
         self
     }
-}
-
-fn cache_search_result(
-    state: &tauri::State<'_, AppState>,
-    key: (GameQuery, PathBuf, std::time::SystemTime),
-    value: (Vec<PositionStats>, Vec<NormalizedGame>),
-) {
-    if state.line_cache.len() >= MAX_LINE_CACHE_ENTRIES {
-        state.line_cache.clear();
-    }
-    state.line_cache.insert(key, value);
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -307,9 +410,7 @@ pub async fn search_position(
 
     let _guard = collision_lock.lock().await;
 
-    if let Some(pos) = state.line_cache.get(&cache_key) {
-        let result = pos.clone();
-        drop(pos);
+    if let Some(result) = state.line_cache.get(&cache_key) {
         state
             .search_collisions
             .remove(&(query.clone(), file.clone()));
@@ -321,45 +422,7 @@ pub async fn search_position(
 
     let permit = state.new_request.acquire().await.unwrap();
 
-    let mmap_index = {
-        let mut cache = state.db_cache.lock().unwrap();
-        let cache_is_current = cache
-            .as_ref()
-            .is_some_and(|(cached_file, _)| cached_file == &file)
-            && MmapSearchIndex::is_up_to_date(&file);
-        if !cache_is_current {
-            let index_path = get_index_path(&file);
-
-            if !MmapSearchIndex::is_up_to_date(&file) {
-                info!("Search index not found, generating automatically...");
-                *cache = None;
-                drop(cache);
-                if let Err(e) = super::generate_search_index(&file, &state) {
-                    return Err(Error::from(std::io::Error::other(format!(
-                        "Failed to generate search index: {}",
-                        e
-                    ))));
-                }
-                cache = state.db_cache.lock().unwrap();
-            }
-
-            info!("Loading games from mmap binary search index");
-            match MmapSearchIndex::open(&index_path) {
-                Ok(index) => {
-                    info!(
-                        "Opened mmap index with {} games: {:?}",
-                        index.len(),
-                        start.elapsed()
-                    );
-                    *cache = Some((file.clone(), index));
-                }
-                Err(e) => {
-                    return Err(Error::from(e));
-                }
-            }
-        }
-        cache.as_ref().unwrap().1.clone()
-    };
+    let mmap_index = load_index(&state, &file, start)?;
 
     let game_count = mmap_index.len();
 
@@ -502,11 +565,9 @@ pub async fn search_position(
     let normalized_games = normalize_games(games);
     let file_path = file.clone();
 
-    cache_search_result(
-        &state,
-        cache_key,
-        (openings.clone(), normalized_games.clone()),
-    );
+    state
+        .line_cache
+        .insert(cache_key, (openings.clone(), normalized_games.clone()));
 
     state.search_collisions.remove(&(query, file_path));
 
@@ -515,114 +576,193 @@ pub async fn search_position(
     Ok((openings, normalized_games))
 }
 
-pub async fn is_position_in_db(
+fn tally_result(stats: &mut PositionStats, result: GameResult) {
+    match result {
+        GameResult::WhiteWin => stats.white += 1,
+        GameResult::BlackWin => stats.black += 1,
+        GameResult::Draw | GameResult::Other | GameResult::None => stats.draw += 1,
+    }
+}
+
+/// Exact-match every FEN in `fens` against the reference database in a single
+/// parallel pass over the search index, returning per-FEN opening-move stats
+/// index-aligned with the input.
+///
+/// Repertoire coverage and game-report novelty detection both need the DB stats
+/// for a whole set of positions at once. Doing that as one `search_position`
+/// call per position means one full-index scan per position, run sequentially —
+/// which pins every core for minutes on a large reference database. This walks
+/// the index once and tests every position against each entry as it goes.
+#[tauri::command]
+#[specta::specta]
+pub async fn search_positions_batch(
     file: PathBuf,
-    query: GameQuery,
+    fens: Vec<String>,
     state: tauri::State<'_, AppState>,
-) -> Result<bool, Error> {
-    let cache_key = (
-        query.clone(),
-        file.clone(),
-        std::fs::metadata(&file)?.modified()?,
-    );
-    let collision_lock = {
-        let entry = state
-            .search_collisions
-            .entry((query.clone(), file.clone()))
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())));
-        entry.value().clone()
-    };
-
-    let _guard = collision_lock.lock().await;
-
-    if let Some(pos) = state.line_cache.get(&cache_key) {
-        let exists = !pos.0.is_empty();
-        drop(pos);
-        state
-            .search_collisions
-            .remove(&(query.clone(), file.clone()));
-        return Ok(exists);
+) -> Result<Vec<Vec<PositionStats>>, Error> {
+    if fens.is_empty() {
+        return Ok(vec![]);
     }
 
-    let parsed_position_query: Option<PositionQuery> = if let Some(pq) = &query.position {
-        Some(convert_position_query(pq.clone())?)
-    } else {
-        None
-    };
+    let modified = std::fs::metadata(&file)?.modified()?;
 
-    let start = Instant::now();
-    info!("start loading games for is_position_in_db");
+    // Positions resolved by an earlier batch are served from memory; only the
+    // misses need a scan.
+    let mut results: Vec<Vec<PositionStats>> = vec![Vec::new(); fens.len()];
+    let mut pending: Vec<(usize, PositionQuery)> = Vec::new();
+    for (i, fen) in fens.iter().enumerate() {
+        if let Some(openings) =
+            state
+                .batch_position_cache
+                .get(&(file.clone(), modified, fen.clone()))
+        {
+            results[i] = openings;
+        } else if let Ok(parsed) = PositionQuery::exact_from_fen(fen) {
+            pending.push((i, parsed));
+        }
+    }
+
+    if pending.is_empty() {
+        return Ok(results);
+    }
 
     let permit = state.new_request.acquire().await.unwrap();
+    let start = Instant::now();
+    let mmap_index = load_index(&state, &file, start)?;
+    let n = pending.len();
 
-    let mmap_index = {
-        let mut cache = state.db_cache.lock().unwrap();
-        let cache_is_current = cache
-            .as_ref()
-            .is_some_and(|(cached_file, _)| cached_file == &file)
-            && MmapSearchIndex::is_up_to_date(&file);
-        if !cache_is_current {
-            let index_path = get_index_path(&file);
-
-            if !MmapSearchIndex::is_up_to_date(&file) {
-                info!("Search index not found, generating automatically...");
-                *cache = None;
-                drop(cache);
-                if let Err(e) = super::generate_search_index(&file, &state) {
-                    return Err(Error::from(std::io::Error::other(format!(
-                        "Failed to generate search index: {}",
-                        e
-                    ))));
+    let merged = mmap_index
+        .par_iter()
+        .fold(
+            || vec![HashMap::<String, PositionStats>::new(); n],
+            |mut accs, entry| {
+                let end_material: MaterialCount = ByColor {
+                    white: entry.white_material,
+                    black: entry.black_material,
+                };
+                for (slot, (_, query)) in pending.iter().enumerate() {
+                    if !query.can_reach(&end_material, entry.pawn_home) {
+                        continue;
+                    }
+                    if let Ok(Some(m)) = get_move_after_match(entry.moves, &entry.fen, query) {
+                        let stats = accs[slot].entry(m).or_insert_with(|| PositionStats {
+                            white: 0,
+                            draw: 0,
+                            black: 0,
+                            move_: String::new(),
+                        });
+                        tally_result(stats, entry.result);
+                    }
                 }
-                cache = state.db_cache.lock().unwrap();
-            }
-
-            info!("Loading games from mmap binary search index");
-            match MmapSearchIndex::open(&index_path) {
-                Ok(index) => {
-                    info!(
-                        "Opened mmap index with {} games: {:?}",
-                        index.len(),
-                        start.elapsed()
-                    );
-                    *cache = Some((file.clone(), index));
+                accs
+            },
+        )
+        .reduce(
+            || vec![HashMap::<String, PositionStats>::new(); n],
+            |mut a, b| {
+                for (slot, map) in b.into_iter().enumerate() {
+                    for (mv, s) in map {
+                        a[slot]
+                            .entry(mv)
+                            .and_modify(|cur| {
+                                cur.white += s.white;
+                                cur.draw += s.draw;
+                                cur.black += s.black;
+                            })
+                            .or_insert(s);
+                    }
                 }
-                Err(e) => {
-                    return Err(Error::from(e));
-                }
-            }
-        }
-        cache.as_ref().unwrap().1.clone()
-    };
+                a
+            },
+        );
 
-    let check_entry = |entry: SearchGameEntryRef<'_>| -> bool {
-        let end_material: MaterialCount = ByColor {
-            white: entry.white_material,
-            black: entry.black_material,
-        };
-        if let Some(position_query) = &parsed_position_query {
-            position_query.can_reach(&end_material, entry.pawn_home)
-                && get_move_after_match(entry.moves, &entry.fen, position_query)
-                    .unwrap_or(None)
-                    .is_some()
-        } else {
-            false
-        }
-    };
-
-    let exists = mmap_index.par_iter().any(check_entry);
-
-    info!("finished search in {:?}", start.elapsed());
-
-    if !exists {
-        cache_search_result(&state, cache_key, (vec![], vec![]));
-    }
-
-    state.search_collisions.remove(&(query, file));
-
+    info!(
+        "batch position search ({n} positions) finished in {:?}",
+        start.elapsed()
+    );
     drop(permit);
 
-    Ok(exists)
+    for (map, (orig_idx, _)) in merged.into_iter().zip(pending.iter()) {
+        let openings: Vec<PositionStats> = map
+            .into_iter()
+            .map(|(mv, mut stats)| {
+                stats.move_ = mv;
+                stats
+            })
+            .collect();
+        state.batch_position_cache.insert(
+            (file.clone(), modified, fens[*orig_idx].clone()),
+            openings.clone(),
+        );
+        results[*orig_idx] = openings;
+    }
+
+    Ok(results)
+}
+
+/// For each FEN, whether that exact position already appears in `file`, resolved
+/// in a single parallel pass over the index. Used by game-report novelty
+/// detection, which would otherwise scan the whole index once per move.
+pub async fn positions_in_db(
+    file: PathBuf,
+    fens: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<bool>, Error> {
+    if fens.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let queries: Vec<PositionQuery> = fens
+        .iter()
+        .map(|f| PositionQuery::exact_from_fen(f))
+        .collect::<Result<_, _>>()?;
+    let n = queries.len();
+
+    let permit = state.new_request.acquire().await.unwrap();
+    let start = Instant::now();
+    let mmap_index = load_index(&state, &file, start)?;
+
+    let found = mmap_index
+        .par_iter()
+        .fold(
+            || vec![false; n],
+            |mut acc, entry| {
+                let end_material: MaterialCount = ByColor {
+                    white: entry.white_material,
+                    black: entry.black_material,
+                };
+                for (i, query) in queries.iter().enumerate() {
+                    if acc[i] {
+                        continue;
+                    }
+                    if query.can_reach(&end_material, entry.pawn_home)
+                        && get_move_after_match(entry.moves, &entry.fen, query)
+                            .unwrap_or(None)
+                            .is_some()
+                    {
+                        acc[i] = true;
+                    }
+                }
+                acc
+            },
+        )
+        .reduce(
+            || vec![false; n],
+            |mut a, b| {
+                for (i, hit) in b.into_iter().enumerate() {
+                    a[i] |= hit;
+                }
+                a
+            },
+        );
+
+    info!(
+        "novelty batch ({n} positions) finished in {:?}",
+        start.elapsed()
+    );
+    drop(permit);
+
+    Ok(found)
 }
 
 #[cfg(test)]

@@ -165,6 +165,16 @@ export async function getTournamentGames(file: string, id: number) {
     });
 }
 
+/**
+ * Exact-match a batch of FENs against a database in a single backend index scan,
+ * returning opening-move stats per FEN (index-aligned with the input). Use this
+ * instead of looping {@link searchPosition} when the whole set of positions is
+ * known up front (repertoire coverage, report novelty detection).
+ */
+export async function searchPositionsBatch(dbPath: string, fens: string[]) {
+    return unwrap(await commands.searchPositionsBatch(dbPath, fens));
+}
+
 export async function searchPosition(options: LocalOptions, tab: string) {
     const res = await commands.searchPosition(
         options.path!,
