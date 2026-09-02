@@ -43,7 +43,7 @@ const MAX_SEARCH_SAMPLES: usize = 500;
 /// successive coverage recomputes. Keep enough of them resident that an edit
 /// only has to scan the reference database for the handful of *new* positions
 /// instead of re-scanning the whole sub-repertoire every time.
-const MAX_BATCH_POSITION_CACHE_ENTRIES: usize = 20_000;
+const MAX_BATCH_POSITION_CACHE_ENTRIES: usize = 200_000;
 
 pub type LineCacheKey = (GameQuery, PathBuf, std::time::SystemTime);
 pub type BatchCacheKey = (PathBuf, std::time::SystemTime, String);

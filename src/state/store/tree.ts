@@ -52,6 +52,7 @@ export interface TreeStoreState extends TreeState {
     appendMove: (args: { payload: Move; clock?: number }) => void;
 
     makeMoves: (args: { payload: string[]; mainline?: boolean; changeHeaders?: boolean }) => void;
+    replaceMove: (args: { payload: string; at?: number[] }) => void;
     deleteMove: (path?: number[]) => void;
     promoteVariation: (path: number[]) => void;
     promoteToMainline: (path: number[]) => void;
@@ -243,6 +244,42 @@ export const createTreeStore = (id?: string, initialTree?: TreeState) => {
                             changeHeaders,
                         });
                     }
+                }),
+            ),
+        replaceMove: ({ payload, at }) =>
+            set(
+                produce((state) => {
+                    const path = at ?? state.position;
+                    const node = getNodeAtPath(state.root, path);
+                    if (!node) return;
+                    const [pos] = positionFromFen(node.fen);
+                    if (!pos) return;
+                    const move = parseSan(pos, payload);
+                    if (!move) return;
+                    const san = makeSan(pos, move);
+                    if (san === "--") return;
+
+                    state.dirty = true;
+
+                    // Keep the chosen move's existing subtree if it is already
+                    // one of the candidates; otherwise start it fresh. Every
+                    // other candidate at this position is dropped so a
+                    // repertoire position the user plays has exactly one move.
+                    const existing = node.children.find((c) => c.san === san);
+                    if (existing) {
+                        node.children = [existing];
+                    } else {
+                        pos.play(move);
+                        node.children = [
+                            createNode({
+                                fen: makeFen(pos.toSetup()),
+                                move,
+                                san,
+                                halfMoves: node.halfMoves + 1,
+                            }),
+                        ];
+                    }
+                    state.position = [...path, 0];
                 }),
             ),
         goToEnd: () =>

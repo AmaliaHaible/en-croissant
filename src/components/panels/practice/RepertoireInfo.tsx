@@ -1,5 +1,7 @@
 import {
+  ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Divider,
@@ -22,11 +24,13 @@ import {
   IconFlag,
   IconInfoCircle,
   IconPlayerPlay,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useAtomValue } from "jotai";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
+import ConfirmModal from "@/components/common/ConfirmModal";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import {
   coverageMinGamesAtom,
@@ -49,10 +53,31 @@ import classes from "./RepertoireInfo.module.css";
 
 const EMPTY_PATH: number[] = [];
 
+type ResponseStat = {
+  san: string;
+  halfMoves: number;
+  dbGames: number;
+  dbFrequency: number;
+  white: number;
+  draw: number;
+  black: number;
+  coverage: number;
+  childPath: number[];
+};
+
 function formatMoveNotation(halfMoves: number, san: string): string {
   const moveNum = Math.ceil(halfMoves / 2);
   const isWhite = halfMoves % 2 === 1;
   return `${moveNum}${isWhite ? "." : "..."} ${san}`;
+}
+
+/** Number of moves stored below `node` (its whole subtree, node excluded). */
+function countDescendantMoves(node: TreeNode): number {
+  let total = 0;
+  for (const child of node.children) {
+    total += 1 + countDescendantMoves(child);
+  }
+  return total;
 }
 
 function RepertoireInfo() {
@@ -65,6 +90,9 @@ function RepertoireInfo() {
   const goToMove = useStore(store, (s) => s.goToMove);
   const makeMove = useStore(store, (s) => s.makeMove);
   const makeMoves = useStore(store, (s) => s.makeMoves);
+  const replaceMove = useStore(store, (s) => s.replaceMove);
+  const promoteVariation = useStore(store, (s) => s.promoteVariation);
+  const deleteMove = useStore(store, (s) => s.deleteMove);
   const setStart = useStore(store, (s) => s.setStart);
 
   const referenceDb = useAtomValue(referenceDbAtom);
@@ -371,6 +399,10 @@ function RepertoireInfo() {
           biggestGap={biggestGap}
           goToMove={goToMove}
           onMoveClick={handleMoveClick}
+          makeMove={makeMove}
+          replaceMove={replaceMove}
+          promoteVariation={promoteVariation}
+          deleteMove={deleteMove}
           t={t}
           minGames={minGames}
         />
@@ -415,6 +447,10 @@ function MovesView({
   biggestGap,
   goToMove,
   onMoveClick,
+  makeMove,
+  replaceMove,
+  promoteVariation,
+  deleteMove,
   t,
   minGames,
 }: {
@@ -429,6 +465,10 @@ function MovesView({
   biggestGap: number[] | null;
   goToMove: (path: number[]) => void;
   onMoveClick: (move: PositionMove) => void;
+  makeMove: (args: { payload: string }) => void;
+  replaceMove: (args: { payload: string; at?: number[] }) => void;
+  promoteVariation: (path: number[]) => void;
+  deleteMove: (path: number[]) => void;
   t: ReturnType<typeof useTranslation>["t"];
   minGames: number;
 }) {
@@ -556,44 +596,21 @@ function MovesView({
             </Group>
           </Group>
 
-          {isUserTurn &&
-            hasResponses &&
-            responsesWithStats.map((response) => (
-              <MoveRow
-                key={response.san}
-                move={{
-                  san: response.san,
-                  games: response.dbGames,
-                  totalGames: 0,
-                  frequency: response.dbFrequency,
-                  white: response.white,
-                  draw: response.draw,
-                  black: response.black,
-                  inRepertoire: true,
-                  coverage: response.coverage,
-                  childIndex: 0,
-                }}
-                halfMoves={response.halfMoves}
-                onClick={() => goToMove(response.childPath)}
-                dimmed={false}
-                showCoverage
-                minGames={minGames}
-              />
-            ))}
-
-          {isUserTurn &&
-            !hasResponses &&
-            positionMoves.map((move) => (
-              <MoveRow
-                key={move.san}
-                move={move}
-                halfMoves={currentNode.halfMoves + 1}
-                onClick={() => onMoveClick(move)}
-                dimmed={false}
-                showCoverage={false}
-                minGames={minGames}
-              />
-            ))}
+          {isUserTurn && (
+            <UserResponseSection
+              currentNode={currentNode}
+              position={position}
+              positionMoves={positionMoves}
+              responsesWithStats={responsesWithStats}
+              goToMove={goToMove}
+              makeMove={makeMove}
+              replaceMove={replaceMove}
+              promoteVariation={promoteVariation}
+              deleteMove={deleteMove}
+              minGames={minGames}
+              t={t}
+            />
+          )}
 
           {!isUserTurn &&
             relevantMoves.map((move) => (
@@ -715,6 +732,7 @@ function MoveRow({
   dimmed,
   showCoverage = true,
   minGames,
+  badge,
 }: {
   move: PositionMove;
   halfMoves: number;
@@ -722,6 +740,7 @@ function MoveRow({
   dimmed: boolean;
   showCoverage?: boolean;
   minGames: number;
+  badge?: string;
 }) {
   const { t } = useTranslation();
   const notation = formatMoveNotation(halfMoves, move.san);
@@ -746,10 +765,15 @@ function MoveRow({
           <Text fw={700} fz="sm">
             {notation}
           </Text>
-          {move.inRepertoire && (
+          {move.inRepertoire && !badge && (
             <ThemeIcon size="xs" color="green" variant="transparent">
               <IconCheck size={12} />
             </ThemeIcon>
+          )}
+          {badge && (
+            <Badge size="xs" color="green" variant="light">
+              {badge}
+            </Badge>
           )}
         </Group>
 
@@ -794,6 +818,231 @@ function MoveRow({
         </Group>
       </Group>
     </UnstyledButton>
+  );
+}
+
+function UserResponseSection({
+  currentNode,
+  position,
+  positionMoves,
+  responsesWithStats,
+  goToMove,
+  makeMove,
+  replaceMove,
+  promoteVariation,
+  deleteMove,
+  minGames,
+  t,
+}: {
+  currentNode: TreeNode;
+  position: number[];
+  positionMoves: PositionMove[];
+  responsesWithStats: ResponseStat[];
+  goToMove: (path: number[]) => void;
+  makeMove: (args: { payload: string }) => void;
+  replaceMove: (args: { payload: string; at?: number[] }) => void;
+  promoteVariation: (path: number[]) => void;
+  deleteMove: (path: number[]) => void;
+  minGames: number;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    san: string;
+    path: number[];
+    count: number;
+  } | null>(null);
+  const [showRare, setShowRare] = useState(false);
+
+  const hasResponses = responsesWithStats.length > 0;
+  const active = responsesWithStats[0];
+  const alternatives = responsesWithStats.slice(1);
+
+  const toRow = (r: ResponseStat): PositionMove => ({
+    san: r.san,
+    games: r.dbGames,
+    totalGames: 0,
+    frequency: r.dbFrequency,
+    white: r.white,
+    draw: r.draw,
+    black: r.black,
+    inRepertoire: true,
+    coverage: r.coverage,
+    childIndex: 0,
+  });
+
+  const repertoireSans = new Set(responsesWithStats.map((r) => r.san));
+  const candidates = positionMoves.filter((m) => !repertoireSans.has(m.san));
+  const relevantCandidates = candidates.filter((m) => m.games >= minGames);
+  const rareCandidates = candidates.filter((m) => m.games < minGames);
+
+  // Everything stored below the current position is discarded when the user
+  // swaps in a move that is not already one of the candidates here.
+  const lostMoveCount = countDescendantMoves(currentNode);
+
+  function pickCandidate(san: string) {
+    if (hasResponses) {
+      setReplaceTarget(san);
+    } else {
+      makeMove({ payload: san });
+    }
+  }
+
+  return (
+    <>
+      {hasResponses && (
+        <>
+          <MoveRow
+            move={toRow(active)}
+            halfMoves={active.halfMoves}
+            onClick={() => goToMove(active.childPath)}
+            dimmed={false}
+            showCoverage
+            minGames={minGames}
+            badge={t("Board.Practice.Build.ActiveMove")}
+          />
+          {alternatives.length > 0 && (
+            <>
+              <Text fz="xs" c="dimmed" px="xs" pt="xs">
+                {t("Board.Practice.Build.Alternatives")}
+              </Text>
+              {alternatives.map((alt) => {
+                const childNode = currentNode.children[alt.childPath[alt.childPath.length - 1]];
+                return (
+                  <Group
+                    key={alt.san}
+                    justify="space-between"
+                    wrap="nowrap"
+                    px="xs"
+                    py={6}
+                    style={{ borderBottom: "1px solid var(--mantine-color-dark-5)" }}
+                  >
+                    <UnstyledButton
+                      onClick={() => goToMove(alt.childPath)}
+                      style={{ flex: 1, minWidth: 0 }}
+                    >
+                      <Text fw={700} fz="sm">
+                        {formatMoveNotation(alt.halfMoves, alt.san)}
+                      </Text>
+                    </UnstyledButton>
+                    <Group gap={4} wrap="nowrap">
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        onClick={() => promoteVariation(alt.childPath)}
+                      >
+                        {t("Board.Practice.Build.MakeActive")}
+                      </Button>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="red"
+                        onClick={() =>
+                          setDeleteTarget({
+                            san: alt.san,
+                            path: alt.childPath,
+                            count: childNode ? 1 + countDescendantMoves(childNode) : 1,
+                          })
+                        }
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
+
+      <Text fz="xs" fw={600} px="xs" pt="sm" pb={4}>
+        {hasResponses
+          ? t("Board.Practice.Build.ChangeMovePrompt")
+          : t("Board.Practice.Build.PickMovePrompt")}
+      </Text>
+
+      {relevantCandidates.map((move) => (
+        <MoveRow
+          key={move.san}
+          move={move}
+          halfMoves={currentNode.halfMoves + 1}
+          onClick={() => pickCandidate(move.san)}
+          dimmed={false}
+          showCoverage={false}
+          minGames={minGames}
+        />
+      ))}
+
+      {rareCandidates.length > 0 && (
+        <UnstyledButton
+          onClick={() => setShowRare((v) => !v)}
+          px="xs"
+          py={6}
+          style={{ width: "100%" }}
+        >
+          <Group gap="xs" justify="center">
+            <Divider style={{ flex: 1 }} />
+            <Group gap={4} wrap="nowrap">
+              {showRare ? (
+                <IconChevronDown size={12} color="var(--mantine-color-dimmed)" />
+              ) : (
+                <IconChevronRight size={12} color="var(--mantine-color-dimmed)" />
+              )}
+              <Text fz="xs" c="dimmed">
+                {t("Board.Practice.Build.RareMoves")}
+              </Text>
+            </Group>
+            <Divider style={{ flex: 1 }} />
+          </Group>
+        </UnstyledButton>
+      )}
+
+      {(showRare || relevantCandidates.length === 0) &&
+        rareCandidates.map((move) => (
+          <MoveRow
+            key={move.san}
+            move={move}
+            halfMoves={currentNode.halfMoves + 1}
+            onClick={() => pickCandidate(move.san)}
+            dimmed
+            showCoverage={false}
+            minGames={minGames}
+          />
+        ))}
+
+      <ConfirmModal
+        opened={replaceTarget !== null}
+        title={t("Board.Practice.Build.ChangeMoveTitle")}
+        description={
+          lostMoveCount > 0
+            ? t("Board.Practice.Build.ReplaceConfirm", {
+                move: replaceTarget ?? "",
+                count: lostMoveCount,
+              })
+            : t("Board.Practice.Build.ReplaceConfirmEmpty", { move: replaceTarget ?? "" })
+        }
+        confirmLabel={t("Board.Practice.Build.Replace")}
+        onClose={() => setReplaceTarget(null)}
+        onConfirm={() => {
+          if (replaceTarget) replaceMove({ payload: replaceTarget, at: position });
+          setReplaceTarget(null);
+        }}
+      />
+      <ConfirmModal
+        opened={deleteTarget !== null}
+        title={t("Common.Delete")}
+        description={t("Board.Practice.Build.DeleteAltConfirm", {
+          move: deleteTarget?.san ?? "",
+          count: deleteTarget?.count ?? 0,
+        })}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMove(deleteTarget.path);
+          setDeleteTarget(null);
+        }}
+      />
+    </>
   );
 }
 

@@ -612,6 +612,39 @@ test("should handle promoteVariation", () => {
     });
 });
 
+test("replaceMove collapses a position to a single new child", () => {
+    store.setState({ ...treeE4D5Nf3(), position: [] });
+    store.getState().replaceMove({ payload: "d4" });
+
+    const s = store.getState();
+    expect(s.root.children).toHaveLength(1);
+    expect(s.root.children[0].san).toBe("d4");
+    expect(s.root.children[0].children).toHaveLength(0);
+    expect(s.position).toStrictEqual([0]);
+    expect(s.dirty).toBe(true);
+});
+
+test("replaceMove keeps the chosen move's existing subtree", () => {
+    store.setState({ ...treeE4D5Nf3(), position: [] });
+    // e4 is children[0] with a d5 reply; Nf3 is children[1].
+    store.getState().replaceMove({ payload: "Nf3" });
+
+    const s = store.getState();
+    expect(s.root.children).toHaveLength(1);
+    expect(s.root.children[0].san).toBe("Nf3");
+    expect(s.position).toStrictEqual([0]);
+});
+
+test("replaceMove preserves the subtree when re-selecting the active move", () => {
+    store.setState({ ...treeE4D5Nf3(), position: [] });
+    store.getState().replaceMove({ payload: "e4" });
+
+    const s = store.getState();
+    expect(s.root.children).toHaveLength(1);
+    expect(s.root.children[0].san).toBe("e4");
+    expect(s.root.children[0].children.map((c) => c.san)).toStrictEqual(["d5"]);
+});
+
 test("should handle setNodeAnnotation", () => {
     store.setState(treeE4D5());
     store.getState().setNodeAnnotation([0], "!");
