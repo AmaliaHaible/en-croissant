@@ -680,7 +680,7 @@
     "Settings.Repertoire.LichessCache.ClearConfirm": "Delete all cached Lichess opening data? The repertoire builder will re-fetch positions as needed.",
     "Settings.Repertoire.LichessCache.Desc": "Opening-explorer data fetched for the repertoire builder is stored permanently on disk. Clear it to free space or force a refresh.",
     "Settings.Repertoire.LichessCache.Empty": "empty",
-    "Settings.Repertoire.LichessCache.Stats": "{{count}} positions · {{size}}",
+    "Settings.Repertoire.LichessCache.Stats": "{{positions}} positions · {{size}}",
     "Settings.Repertoire.Standard": "Standard",
     "Settings.ScrollThroughMoves": "Scroll Through Moves",
     "Settings.ScrollThroughMoves.Desc": "Enable or disable scrolling through moves on the chessboard",

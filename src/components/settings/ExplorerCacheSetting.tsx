@@ -20,7 +20,7 @@ export default function ExplorerCacheSetting() {
   const label =
     entries > 0
       ? t("Settings.Repertoire.LichessCache.Stats", {
-          count: formatNumber(entries),
+          positions: formatNumber(entries),
           size: formatBytes(data!.bytes),
         })
       : t("Settings.Repertoire.LichessCache.Empty");
