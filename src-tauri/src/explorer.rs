@@ -107,6 +107,22 @@ pub struct ExplorerCache {
     pub last_request: tokio::sync::Mutex<Option<Instant>>,
 }
 
+/// Runs on every pool checkout so `busy_timeout` (a per-connection setting)
+/// applies to all four pooled connections, not just the one that created the
+/// schema. Deliberately minimal — unlike `db::ConnectionOptions` it does not
+/// touch foreign_keys / cache_size / journal_mode.
+#[derive(Debug)]
+struct CacheConnectionOptions;
+
+impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error>
+    for CacheConnectionOptions
+{
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        conn.batch_execute("PRAGMA busy_timeout = 5000;")
+            .map_err(diesel::r2d2::Error::QueryError)
+    }
+}
+
 #[derive(QueryableByName)]
 struct ResponseRow {
     #[diesel(sql_type = Text)]
@@ -129,14 +145,14 @@ impl ExplorerCache {
         }
         let pool = Pool::builder()
             .max_size(4)
+            .connection_customizer(Box::new(CacheConnectionOptions))
             .build(ConnectionManager::<SqliteConnection>::new(
                 cache_path.to_str().expect("cache path is valid UTF-8"),
             ))?;
         {
             let mut conn = pool.get()?;
             conn.batch_execute(
-                "PRAGMA busy_timeout = 5000;
-                 CREATE TABLE IF NOT EXISTS position_cache (
+                "CREATE TABLE IF NOT EXISTS position_cache (
                      source     TEXT NOT NULL,
                      fen        TEXT NOT NULL,
                      response   TEXT NOT NULL,
@@ -226,6 +242,7 @@ fn explorer_url(source: ExplorerSource) -> &'static str {
     }
 }
 
+/// Call only while holding `fetch_lock` — the `last_request` guard is held across the sleep.
 async fn throttle(cache: &ExplorerCache) {
     let mut last = cache.last_request.lock().await;
     if let Some(prev) = *last {
@@ -245,7 +262,10 @@ async fn fetch_one(
 ) -> Result<Vec<PositionStats>, Error> {
     let mut attempt = 0;
     loop {
-        let mut req = client.get(explorer_url(source)).query(&[("fen", fen)]);
+        let mut req = client
+            .get(explorer_url(source))
+            .timeout(Duration::from_secs(10))
+            .query(&[("fen", fen)]);
         if matches!(source, ExplorerSource::Lichess) {
             req = req.query(&[("variant", "standard")]);
         }
