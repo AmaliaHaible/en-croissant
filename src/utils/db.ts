@@ -177,12 +177,18 @@ export async function searchPositionsBatch(dbPath: string, fens: string[]) {
 
 /**
  * Fetch opening-move stats for a batch of FENs from the Lichess opening
- * explorer, cached permanently on disk by the backend. Same result shape as
- * {@link searchPositionsBatch} (per-move rows plus a synthesized `*` summary),
- * so repertoire coverage can consume either interchangeably.
+ * explorer (the `lichess` or `masters` database), cached permanently on disk by
+ * the backend. Same result shape as {@link searchPositionsBatch} (per-move rows
+ * plus a synthesized `*` summary), so repertoire coverage can consume either
+ * interchangeably. The explorer requires a Lichess OAuth token — pass the one
+ * from the active session; without it the request 401s and yields no data.
  */
-export async function searchExplorerMoves(source: "lichess" | "masters", fens: string[]) {
-    return unwrap(await commands.getExplorerMoves(source, fens));
+export async function searchExplorerMoves(
+    source: "lichess" | "masters",
+    fens: string[],
+    token: string | null,
+) {
+    return unwrap(await commands.getExplorerMoves(source, fens, token));
 }
 
 export async function searchPosition(options: LocalOptions, tab: string) {

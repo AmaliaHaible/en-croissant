@@ -6,8 +6,8 @@ import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
 
 export type RepertoireReference =
     | { kind: "local"; path: string }
-    | { kind: "lichess" }
-    | { kind: "masters" };
+    | { kind: "lichess"; token: string | null }
+    | { kind: "masters"; token: string | null };
 
 export type PositionMove = {
     san: string;
@@ -62,7 +62,7 @@ export async function computeTreeCoverage(
     const batch =
         reference.kind === "local"
             ? await searchPositionsBatch(reference.path, fenList)
-            : await searchExplorerMoves(reference.kind, fenList);
+            : await searchExplorerMoves(reference.kind, fenList, reference.token);
     signal?.throwIfAborted();
 
     const dbMovesByFen = new Map<

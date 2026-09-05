@@ -498,9 +498,9 @@ async getSoundServerPort() : Promise<Result<number, string>> {
 async getHardwareInfo() : Promise<HardwareInfo> {
     return await TAURI_INVOKE("get_hardware_info");
 },
-async getExplorerMoves(source: ExplorerSource, fens: string[]) : Promise<Result<PositionStats[][], string>> {
+async getExplorerMoves(source: ExplorerSource, fens: string[], token: string | null) : Promise<Result<PositionStats[][], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_explorer_moves", { source, fens }) };
+    return { status: "ok", data: await TAURI_INVOKE("get_explorer_moves", { source, fens, token }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

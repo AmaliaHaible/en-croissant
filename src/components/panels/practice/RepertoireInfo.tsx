@@ -18,6 +18,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
+import { Link } from "@tanstack/react-router";
 import {
   IconCheck,
   IconChevronDown,
@@ -39,6 +40,7 @@ import {
   currentTabAtom,
   referenceDbAtom,
   repertoireReferenceSourceAtom,
+  sessionsAtom,
 } from "@/state/atoms";
 import { searchExplorerMoves, searchPosition } from "@/utils/db";
 import { roundKeepSum } from "@/utils/format";
@@ -101,12 +103,20 @@ function RepertoireInfo() {
   const referenceDb = useAtomValue(referenceDbAtom);
   const referenceSource = useAtomValue(repertoireReferenceSourceAtom);
   const setReferenceSource = useSetAtom(repertoireReferenceSourceAtom);
+  const sessions = useAtomValue(sessionsAtom);
 
-  const reference: RepertoireReference | null =
-    referenceSource === "lichess"
-      ? { kind: "lichess" }
+  // The Lichess opening explorer requires a Lichess OAuth token (any valid one).
+  const explorerToken =
+    sessions.find((s) => s.lichess?.accessToken)?.lichess?.accessToken ?? null;
+  const isExplorerSource = referenceSource === "lichess" || referenceSource === "masters";
+  const needsLichessAuth = isExplorerSource && !explorerToken;
+
+  const reference: RepertoireReference | null = needsLichessAuth
+    ? null
+    : referenceSource === "lichess"
+      ? { kind: "lichess", token: explorerToken }
       : referenceSource === "masters"
-        ? { kind: "masters" }
+        ? { kind: "masters", token: explorerToken }
         : referenceDb
           ? { kind: "local", path: referenceDb }
           : null;
@@ -157,7 +167,7 @@ function RepertoireInfo() {
             },
             "build-tab",
           ).then(([openings]) => openings)
-        : searchExplorerMoves(reference.kind, [queryFen]).then((r) => r[0] ?? []);
+        : searchExplorerMoves(reference.kind, [queryFen], reference.token).then((r) => r[0] ?? []);
 
     lookup
       .then((openings) => {
@@ -329,7 +339,15 @@ function RepertoireInfo() {
       <Stack p="sm">
         {sourceSelector}
         <TreeStatsBar stats={stats} t={t} />
-        <Alert icon={<IconInfoCircle />}>{t("Board.Practice.Build.NoRefDb")}</Alert>
+        {needsLichessAuth ? (
+          <Alert icon={<IconInfoCircle />} color="yellow">
+            {t("Board.Database.ExplorerAuthRequired1")}{" "}
+            <Link to="/accounts">{t("Board.Database.ExplorerAuthRequired.Accounts")}</Link>{" "}
+            {t("Board.Database.ExplorerAuthRequired2")}
+          </Alert>
+        ) : (
+          <Alert icon={<IconInfoCircle />}>{t("Board.Practice.Build.NoRefDb")}</Alert>
+        )}
       </Stack>
     );
   }

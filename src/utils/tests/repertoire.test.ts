@@ -130,7 +130,7 @@ describe("computeTreeCoverage", () => {
         const { coverageMap, missingGamesMap } = await computeTreeCoverage(
             sampleTree(),
             "white",
-            { kind: "lichess" },
+            { kind: "lichess", token: "tok" },
             10,
         );
 
@@ -138,6 +138,7 @@ describe("computeTreeCoverage", () => {
         expect(searchExplorerMoves).toHaveBeenCalledWith(
             "lichess",
             expect.arrayContaining(["fen-root", "fen-e4", "fen-e5"]),
+            "tok",
         );
         expect(searchPositionsBatch).not.toHaveBeenCalled();
         expect(coverageMap.get("0")).toBeCloseTo(0.5);

@@ -251,6 +251,16 @@ fn cache_put(
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(1100);
 const MAX_RETRIES: u32 = 3;
 
+/// The opening explorer requires an identifying `User-Agent` and, as of 2023,
+/// a Lichess OAuth token (any valid token, no scope needed) — an
+/// unauthenticated request gets a bare `401`. The frontend sends the same
+/// pair via `apiHeaders()` for its own explorer calls.
+const USER_AGENT: &str = concat!(
+    "EnCroissant/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/franciscoBSalgueiro/en-croissant)"
+);
+
 fn explorer_url(source: ExplorerSource) -> &'static str {
     match source {
         ExplorerSource::Lichess => "https://explorer.lichess.org/lichess",
@@ -285,13 +295,18 @@ async fn fetch_one(
     client: &reqwest::Client,
     source: ExplorerSource,
     fen: &str,
+    token: Option<&str>,
 ) -> Result<String, Error> {
     let mut attempt = 0;
     loop {
         let mut req = client
             .get(explorer_url(source))
             .timeout(Duration::from_secs(10))
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
             .query(&[("fen", fen), ("moves", "50"), ("topGames", "0")]);
+        if let Some(token) = token {
+            req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
+        }
         if matches!(source, ExplorerSource::Lichess) {
             req = req.query(&[("variant", "standard"), ("recentGames", "0")]);
         }
@@ -322,6 +337,7 @@ async fn resolve_cached(
     cache: &ExplorerCache,
     client: &reqwest::Client,
     source: ExplorerSource,
+    token: Option<&str>,
     fens: &[String],
 ) -> Vec<Vec<PositionStats>> {
     let mut results: Vec<Option<Vec<PositionStats>>> = vec![None; fens.len()];
@@ -362,7 +378,7 @@ async fn resolve_cached(
                 Some(s) => s,
                 None => {
                     throttle(cache).await;
-                    match fetch_one(client, source, &fen).await {
+                    match fetch_one(client, source, &fen, token).await {
                         Ok(raw) => {
                             if let Ok(pool) = cache.pool() {
                                 if let Ok(mut conn) = pool.get() {
@@ -400,6 +416,7 @@ fn cache_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Error> {
 pub async fn get_explorer_moves(
     source: ExplorerSource,
     fens: Vec<String>,
+    token: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<Vec<PositionStats>>, Error> {
@@ -408,7 +425,14 @@ pub async fn get_explorer_moves(
     }
     state.explorer_cache.init(&cache_path(&app)?)?;
     let normalized: Vec<String> = fens.iter().map(|f| normalize_fen(f)).collect();
-    Ok(resolve_cached(&state.explorer_cache, &state.http_client, source, &normalized).await)
+    Ok(resolve_cached(
+        &state.explorer_cache,
+        &state.http_client,
+        source,
+        token.as_deref(),
+        &normalized,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -561,6 +585,7 @@ mod tests {
             &cache,
             &client,
             ExplorerSource::Masters,
+            None,
             &[fen_a.clone(), fen_b.clone()],
         )
         .await;
