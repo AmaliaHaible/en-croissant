@@ -92,6 +92,13 @@ fn map_response(data: &ExplorerResponse) -> Vec<PositionStats> {
     out
 }
 
+/// Parse a raw explorer response body and map it to `PositionStats` rows.
+/// Cached entries hold the raw body, so this runs on every cache read — a
+/// change to `map_response` therefore takes effect without a cache wipe.
+fn parse_and_map(raw: &str) -> Result<Vec<PositionStats>, Error> {
+    Ok(map_response(&serde_json::from_str::<ExplorerResponse>(raw)?))
+}
+
 type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 
 #[derive(Debug, Serialize, Type)]
@@ -204,18 +211,27 @@ fn cache_get(
     .load(conn)?;
 
     match rows.into_iter().next() {
-        Some(row) => Ok(Some(serde_json::from_str(&row.response)?)),
+        // A row we can no longer parse (hand-edited db, or a payload shape that
+        // changed) is treated as a miss so the caller refetches, rather than
+        // failing the whole lookup.
+        Some(row) => match parse_and_map(&row.response) {
+            Ok(stats) => Ok(Some(stats)),
+            Err(e) => {
+                warn!("discarding unparsable explorer cache entry for {fen}: {e}");
+                Ok(None)
+            }
+        },
         None => Ok(None),
     }
 }
 
+/// `raw` is the explorer response body exactly as fetched.
 fn cache_put(
     conn: &mut SqliteConnection,
     source: ExplorerSource,
     fen: &str,
-    stats: &[PositionStats],
+    raw: &str,
 ) -> Result<(), Error> {
-    let json = serde_json::to_string(stats)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -226,7 +242,7 @@ fn cache_put(
     )
     .bind::<Text, _>(source.as_str())
     .bind::<Text, _>(fen)
-    .bind::<Text, _>(json)
+    .bind::<Text, _>(raw)
     .bind::<BigInt, _>(now)
     .execute(conn)?;
     Ok(())
@@ -242,7 +258,8 @@ fn explorer_url(source: ExplorerSource) -> &'static str {
     }
 }
 
-/// Call only while holding `fetch_lock` — the `last_request` guard is held across the sleep.
+/// Call only while holding `fetch_lock` (acquired per FEN) — the `last_request`
+/// guard is held across the sleep, so this paces every request globally.
 async fn throttle(cache: &ExplorerCache) {
     let mut last = cache.last_request.lock().await;
     if let Some(prev) = *last {
@@ -254,20 +271,29 @@ async fn throttle(cache: &ExplorerCache) {
     *last = Some(Instant::now());
 }
 
-/// One explorer request with 429 backoff. `fen` is already normalized.
+/// One explorer request with 429 backoff, returning the **raw** response body.
+/// `fen` is already normalized. The body is validated as an `ExplorerResponse`
+/// before returning so a garbage payload never reaches the cache, but the
+/// unmapped text is what gets stored — `map_response` runs on read, so changing
+/// it does not require invalidating warm caches.
+///
+/// `moves=50` overrides the explorer's low default (12): `computeTreeCoverage`
+/// filters replies by `minGames` and normalizes over the survivors, so a
+/// truncated move list silently overstates coverage. `topGames`/`recentGames`
+/// are zeroed because nothing here reads them.
 async fn fetch_one(
     client: &reqwest::Client,
     source: ExplorerSource,
     fen: &str,
-) -> Result<Vec<PositionStats>, Error> {
+) -> Result<String, Error> {
     let mut attempt = 0;
     loop {
         let mut req = client
             .get(explorer_url(source))
             .timeout(Duration::from_secs(10))
-            .query(&[("fen", fen)]);
+            .query(&[("fen", fen), ("moves", "50"), ("topGames", "0")]);
         if matches!(source, ExplorerSource::Lichess) {
-            req = req.query(&[("variant", "standard")]);
+            req = req.query(&[("variant", "standard"), ("recentGames", "0")]);
         }
         let resp = req.send().await?;
 
@@ -280,13 +306,16 @@ async fn fetch_one(
         }
 
         let resp = resp.error_for_status()?;
-        let data: ExplorerResponse = resp.json().await?;
-        return Ok(map_response(&data));
+        let raw = resp.text().await?;
+        // Validate before the caller caches it.
+        serde_json::from_str::<ExplorerResponse>(&raw)?;
+        return Ok(raw);
     }
 }
 
 /// Resolve every FEN (already normalized) against the cache, fetching misses
-/// one at a time under the fetch lock with throttling. A fetch failure yields
+/// one at a time, each under its own `fetch_lock` acquisition plus the global
+/// throttle so other callers can interleave. A fetch failure yields
 /// an empty `Vec` for that position — `computeTreeCoverage` treats it the same
 /// as a local database miss.
 async fn resolve_cached(
@@ -308,7 +337,6 @@ async fn resolve_cached(
 
     let any_missing = results.iter().any(|r| r.is_none());
     if any_missing {
-        let _guard = cache.fetch_lock.lock().await;
         // Unique still-missing FENs, first-occurrence order.
         let mut seen = std::collections::HashSet::new();
         let missing: Vec<String> = fens
@@ -320,6 +348,10 @@ async fn resolve_cached(
             .collect();
 
         for fen in missing {
+            // Taken per FEN, not around the whole batch: a long cold scan would
+            // otherwise block interactive single-position lookups for minutes.
+            // `throttle` still paces every request globally.
+            let _guard = cache.fetch_lock.lock().await;
             // Re-check: a concurrent call may have filled it.
             let hit = cache
                 .pool()
@@ -331,13 +363,13 @@ async fn resolve_cached(
                 None => {
                     throttle(cache).await;
                     match fetch_one(client, source, &fen).await {
-                        Ok(s) => {
+                        Ok(raw) => {
                             if let Ok(pool) = cache.pool() {
                                 if let Ok(mut conn) = pool.get() {
-                                    let _ = cache_put(&mut conn, source, &fen, &s);
+                                    let _ = cache_put(&mut conn, source, &fen, &raw);
                                 }
                             }
-                            s
+                            parse_and_map(&raw).unwrap_or_default()
                         }
                         Err(e) => {
                             warn!("explorer fetch failed for {fen}: {e}");
@@ -460,16 +492,15 @@ mod tests {
         let fen = normalize_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
         assert!(cache_get(&mut conn, ExplorerSource::Lichess, &fen).unwrap().is_none());
 
-        let stats = vec![
-            PositionStats { move_: "e4".into(), white: 5, draw: 1, black: 2 },
-            PositionStats { move_: "*".into(), white: 0, draw: 0, black: 0 },
-        ];
-        cache_put(&mut conn, ExplorerSource::Lichess, &fen, &stats).unwrap();
+        // The cache holds the raw explorer body; `cache_get` maps it on read.
+        let raw = r#"{"white":5,"draws":1,"black":2,"moves":[{"san":"e4","white":5,"draws":1,"black":2}]}"#;
+        cache_put(&mut conn, ExplorerSource::Lichess, &fen, raw).unwrap();
 
         let got = cache_get(&mut conn, ExplorerSource::Lichess, &fen).unwrap().unwrap();
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].move_, "e4");
         assert_eq!(got[0].white, 5);
+        assert!(got.iter().any(|s| s.move_ == "*"));
 
         // different source is a different key
         assert!(cache_get(&mut conn, ExplorerSource::Masters, &fen).unwrap().is_none());
@@ -484,7 +515,13 @@ mod tests {
         {
             let pool = cache.pool().unwrap();
             let mut conn = pool.get().unwrap();
-            cache_put(&mut conn, ExplorerSource::Lichess, "fen a b c", &[]).unwrap();
+            cache_put(
+                &mut conn,
+                ExplorerSource::Lichess,
+                "fen a b c",
+                r#"{"white":0,"draws":0,"black":0,"moves":[]}"#,
+            )
+            .unwrap();
         }
         assert_eq!(cache.stats(&path).unwrap().entries, 1);
         cache.clear().unwrap();
@@ -507,7 +544,7 @@ mod tests {
                 &mut conn,
                 ExplorerSource::Masters,
                 &fen_a,
-                &[PositionStats { move_: "Kb1".into(), white: 3, draw: 0, black: 0 }],
+                r#"{"white":3,"draws":0,"black":0,"moves":[{"san":"Kb1","white":3,"draws":0,"black":0}]}"#,
             )
             .unwrap();
         }
@@ -528,7 +565,8 @@ mod tests {
         )
         .await;
 
-        assert_eq!(out[0].len(), 1);
+        // Kb1 row + the `*` summary row `map_response` appends on read.
+        assert_eq!(out[0].len(), 2);
         assert_eq!(out[0][0].move_, "Kb1");
         // miss → empty vec, same as a local DB miss
         assert!(out[1].is_empty());

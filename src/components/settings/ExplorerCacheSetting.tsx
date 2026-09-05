@@ -16,12 +16,11 @@ export default function ExplorerCacheSetting() {
     unwrap(await commands.explorerCacheStats()),
   );
 
-  const entries = data ? Number(data.entries) : 0;
   const label =
-    entries > 0
+    data && Number(data.entries) > 0
       ? t("Settings.Repertoire.LichessCache.Stats", {
-          positions: formatNumber(entries),
-          size: formatBytes(data!.bytes),
+          positions: formatNumber(Number(data.entries)),
+          size: formatBytes(data.bytes),
         })
       : t("Settings.Repertoire.LichessCache.Empty");
 
@@ -35,7 +34,7 @@ export default function ExplorerCacheSetting() {
         color="red"
         size="xs"
         loading={clearing}
-        disabled={entries === 0}
+        disabled={!data || Number(data.entries) === 0}
         onClick={() => setConfirmOpen(true)}
       >
         {t("Settings.Repertoire.LichessCache.Clear")}

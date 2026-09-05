@@ -142,7 +142,7 @@
     "Board.Practice.Build.MakeActive": "Make active",
     "Board.Practice.Build.NextGap": "Go to your next gap",
     "Board.Practice.Build.NoGapsFound": "No gaps found — your repertoire is complete!",
-    "Board.Practice.Build.NoMovesFound": "No moves found in the reference database for this position.",
+    "Board.Practice.Build.NoMovesFound": "No moves found for this position.",
     "Board.Practice.Build.NoRefDb": "Pick a reference database in the Databases tab, or switch the source above to Lichess.",
     "Board.Practice.Build.OpponentMoves": "Opponent's moves",
     "Board.Practice.Build.PickMovePrompt": "Choose the move you play here",
