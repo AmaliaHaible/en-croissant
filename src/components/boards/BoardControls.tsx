@@ -6,6 +6,7 @@ import {
   IconEdit,
   IconEditOff,
   IconEraser,
+  IconExternalLink,
   IconSwitchVertical,
   IconTarget,
   IconZoomCheck,
@@ -13,6 +14,7 @@ import {
 import { useLoaderData } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import domtoimage from "dom-to-image";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { memo, useContext } from "react";
@@ -26,6 +28,7 @@ import {
   eraseDrawablesOnClickAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
+import { getNodeAtPath } from "@/utils/treeReducer";
 
 interface BoardControlsProps {
   editingMode: boolean;
@@ -54,6 +57,7 @@ function BoardControls({
   const store = useContext(TreeStateContext)!;
   const headers = useStore(store, (s) => s.headers);
   const root = useStore(store, (s) => s.root);
+  const position = useStore(store, (s) => s.position);
   const setHeaders = useStore(store, (s) => s.setHeaders);
   const clearShapes = useStore(store, (s) => s.clearShapes);
 
@@ -83,6 +87,11 @@ function BoardControls({
     });
   }
 
+  const openInLichess = () => {
+    const fen = getNodeAtPath(root, position).fen;
+    openUrl(`https://lichess.org/analysis/standard/${fen.replaceAll(" ", "_")}`);
+  };
+
   const takeSnapshot = async () => {
     const snapshotTarget = document.querySelector(".cg-wrap") as HTMLElement | null;
     if (!snapshotTarget) return;
@@ -111,6 +120,11 @@ function BoardControls({
       <Tooltip position="right" label={t("Board.Action.TakeSnapshot")}>
         <ActionIcon onClick={() => takeSnapshot()}>
           <IconCamera size="1.2rem" />
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip position="right" label={t("Board.Action.OpenInLichess")}>
+        <ActionIcon onClick={() => openInLichess()}>
+          <IconExternalLink size="1.2rem" />
         </ActionIcon>
       </Tooltip>
       {canTakeBack && onTakeBack && (

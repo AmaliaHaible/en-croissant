@@ -29,6 +29,7 @@
     "Board.Action.ClearDrawings": "Clear Drawings",
     "Board.Action.EditPosition": "Edit Position",
     "Board.Action.FlipBoard": "Flip Board ({{key}})",
+    "Board.Action.OpenInLichess": "Open in Lichess",
     "Board.Action.PlayFromHere": "Play from here",
     "Board.Action.SavePGN": "Save PGN ({{key}})",
     "Board.Action.TakeSnapshot": "Take Snapshot",
