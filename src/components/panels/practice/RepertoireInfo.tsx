@@ -10,6 +10,7 @@ import {
   Paper,
   Progress,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   ThemeIcon,
@@ -26,7 +27,7 @@ import {
   IconPlayerPlay,
   IconTrash,
 } from "@tabler/icons-react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -37,8 +38,9 @@ import {
   currentPracticeTabAtom,
   currentTabAtom,
   referenceDbAtom,
+  repertoireReferenceSourceAtom,
 } from "@/state/atoms";
-import { searchPosition } from "@/utils/db";
+import { searchExplorerMoves, searchPosition } from "@/utils/db";
 import { roundKeepSum } from "@/utils/format";
 import { isPrefix } from "@/utils/misc";
 import {
@@ -47,6 +49,7 @@ import {
   findNextGap,
   getStats,
   type PositionMove,
+  type RepertoireReference,
 } from "@/utils/repertoire";
 import { getNodeAtPath, getTreeStructureHash, type TreeNode } from "@/utils/treeReducer";
 import classes from "./RepertoireInfo.module.css";
@@ -96,6 +99,19 @@ function RepertoireInfo() {
   const setStart = useStore(store, (s) => s.setStart);
 
   const referenceDb = useAtomValue(referenceDbAtom);
+  const referenceSource = useAtomValue(repertoireReferenceSourceAtom);
+  const setReferenceSource = useSetAtom(repertoireReferenceSourceAtom);
+
+  const reference: RepertoireReference | null =
+    referenceSource === "lichess"
+      ? { kind: "lichess" }
+      : referenceSource === "masters"
+        ? { kind: "masters" }
+        : referenceDb
+          ? { kind: "local", path: referenceDb }
+          : null;
+  const referenceKey =
+    reference?.kind === "local" ? `local:${reference.path}` : (reference?.kind ?? "none");
   const currentTab = useAtomValue(currentTabAtom);
   const minGames = useAtomValue(coverageMinGamesAtom);
   const practiceTab = useAtomValue(currentPracticeTabAtom);
@@ -120,7 +136,7 @@ function RepertoireInfo() {
   currentFenRef.current = currentNode.fen;
 
   useEffect(() => {
-    if (!referenceDb) {
+    if (!reference) {
       setRawOpenings([]);
       return;
     }
@@ -128,18 +144,23 @@ function RepertoireInfo() {
     const queryFen = currentNode.fen;
     setLoading(true);
 
-    searchPosition(
-      {
-        path: referenceDb,
-        type: "exact",
-        fen: queryFen,
-        color: "white",
-        player: null,
-        result: "any",
-      },
-      "build-tab",
-    )
-      .then(([openings]) => {
+    const lookup: Promise<{ move: string; white: number; draw: number; black: number }[]> =
+      reference.kind === "local"
+        ? searchPosition(
+            {
+              path: reference.path,
+              type: "exact",
+              fen: queryFen,
+              color: "white",
+              player: null,
+              result: "any",
+            },
+            "build-tab",
+          ).then(([openings]) => openings)
+        : searchExplorerMoves(reference.kind, [queryFen]).then((r) => r[0] ?? []);
+
+    lookup
+      .then((openings) => {
         if (queryFen !== currentFenRef.current) return;
         setRawOpenings(openings.filter((op) => op.move !== "*"));
         setLoading(false);
@@ -149,7 +170,8 @@ function RepertoireInfo() {
         setRawOpenings([]);
         setLoading(false);
       });
-  }, [currentNode.fen, referenceDb]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentNode.fen, referenceKey]);
 
   const [coverageMap, setCoverageMap] = useState<Map<string, number>>(new Map());
   const [gamesMap, setGamesMap] = useState<Map<string, number>>(new Map());
@@ -168,7 +190,7 @@ function RepertoireInfo() {
     // Coverage only matters in the "build" view. Computing it walks the whole
     // repertoire, one sequential full-index reference-DB scan per position, so
     // it must not run just because the Practice tab is open for training.
-    if (!referenceDb || practiceTab !== "build") {
+    if (!reference || practiceTab !== "build") {
       setCoverageMap(new Map());
       setGamesMap(new Map());
       setMissingGamesMap(new Map());
@@ -178,14 +200,7 @@ function RepertoireInfo() {
     const version = ++coverageVersionRef.current;
     const controller = new AbortController();
     setCoverageLoading(true);
-    computeTreeCoverage(
-      root,
-      orientation,
-      { kind: "local", path: referenceDb },
-      minGames,
-      startPath,
-      controller.signal,
-    )
+    computeTreeCoverage(root, orientation, reference, minGames, startPath, controller.signal)
       .then((result) => {
         if (version === coverageVersionRef.current) {
           setCoverageMap(result.coverageMap);
@@ -200,7 +215,8 @@ function RepertoireInfo() {
         }
       });
     return () => controller.abort();
-  }, [debouncedRootStructureHash, orientation, referenceDb, startPathKey, minGames, practiceTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedRootStructureHash, orientation, referenceKey, startPathKey, minGames, practiceTab]);
 
   const positionMoves = useMemo(() => {
     const total = rawOpenings.reduce((acc, op) => acc + op.white + op.black + op.draw, 0);
@@ -290,9 +306,28 @@ function RepertoireInfo() {
 
   if (!currentTab) return null;
 
-  if (!referenceDb) {
+  const sourceSelector = (
+    <Group justify="space-between" mb="sm" wrap="nowrap">
+      <Text fz="xs" c="dimmed">
+        {t("Board.Practice.Build.ReferenceSource")}
+      </Text>
+      <SegmentedControl
+        size="xs"
+        value={referenceSource}
+        onChange={(v) => setReferenceSource(v as "reference" | "lichess" | "masters")}
+        data={[
+          { value: "reference", label: t("Board.Practice.Build.SourceReferenceDb") },
+          { value: "lichess", label: t("Board.Practice.Build.SourceLichess") },
+          { value: "masters", label: t("Board.Practice.Build.SourceLichessMasters") },
+        ]}
+      />
+    </Group>
+  );
+
+  if (!reference) {
     return (
       <Stack p="sm">
+        {sourceSelector}
         <TreeStatsBar stats={stats} t={t} />
         <Alert icon={<IconInfoCircle />}>{t("Board.Practice.Build.NoRefDb")}</Alert>
       </Stack>
@@ -301,6 +336,7 @@ function RepertoireInfo() {
 
   return (
     <Stack h="100%" p="sm" gap={0} style={{ overflow: "hidden" }}>
+      {sourceSelector}
       {isBeforeStart && (
         <Paper p="sm" my="sm" withBorder>
           <Stack gap="xs">

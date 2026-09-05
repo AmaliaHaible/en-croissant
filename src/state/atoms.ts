@@ -337,6 +337,18 @@ export const addRecentFileAtom = atom(null, (get, set, file: Omit<RecentFile, "l
 
 export const referenceDbAtom = atomWithStorage<string | null>("reference-database", null);
 
+/**
+ * Which opening-move source the repertoire builder ("Build" tab) checks moves
+ * and coverage against. "reference" means the local database in
+ * {@link referenceDbAtom}; the other two hit the Lichess opening explorer
+ * (cached permanently by the backend). Scoped to the repertoire builder only —
+ * game reports and the analysis panel keep using `referenceDbAtom` directly.
+ */
+export const repertoireReferenceSourceAtom = atomWithStorage<"reference" | "lichess" | "masters">(
+    "repertoire-reference-source",
+    "reference",
+);
+
 export const selectedPuzzleDbAtom = atomWithStorage<string | null>("puzzle-db", null);
 
 export type DatabaseConversionState = {
