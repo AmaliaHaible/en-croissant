@@ -1,17 +1,20 @@
 use std::path::Path;
 use std::sync::Mutex as StdMutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sql_query;
 use diesel::sql_types::{BigInt, Text};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tauri::Manager;
 
 use crate::db::PositionStats;
 use crate::error::Error;
+use crate::AppState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -132,7 +135,8 @@ impl ExplorerCache {
         {
             let mut conn = pool.get()?;
             conn.batch_execute(
-                "CREATE TABLE IF NOT EXISTS position_cache (
+                "PRAGMA busy_timeout = 5000;
+                 CREATE TABLE IF NOT EXISTS position_cache (
                      source     TEXT NOT NULL,
                      fen        TEXT NOT NULL,
                      response   TEXT NOT NULL,
@@ -210,6 +214,170 @@ fn cache_put(
     .bind::<BigInt, _>(now)
     .execute(conn)?;
     Ok(())
+}
+
+const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(1100);
+const MAX_RETRIES: u32 = 3;
+
+fn explorer_url(source: ExplorerSource) -> &'static str {
+    match source {
+        ExplorerSource::Lichess => "https://explorer.lichess.org/lichess",
+        ExplorerSource::Masters => "https://explorer.lichess.org/masters",
+    }
+}
+
+async fn throttle(cache: &ExplorerCache) {
+    let mut last = cache.last_request.lock().await;
+    if let Some(prev) = *last {
+        let elapsed = prev.elapsed();
+        if elapsed < MIN_REQUEST_INTERVAL {
+            tokio::time::sleep(MIN_REQUEST_INTERVAL - elapsed).await;
+        }
+    }
+    *last = Some(Instant::now());
+}
+
+/// One explorer request with 429 backoff. `fen` is already normalized.
+async fn fetch_one(
+    client: &reqwest::Client,
+    source: ExplorerSource,
+    fen: &str,
+) -> Result<Vec<PositionStats>, Error> {
+    let mut attempt = 0;
+    loop {
+        let mut req = client.get(explorer_url(source)).query(&[("fen", fen)]);
+        if matches!(source, ExplorerSource::Lichess) {
+            req = req.query(&[("variant", "standard")]);
+        }
+        let resp = req.send().await?;
+
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < MAX_RETRIES {
+            let backoff = Duration::from_secs(1u64 << attempt);
+            warn!("explorer 429, backing off {backoff:?}");
+            tokio::time::sleep(backoff).await;
+            attempt += 1;
+            continue;
+        }
+
+        let resp = resp.error_for_status()?;
+        let data: ExplorerResponse = resp.json().await?;
+        return Ok(map_response(&data));
+    }
+}
+
+/// Resolve every FEN (already normalized) against the cache, fetching misses
+/// one at a time under the fetch lock with throttling. A fetch failure yields
+/// an empty `Vec` for that position — `computeTreeCoverage` treats it the same
+/// as a local database miss.
+async fn resolve_cached(
+    cache: &ExplorerCache,
+    client: &reqwest::Client,
+    source: ExplorerSource,
+    fens: &[String],
+) -> Vec<Vec<PositionStats>> {
+    let mut results: Vec<Option<Vec<PositionStats>>> = vec![None; fens.len()];
+
+    // Pass 1: cache reads.
+    if let Ok(pool) = cache.pool() {
+        if let Ok(mut conn) = pool.get() {
+            for (i, fen) in fens.iter().enumerate() {
+                results[i] = cache_get(&mut conn, source, fen).ok().flatten();
+            }
+        }
+    }
+
+    let any_missing = results.iter().any(|r| r.is_none());
+    if any_missing {
+        let _guard = cache.fetch_lock.lock().await;
+        // Unique still-missing FENs, first-occurrence order.
+        let mut seen = std::collections::HashSet::new();
+        let missing: Vec<String> = fens
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| results[*i].is_none())
+            .map(|(_, f)| f.clone())
+            .filter(|f| seen.insert(f.clone()))
+            .collect();
+
+        for fen in missing {
+            // Re-check: a concurrent call may have filled it.
+            let hit = cache
+                .pool()
+                .ok()
+                .and_then(|p| p.get().ok())
+                .and_then(|mut c| cache_get(&mut c, source, &fen).ok().flatten());
+            let stats = match hit {
+                Some(s) => s,
+                None => {
+                    throttle(cache).await;
+                    match fetch_one(client, source, &fen).await {
+                        Ok(s) => {
+                            if let Ok(pool) = cache.pool() {
+                                if let Ok(mut conn) = pool.get() {
+                                    let _ = cache_put(&mut conn, source, &fen, &s);
+                                }
+                            }
+                            s
+                        }
+                        Err(e) => {
+                            warn!("explorer fetch failed for {fen}: {e}");
+                            Vec::new()
+                        }
+                    }
+                }
+            };
+            for (i, f) in fens.iter().enumerate() {
+                if *f == fen {
+                    results[i] = Some(stats.clone());
+                }
+            }
+        }
+    }
+
+    results.into_iter().map(Option::unwrap_or_default).collect()
+}
+
+fn cache_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Error> {
+    let dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join("explorer_cache.db3"))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_explorer_moves(
+    source: ExplorerSource,
+    fens: Vec<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<Vec<PositionStats>>, Error> {
+    if fens.is_empty() {
+        return Ok(vec![]);
+    }
+    state.explorer_cache.init(&cache_path(&app)?)?;
+    let normalized: Vec<String> = fens.iter().map(|f| normalize_fen(f)).collect();
+    Ok(resolve_cached(&state.explorer_cache, &state.http_client, source, &normalized).await)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_explorer_cache(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), Error> {
+    state.explorer_cache.init(&cache_path(&app)?)?;
+    state.explorer_cache.clear()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn explorer_cache_stats(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<ExplorerCacheStats, Error> {
+    let path = cache_path(&app)?;
+    state.explorer_cache.init(&path)?;
+    state.explorer_cache.stats(&path)
 }
 
 #[cfg(test)]
@@ -301,5 +469,48 @@ mod tests {
         assert_eq!(cache.stats(&path).unwrap().entries, 1);
         cache.clear().unwrap();
         assert_eq!(cache.stats(&path).unwrap().entries, 0);
+    }
+
+    #[tokio::test]
+    async fn resolve_returns_cache_hits_without_fetching() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("explorer_cache.db3");
+        let cache = ExplorerCache::default();
+        cache.init(&path).unwrap();
+
+        let fen_a = normalize_fen("k7/8/8/8/8/8/8/K7 w - - 0 1");
+        let fen_b = normalize_fen("k7/8/8/8/8/8/8/K7 b - - 0 1");
+        {
+            let pool = cache.pool().unwrap();
+            let mut conn = pool.get().unwrap();
+            cache_put(
+                &mut conn,
+                ExplorerSource::Masters,
+                &fen_a,
+                &[PositionStats { move_: "Kb1".into(), white: 3, draw: 0, black: 0 }],
+            )
+            .unwrap();
+        }
+
+        // A client with a 1ms timeout: if resolve_cached tries to fetch fen_b it
+        // errors fast; we assert it does NOT panic and returns an empty vec for the
+        // miss (same as a local DB miss).
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(1))
+            .build()
+            .unwrap();
+
+        let out = resolve_cached(
+            &cache,
+            &client,
+            ExplorerSource::Masters,
+            &[fen_a.clone(), fen_b.clone()],
+        )
+        .await;
+
+        assert_eq!(out[0].len(), 1);
+        assert_eq!(out[0][0].move_, "Kb1");
+        // miss → empty vec, same as a local DB miss
+        assert!(out[1].is_empty());
     }
 }

@@ -56,6 +56,7 @@ use crate::game::{
     take_back_game_move, ClockUpdateEvent, GameMoveEvent, GameOverEvent,
 };
 
+use crate::explorer::{clear_explorer_cache, explorer_cache_stats, get_explorer_moves};
 use crate::fs::set_file_as_executable;
 use crate::lexer::lex_pgn;
 use crate::oauth::authenticate;
@@ -102,6 +103,7 @@ pub struct AppState {
     progress_state: ProgressStore,
     #[derivative(Default(value = "reqwest::Client::new()"))]
     http_client: reqwest::Client,
+    explorer_cache: explorer::ExplorerCache,
 }
 
 #[tauri::command]
@@ -181,7 +183,10 @@ fn main() {
             get_progress,
             clear_progress,
             get_sound_server_port,
-            get_hardware_info
+            get_hardware_info,
+            get_explorer_moves,
+            clear_explorer_cache,
+            explorer_cache_stats
         ))
         .events(tauri_specta::collect_events!(
             BestMovesPayload,

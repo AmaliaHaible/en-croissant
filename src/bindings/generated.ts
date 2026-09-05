@@ -497,6 +497,30 @@ async getSoundServerPort() : Promise<Result<number, string>> {
 },
 async getHardwareInfo() : Promise<HardwareInfo> {
     return await TAURI_INVOKE("get_hardware_info");
+},
+async getExplorerMoves(source: ExplorerSource, fens: string[]) : Promise<Result<PositionStats[][], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_explorer_moves", { source, fens }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clearExplorerCache() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_explorer_cache") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async explorerCacheStats() : Promise<Result<ExplorerCacheStats, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("explorer_cache_stats") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -537,6 +561,8 @@ export type EngineLog = { type: "gui"; value: string } | { type: "engine"; value
 export type EngineOption = { name: string; value: string }
 export type EngineOptions = { fen: string; moves: string[]; extraOptions: EngineOption[] }
 export type Event = { id: number; name: string | null }
+export type ExplorerCacheStats = { entries: bigint; bytes: bigint }
+export type ExplorerSource = "lichess" | "masters"
 export type FileMetadata = { last_modified: number }
 export type GameConfig = { white: PlayerConfig; black: PlayerConfig; whiteTimeControl: TimeControl | null; blackTimeControl: TimeControl | null; initialFen: string | null; initialMoves?: string[]; openingBook: OpeningBookConfig | null }
 export type GameEndReason = "checkmate" | "timeout" | "resignation" | "abandonment"
