@@ -360,3 +360,20 @@ Settings → Clear cache empties it (`explorer_cache_stats` returns 0).
 - Per-entry TTL / automatic refresh.
 - Showing Lichess as an entry in the Databases tab.
 - Opening individual Lichess games from the repertoire builder.
+
+## Deferred (found in final review, 2026-09-05, not blocking initial merge)
+
+- **Backend cancellation of an abandoned scan.** `computeTreeCoverage`'s
+  `AbortSignal` stops the frontend state update but the Rust `get_explorer_moves`
+  runs to completion. With the per-FEN `fetch_lock` (see below) an abandoned
+  scan no longer blocks a new one — it just keeps populating the permanent
+  cache at ~1 req/1.1s in the background — so the cost is extra Lichess traffic
+  on a tab switch / source switch mid-scan, not a stall. A future
+  `cancel_explorer_fetch(key)` command (mirroring `AppState.analysis_cancel_flags`)
+  would close it.
+- **"Offline" reads as "fully covered."** A fetch failure degrades to an empty
+  move list, which coverage treats as "below min games → covered". A future
+  pass could thread a failure count out of `resolve_cached` so the Build panel
+  can show a "couldn't reach Lichess" notice.
+- First-scan progress affordance in the Build panel (minutes of silence on a
+  cold cache).
