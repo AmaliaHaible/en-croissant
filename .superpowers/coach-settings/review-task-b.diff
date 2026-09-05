@@ -1,0 +1,174 @@
+diff --git a/src/components/settings/CoachSettingsTab.tsx b/src/components/settings/CoachSettingsTab.tsx
+new file mode 100644
+index 00000000..cfe742b5
+--- /dev/null
++++ b/src/components/settings/CoachSettingsTab.tsx
+@@ -0,0 +1,87 @@
++import { Stack, Text } from "@mantine/core";
++import { useAtom, useAtomValue } from "jotai";
++import { useTranslation } from "react-i18next";
++import { EnginesSelect } from "@/components/boards/EnginesSelect";
++import EngineSettingsForm from "@/components/panels/analysis/EngineSettingsForm";
++import {
++  type CoachEngineConfig,
++  enginesAtom,
++  hintEngineConfigAtom,
++  liveEvalEngineConfigAtom,
++} from "@/state/atoms";
++import type { LocalEngine } from "@/utils/engines";
++
++function CoachEngineSection({
++  configAtom,
++  title,
++  description,
++}: {
++  configAtom: typeof liveEvalEngineConfigAtom | typeof hintEngineConfigAtom;
++  title: string;
++  description: string;
++}) {
++  const [config, setConfig] = useAtom(configAtom);
++  const allEngines = useAtomValue(enginesAtom);
++  const localEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
++  const selectedEngine = localEngines.find((e) => e.id === config.engineId) ?? null;
++
++  const setEngine = (engine: LocalEngine | null) => {
++    setConfig((prev: CoachEngineConfig) => ({
++      ...prev,
++      engineId: engine?.id ?? null,
++      settings: engine?.settings ?? [],
++    }));
++  };
++
++  return (
++    <Stack gap="xs">
++      <Text fw={500}>{title}</Text>
++      <Text size="xs" c="dimmed">
++        {description}
++      </Text>
++      <EnginesSelect engine={selectedEngine} setEngine={setEngine} />
++      {selectedEngine && (
++        <EngineSettingsForm
++          engine={selectedEngine}
++          remote={false}
++          settings={{
++            go: config.go,
++            settings: config.settings,
++            enabled: true,
++            synced: false,
++          }}
++          setSettings={(fn) =>
++            setConfig((prev) => {
++              const next = fn({
++                go: prev.go,
++                settings: prev.settings,
++                enabled: true,
++                synced: false,
++              });
++              return { ...prev, go: next.go, settings: next.settings };
++            })
++          }
++        />
++      )}
++    </Stack>
++  );
++}
++
++export default function CoachSettingsTab() {
++  const { t } = useTranslation();
++
++  return (
++    <Stack>
++      <CoachEngineSection
++        configAtom={liveEvalEngineConfigAtom}
++        title={t("Settings.Coach.LiveEval")}
++        description={t("Settings.Coach.LiveEval.Desc")}
++      />
++      <CoachEngineSection
++        configAtom={hintEngineConfigAtom}
++        title={t("Settings.Coach.Hint")}
++        description={t("Settings.Coach.Hint.Desc")}
++      />
++    </Stack>
++  );
++}
+diff --git a/src/components/settings/SettingsPage.tsx b/src/components/settings/SettingsPage.tsx
+index c4d5080c..18b07a65 100644
+--- a/src/components/settings/SettingsPage.tsx
++++ b/src/components/settings/SettingsPage.tsx
+@@ -22,6 +22,7 @@ import {
+   IconKeyboard,
+   IconMouse,
+   IconReload,
++  IconRobot,
+   IconSearch,
+   IconShield,
+   IconVolume,
+@@ -68,6 +69,7 @@ import { notifications } from "@mantine/notifications";
+ import { platform } from "@tauri-apps/plugin-os";
+ import FileInput from "../common/FileInput";
+ import BoardSelect from "./BoardSelect";
++import CoachSettingsTab from "./CoachSettingsTab";
+ import ColorControl from "./ColorControl";
+ import FontSizeSlider from "./FontSizeSlider";
+ import KeybindInput from "./KeybindInput";
+@@ -82,6 +84,7 @@ import VolumeSlider from "./VolumeSlider";
+ 
+ type SettingCategory =
+   | "board"
++  | "coach"
+   | "inputs"
+   | "anarchy"
+   | "appearance"
+@@ -721,6 +724,11 @@ export default function Page() {
+         description: t("Settings.Board.Desc"),
+         icon: <IconChess size="1rem" />,
+       },
++      coach: {
++        title: t("Settings.Coach"),
++        description: t("Settings.Coach.Desc"),
++        icon: <IconRobot size="1rem" />,
++      },
+       inputs: {
+         title: t("Settings.Inputs"),
+         description: t("Settings.Inputs.Desc"),
+@@ -877,6 +885,9 @@ export default function Page() {
+             <Tabs.Tab value="board" leftSection={<IconChess size="1rem" />}>
+               {t("Settings.Board")}
+             </Tabs.Tab>
++            <Tabs.Tab value="coach" leftSection={<IconRobot size="1rem" />}>
++              {t("Settings.Coach")}
++            </Tabs.Tab>
+             <Tabs.Tab value="inputs" leftSection={<IconMouse size="1rem" />}>
+               {t("Settings.Inputs")}
+             </Tabs.Tab>
+@@ -915,6 +926,13 @@ export default function Page() {
+                   {renderCategorySettings("board")}
+                 </Tabs.Panel>
+ 
++                <Tabs.Panel value="coach">
++                  <Text size="lg" fw={500} className={classes.title}>
++                    {t("Settings.Coach")}
++                  </Text>
++                  <CoachSettingsTab />
++                </Tabs.Panel>
++
+                 <Tabs.Panel value="inputs">
+                   <Text size="lg" fw={500} className={classes.title}>
+                     {t("Settings.Inputs")}
+diff --git a/src/translation/en-US.json b/src/translation/en-US.json
+index 83338741..f5c9b261 100644
+--- a/src/translation/en-US.json
++++ b/src/translation/en-US.json
+@@ -537,6 +537,12 @@
+     "Settings.AutoSave.Desc": "Auto save to file after each move",
+     "Settings.Board": "Board",
+     "Settings.Board.Desc": "Customize the analysis board and game controls",
++    "Settings.Coach": "Coach",
++    "Settings.Coach.Desc": "Configure the engines used for live evaluation and hints during play",
++    "Settings.Coach.Hint": "Hint",
++    "Settings.Coach.Hint.Desc": "Setting the go mode to \"Infinite\" makes the hint run continuously in the background for the whole game (better hints, more CPU). Any other go mode makes it search only when you click Hint.",
++    "Settings.Coach.LiveEval": "Live Evaluation",
++    "Settings.Coach.LiveEval.Desc": "MultiPV must be at least 2 for \"Good\" move detection to work (lower values still detect Mistakes and Blunders).",
+     "Settings.ConsecutiveArrows": "Consecutive Arrows",
+     "Settings.ConsecutiveArrows.Desc": "Show multiple arrows for the best line, if it involves moving the same piece several times",
+     "Settings.Coordinates": "Coordinates",

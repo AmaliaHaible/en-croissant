@@ -12,6 +12,7 @@ hash, skill, elo, personality, search mode) to picking a saved variant.
 ## Scope
 
 In scope:
+
 - New `variants: EngineVariant[]` field on `Engine` (replacing the
   current top-level `settings`/`go` fields), where
   `EngineVariant = {id, name, go, settings}`.
@@ -34,6 +35,7 @@ In scope:
   `EngineStrengthControl.tsx`, once variants fully replace them.
 
 Out of scope:
+
 - Any UI change to the Analysis panel (`EngineSelection.tsx` /
   `tabEngineSettingsFamily`). It keeps its current per-tab
   override/sync behavior; only its internal data source changes (see
@@ -57,7 +59,7 @@ Out of scope:
   from the canonical engine record" already exist: `tabEngineSettingsFamily`
   (per-tab Analysis override, with a `synced` flag that re-pulls from
   the engine's own `settings`/`go`), `CoachEngineConfig` (`{engineId,
-  go, settings}`, one instance each for live-eval and hint), and
+go, settings}`, one instance each for live-eval and hint), and
   `OpponentSettings.engineSettings` (per-game-setup override in Create
   Game). None of these are named/reusable/user-facing as a concept.
 - `PRESET_REGISTRY` (`src/utils/engineStrength.ts` +
@@ -121,7 +123,7 @@ type EngineVariant = {
   level deeper).
 - New engines (via `AddEngine.tsx`) are created with a single
   `variants: [{id, name: "Default", go: <existing default>, settings:
-  []}]`.
+[]}]`.
 
 ### Migration
 
@@ -131,7 +133,7 @@ marker so it only executes against pre-migration data:
 
 1. Any engine with old top-level `settings`/`go` →
    `variants: [{id: <new>, name: "Default", go: <old go ?? default>,
-   settings: <old settings ?? []>}]`.
+settings: <old settings ?? []>}]`.
 2. Additionally, for any engine matching the existing Rodent II regex
    (`/rodent\s*ii\b/i`), append one variant per `PRESET_REGISTRY`
    entry, reusing the existing `applyPreset` merge logic (base default
@@ -149,7 +151,7 @@ marker so it only executes against pre-migration data:
 
 - **Create Game** (`OpponentForm.tsx`): `OpponentSettings`'s engine
   branch changes from `{engine, go, engineSettings?}` to `{engine,
-  variantId}`. `BoardGame.tsx`'s `toPlayerConfig` resolves
+variantId}`. `BoardGame.tsx`'s `toPlayerConfig` resolves
   `engine.variants.find(v => v.id === variantId)` at game-start time.
   The PGN-header suffix becomes the variant's `name` directly (no more
   `describeStrengthSuffix` heuristics).
@@ -180,7 +182,7 @@ marker so it only executes against pre-migration data:
   **Delete** (disabled when it's the only remaining variant).
 - Below the switcher: the existing `GoModeInput`, Syzygy toggle, and
   generic per-UCI-option renderer, now scoped to the selected variant.
-- **Reset**: resets the *selected variant* to `requiredEngineSettings`
+- **Reset**: resets the _selected variant_ to `requiredEngineSettings`
   at UCI defaults (same behavior as today, per-variant instead of
   per-engine).
 - **Edit JSON** and whole-engine **Duplicate**: unchanged — they

@@ -11,6 +11,7 @@ or local human-vs-human — since play happens locally either way.
 ## Scope
 
 In scope:
+
 - Live eval bar during play, reusing the existing `EvalBar` component.
 - Incremental move classification during play, reusing the existing
   `getAnnotation`/`ANNOTATION_INFO`/`AnnotationHint` system already used by
@@ -19,6 +20,7 @@ In scope:
 - Toggle controls placed in `BoardGame`'s toolbar.
 
 Out of scope (v1):
+
 - Online/remote human-vs-human play (not supported by the app today).
 - Configurable engine strength/depth for live coaching (fixed short
   movetime; separate from the analysis panel's configurable go-mode).
@@ -92,7 +94,7 @@ either color's feedback toggle is on. On every position change:
 1. Calls `getBestMoves` for the current position (drives both the eval
    bar and, if requested, the hint).
 2. After a move is played, checks whether a score already exists for the
-   position *before* that move (it will, from the previous run of step 1,
+   position _before_ that move (it will, from the previous run of step 1,
    unless coaching was just turned on mid-game) — if missing, fires one
    quick catch-up eval for that position only.
 3. Once both before/after scores exist, calls `getAnnotation()` (same

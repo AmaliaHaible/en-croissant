@@ -1,0 +1,361 @@
+diff --git a/src/components/boards/BoardGame.tsx b/src/components/boards/BoardGame.tsx
+index 5d801bb6..91e0fbb6 100644
+--- a/src/components/boards/BoardGame.tsx
++++ b/src/components/boards/BoardGame.tsx
+@@ -135,6 +135,13 @@ function BoardGame() {
+   // Set when a hint was asked for before the engine had an answer; the reveal then
+   // happens as soon as `bestMoveUci` arrives.
+   const [hintPending, setHintPending] = useState(false);
++  // The move actually being revealed, frozen at the moment the first circle is
++  // drawn. A continuous search keeps improving `bestMoveUci` while the shapes are
++  // on the board, so the circle -> arrow -> clear cycle has to be driven off this
++  // fixed value; otherwise a later click looks for a shape on the *new* best
++  // move's square, fails to find the circle it drew, and leaves it orphaned while
++  // drawing a second one.
++  const [hintShownUci, setHintShownUci] = useState<string | null>(null);
+   const { engine: liveEvalEngine } = useLiveCoachEngine();
+   const { bestMoveUci, engine: hintEngine } = useCoachHint(hintActive);
+   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
+@@ -208,12 +215,20 @@ function BoardGame() {
+   useEffect(() => {
+     if (!hintPending || !bestMoveUci) return;
+     applyHintShapes(bestMoveUci, "circle");
++    setHintShownUci(bestMoveUci);
+     setHintPending(false);
+   }, [hintPending, bestMoveUci, applyHintShapes]);
+ 
+-  // A hint that was requested for a position we already left is dropped.
++  // A hint request belongs to the position it was made for. Leaving that position
++  // drops the pending reveal, the frozen move, and the request itself — without
++  // the last one, a single Hint click would keep the (possibly slow, possibly
++  // expensive) on-demand hint engine searching every position for the rest of the
++  // game, which is the opt-in behaviour of the "Infinite" go mode, not of one
++  // click.
+   useEffect(() => {
+     setHintPending(false);
++    setHintActive(false);
++    setHintShownUci(null);
+   }, [currentNode.fen]);
+ 
+   const [, setTabs] = useAtom(tabsAtom);
+@@ -1286,12 +1301,16 @@ function BoardGame() {
+                         // Requesting a hint is what starts the coach engine, so this
+                         // has to happen even when no evaluation exists yet.
+                         setHintActive(true);
+-                        if (!bestMoveUci) {
++                        // Once a reveal is under way, stay on the move it started
++                        // with: a continuous search may have moved on to a
++                        // different best move since the circle was drawn.
++                        const uci = hintShownUci ?? bestMoveUci;
++                        if (!uci) {
+                           setHintPending(true);
+                           return;
+                         }
+ 
+-                        const squares = hintSquares(bestMoveUci);
++                        const squares = hintSquares(uci);
+                         if (!squares) return;
+                         const { from, to } = squares;
+ 
+@@ -1304,13 +1323,16 @@ function BoardGame() {
+                         );
+ 
+                         if (hasArrow) {
+-                          applyHintShapes(bestMoveUci, "clear");
++                          applyHintShapes(uci, "clear");
+                           setHintActive(false);
+                           setHintPending(false);
++                          setHintShownUci(null);
+                         } else if (hasCircle) {
+-                          applyHintShapes(bestMoveUci, "arrow");
++                          applyHintShapes(uci, "arrow");
++                          setHintShownUci(uci);
+                         } else {
+-                          applyHintShapes(bestMoveUci, "circle");
++                          applyHintShapes(uci, "circle");
++                          setHintShownUci(uci);
+                         }
+                       }}
+                     >
+diff --git a/src/components/boards/EnginesSelect.tsx b/src/components/boards/EnginesSelect.tsx
+index 9179b94e..a5ca5d36 100644
+--- a/src/components/boards/EnginesSelect.tsx
++++ b/src/components/boards/EnginesSelect.tsx
+@@ -7,12 +7,21 @@ import type { LocalEngine } from "@/utils/engines";
+ export function EnginesSelect({
+   engine,
+   setEngine,
++  filter,
+ }: {
+   engine: LocalEngine | null;
+   setEngine: (engine: LocalEngine | null) => void;
++  /**
++   * Extra predicate narrowing which local engines are offered. Callers that only
++   * work with engines in a particular state (e.g. loaded ones) must pass it, so
++   * the auto-selection below can never hand them an engine they can't use.
++   */
++  filter?: (engine: LocalEngine) => boolean;
+ }) {
+   const allEngines = useAtomValue(enginesAtom);
+-  const rawEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
++  const rawEngines = (allEngines ?? []).filter(
++    (e): e is LocalEngine => e.type === "local" && (!filter || filter(e)),
++  );
+ 
+   const engines = useMemo(() => {
+     const seen = new Set<string>();
+diff --git a/src/components/settings/CoachSettingsTab.tsx b/src/components/settings/CoachSettingsTab.tsx
+index cfe742b5..6d1e0b37 100644
+--- a/src/components/settings/CoachSettingsTab.tsx
++++ b/src/components/settings/CoachSettingsTab.tsx
+@@ -20,9 +20,16 @@ function CoachEngineSection({
+   title: string;
+   description: string;
+ }) {
++  const { t } = useTranslation();
+   const [config, setConfig] = useAtom(configAtom);
+   const allEngines = useAtomValue(enginesAtom);
+-  const localEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
++  // Must match what `useLiveCoachEngine`/`useCoachHint` accept: they only ever
++  // use loaded local engines and silently fall back to the first loaded one
++  // otherwise, so offering unloaded engines here would let the user "select" an
++  // engine the coach never actually runs.
++  const localEngines = (allEngines ?? []).filter(
++    (e): e is LocalEngine => e.type === "local" && !!e.loaded,
++  );
+   const selectedEngine = localEngines.find((e) => e.id === config.engineId) ?? null;
+ 
+   const setEngine = (engine: LocalEngine | null) => {
+@@ -39,7 +46,13 @@ function CoachEngineSection({
+       <Text size="xs" c="dimmed">
+         {description}
+       </Text>
+-      <EnginesSelect engine={selectedEngine} setEngine={setEngine} />
++      {localEngines.length === 0 ? (
++        <Text size="xs" c="dimmed">
++          {t("Settings.Coach.NoEngines")}
++        </Text>
++      ) : (
++        <EnginesSelect engine={selectedEngine} setEngine={setEngine} filter={(e) => !!e.loaded} />
++      )}
+       {selectedEngine && (
+         <EngineSettingsForm
+           engine={selectedEngine}
+diff --git a/src/hooks/useCoachHint.ts b/src/hooks/useCoachHint.ts
+index 3cd0f8dc..691a4e9c 100644
+--- a/src/hooks/useCoachHint.ts
++++ b/src/hooks/useCoachHint.ts
+@@ -57,6 +57,11 @@ export function useCoachHint(requested: boolean): {
+ 
+     const goMode = config.go;
+     const isContinuous = goMode.t === "Infinite";
++    // Go-modes whose searches never terminate on their own, and therefore never
++    // report progress===100: their results have to be published as they improve
++    // or they'd never be published at all. (`PlayersTime` isn't offered by the
++    // coach settings UI, but the config is persisted user data, so don't assume.)
++    const isStreaming = goMode.t === "Infinite" || goMode.t === "PlayersTime";
+     const extraOptions = useMemo(
+         () =>
+             config.settings.length > 0
+@@ -111,11 +116,21 @@ export function useCoachHint(requested: boolean): {
+     // Shared handling of engine output, used both by the event listener and by
+     // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
+     // is refreshed after every render so neither effect needs it as a dependency.
+-    const handleResultRef = useRef<(resultFen: string, bestLines: BestMoves[]) => void>(() => {});
++    const handleResultRef = useRef<
++        (resultFen: string, bestLines: BestMoves[], progress: number) => void
++    >(() => {});
+     useEffect(() => {
+-        handleResultRef.current = (resultFen, bestLines) => {
++        handleResultRef.current = (resultFen, bestLines, progress) => {
+             // Late answer for a position we already left.
+             if (bestLines.length === 0 || resultFen !== finalFen) return;
++            // A bounded search (Time/Depth/Nodes) emits intermediate lines from
++            // its very first, shallow iteration onwards — publishing those would
++            // reveal a ~20ms answer and never update it again, making the
++            // configured search budget meaningless. Wait for completion instead.
++            // Streaming go-modes never report progress===100 (the backend caps
++            // them at 99.99 until an explicit stop), so for those keep
++            // publishing every improvement — which is the point of that mode.
++            if (!isStreaming && progress < 100) return;
+             setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
+         };
+     });
+@@ -134,7 +149,7 @@ export function useCoachHint(requested: boolean): {
+                 return;
+             }
+ 
+-            handleResultRef.current(finalFen, payload.bestLines);
++            handleResultRef.current(finalFen, payload.bestLines, payload.progress);
+         });
+ 
+         return () => {
+@@ -182,8 +197,8 @@ export function useCoachHint(requested: boolean): {
+                     // directly and emits no event, so consume the result here.
+                     const result = unwrap(r);
+                     if (!result) return;
+-                    const [, bestLines] = result;
+-                    handleResultRef.current(requestFen, bestLines);
++                    const [progress, bestLines] = result;
++                    handleResultRef.current(requestFen, bestLines, progress);
+                 });
+         },
+         50,
+diff --git a/src/hooks/useLiveCoachEngine.ts b/src/hooks/useLiveCoachEngine.ts
+index c4371b42..db67eebb 100644
+--- a/src/hooks/useLiveCoachEngine.ts
++++ b/src/hooks/useLiveCoachEngine.ts
+@@ -17,7 +17,7 @@ import {
+ } from "@/state/atoms";
+ import { getVariationLine } from "@/utils/chess";
+ import { positionFromFen } from "@/utils/chessops";
+-import { classifyMove } from "@/utils/coach";
++import { classifyMove, withMultiPvFloor } from "@/utils/coach";
+ import type { LocalEngine } from "@/utils/engines";
+ import { useThrottledEffect } from "@/utils/misc";
+ import { treeIteratorMainLine } from "@/utils/treeReducer";
+@@ -48,16 +48,11 @@ export function useLiveCoachEngine(): {
+     }, [engines, config.engineId]);
+ 
+     const goMode = config.go;
+-    const extraOptions = useMemo(
+-        () =>
+-            config.settings.length > 0
+-                ? config.settings.map((s) => ({
+-                      name: s.name,
+-                      value: s.value?.toString() ?? "",
+-                  }))
+-                : [{ name: "MultiPV", value: "2" }],
+-        [config.settings],
+-    );
++    // Merge the MultiPV floor into whatever is configured rather than only using
++    // it when nothing is configured: any UI write of the engine's own UCI
++    // defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
++    // permanently disable "Good" move detection. See `withMultiPvFloor`.
++    const extraOptions = useMemo(() => withMultiPvFloor(config.settings), [config.settings]);
+ 
+     const activeTab = useAtomValue(activeTabAtom);
+     const store = useContext(TreeStateContext)!;
+diff --git a/src/translation/en-US.json b/src/translation/en-US.json
+index f5c9b261..f9025002 100644
+--- a/src/translation/en-US.json
++++ b/src/translation/en-US.json
+@@ -540,9 +540,10 @@
+     "Settings.Coach": "Coach",
+     "Settings.Coach.Desc": "Configure the engines used for live evaluation and hints during play",
+     "Settings.Coach.Hint": "Hint",
+-    "Settings.Coach.Hint.Desc": "Setting the go mode to \"Infinite\" makes the hint run continuously in the background for the whole game (better hints, more CPU). Any other go mode makes it search only when you click Hint.",
++    "Settings.Coach.Hint.Desc": "Setting the go mode to \"Infinite\" makes the hint run continuously in the background for the whole game (better hints, more CPU). Any other go mode searches only when you click Hint, and reveals the move once that search finishes.",
+     "Settings.Coach.LiveEval": "Live Evaluation",
+-    "Settings.Coach.LiveEval.Desc": "MultiPV must be at least 2 for \"Good\" move detection to work (lower values still detect Mistakes and Blunders).",
++    "Settings.Coach.LiveEval.Desc": "\"Good\" move detection needs at least two lines, so MultiPV is always raised to 2 here even if a lower value is set.",
++    "Settings.Coach.NoEngines": "No loaded engine available. Load at least one local engine in Settings > Engines first.",
+     "Settings.ConsecutiveArrows": "Consecutive Arrows",
+     "Settings.ConsecutiveArrows.Desc": "Show multiple arrows for the best line, if it involves moving the same piece several times",
+     "Settings.Coordinates": "Coordinates",
+diff --git a/src/utils/coach.ts b/src/utils/coach.ts
+index 3da2f198..1a1f4300 100644
+--- a/src/utils/coach.ts
++++ b/src/utils/coach.ts
+@@ -1,8 +1,43 @@
+ import type { BestMoves } from "@/bindings";
+ import type { Annotation } from "./annotation";
++import type { EngineSettings } from "./engines";
+ import { getAnnotation } from "./score";
+ import type { ListNode } from "./treeReducer";
+ 
++/** UCI option as the backend's `extraOptions` expects it. */
++export type EngineOption = { name: string; value: string };
++
++/**
++ * Turns configured engine settings into the backend's `extraOptions`, merging in
++ * a MultiPV floor instead of replacing the settings wholesale.
++ *
++ * Move classification needs at least two lines for the position before the move
++ * (`getAnnotation` only reports "Good"/"Excellent" when it has more than one
++ * previous line to compare against), so live-eval must never search with
++ * MultiPV < 2 — no matter what ends up written into the coach config. That
++ * matters because settings get copied out of the engine's own UCI defaults
++ * (typically `MultiPV: 1`) by the engine picker, sometimes without the user ever
++ * visiting the Coach settings tab. Merging keeps every other configured option
++ * intact while making the floor impossible to lose.
++ *
++ * Pure, so it can be unit tested directly.
++ */
++export function withMultiPvFloor(settings: EngineSettings, floor = 2): EngineOption[] {
++    const options: EngineOption[] = settings.map((s) => ({
++        name: s.name,
++        value: s.value?.toString() ?? "",
++    }));
++    const multipv = options.find((o) => o.name === "MultiPV");
++    if (!multipv) {
++        options.push({ name: "MultiPV", value: floor.toString() });
++    } else if (!(Number(multipv.value) >= floor)) {
++        // `!(x >= floor)` rather than `x < floor` so a non-numeric/empty value
++        // (which parses to NaN) is also raised to the floor instead of kept.
++        multipv.value = floor.toString();
++    }
++    return options;
++}
++
+ export type MoveClassification = {
+     /** Tree path of the node the annotation belongs to. */
+     path: number[];
+diff --git a/src/utils/tests/coach.test.ts b/src/utils/tests/coach.test.ts
+index fe74d17b..bca792da 100644
+--- a/src/utils/tests/coach.test.ts
++++ b/src/utils/tests/coach.test.ts
+@@ -1,7 +1,7 @@
+ import { parseUci } from "chessops";
+ import { expect, test } from "vitest";
+ import type { BestMoves } from "@/bindings";
+-import { classifyMove } from "../coach";
++import { classifyMove, withMultiPvFloor } from "../coach";
+ import type { ListNode, TreeNode } from "../treeReducer";
+ 
+ // classifyMove only ever compares fens as opaque strings, so synthetic ids keep
+@@ -161,3 +161,44 @@ test("should skip empty engine output", () => {
+ 
+     expect(result).toBeNull();
+ });
++
++test("withMultiPvFloor adds MultiPV to empty settings", () => {
++    expect(withMultiPvFloor([])).toStrictEqual([{ name: "MultiPV", value: "2" }]);
++});
++
++test("withMultiPvFloor adds MultiPV when settings don't mention it", () => {
++    expect(
++        withMultiPvFloor([
++            { name: "Threads", value: 4 },
++            { name: "Hash", value: 256 },
++        ]),
++    ).toStrictEqual([
++        { name: "Threads", value: "4" },
++        { name: "Hash", value: "256" },
++        { name: "MultiPV", value: "2" },
++    ]);
++});
++
++test("withMultiPvFloor raises a MultiPV below the floor", () => {
++    expect(
++        withMultiPvFloor([
++            { name: "MultiPV", value: 1 },
++            { name: "Threads", value: 2 },
++        ]),
++    ).toStrictEqual([
++        { name: "MultiPV", value: "2" },
++        { name: "Threads", value: "2" },
++    ]);
++});
++
++test("withMultiPvFloor leaves a MultiPV above the floor alone", () => {
++    expect(withMultiPvFloor([{ name: "MultiPV", value: 3 }])).toStrictEqual([
++        { name: "MultiPV", value: "3" },
++    ]);
++});
++
++test("withMultiPvFloor raises an unparseable MultiPV to the floor", () => {
++    expect(withMultiPvFloor([{ name: "MultiPV", value: null }])).toStrictEqual([
++        { name: "MultiPV", value: "2" },
++    ]);
++});

@@ -23,10 +23,12 @@
 ## Task 1: Engine variant data model & pure helpers
 
 **Files:**
+
 - Create: `src/utils/engineVariants.ts`
 - Test: `src/utils/tests/engineVariants.test.ts`
 
 **Interfaces:**
+
 - Produces: `EngineVariant` type `{ id: string; name: string; go: GoMode; settings: EngineSettings }`; `engineVariantSchema` (Zod); `engineSettingsSchema`/`EngineSettings` (moved here, unchanged shape); `goModeSchema` (moved here, unchanged shape); `DEFAULT_GO_MODE: GoMode`; `createVariant(name, settings?, go?): EngineVariant`; `duplicateVariant(variant, name): EngineVariant`; `canDeleteVariant(variantCount): boolean`; `getDefaultVariant<E extends {variants: EngineVariant[]}>(engine): EngineVariant`; `withDefaultVariant<E extends {variants: EngineVariant[]}>(engine, patch): E`. These helpers take a structural `{variants: EngineVariant[]}` type (not `Engine`) so this module has zero dependency on `./engines`, avoiding a circular import (Task 3 makes `./engines` depend on this module).
 
 - [ ] **Step 1: Write the failing tests**
@@ -35,57 +37,60 @@
 // src/utils/tests/engineVariants.test.ts
 import { expect, test } from "vitest";
 import {
-    canDeleteVariant,
-    createVariant,
-    DEFAULT_GO_MODE,
-    duplicateVariant,
-    getDefaultVariant,
-    withDefaultVariant,
+  canDeleteVariant,
+  createVariant,
+  DEFAULT_GO_MODE,
+  duplicateVariant,
+  getDefaultVariant,
+  withDefaultVariant,
 } from "../engineVariants";
 
 test("createVariant fills in a random id and the given name/settings/go", () => {
-    const v = createVariant("Aggressive", [{ name: "Threads", value: 4 }], { t: "Depth", c: 10 });
-    expect(v.name).toBe("Aggressive");
-    expect(v.settings).toEqual([{ name: "Threads", value: 4 }]);
-    expect(v.go).toEqual({ t: "Depth", c: 10 });
-    expect(typeof v.id).toBe("string");
-    expect(v.id.length).toBeGreaterThan(0);
+  const v = createVariant("Aggressive", [{ name: "Threads", value: 4 }], { t: "Depth", c: 10 });
+  expect(v.name).toBe("Aggressive");
+  expect(v.settings).toEqual([{ name: "Threads", value: 4 }]);
+  expect(v.go).toEqual({ t: "Depth", c: 10 });
+  expect(typeof v.id).toBe("string");
+  expect(v.id.length).toBeGreaterThan(0);
 });
 
 test("createVariant defaults to empty settings and DEFAULT_GO_MODE", () => {
-    const v = createVariant("Default");
-    expect(v.settings).toEqual([]);
-    expect(v.go).toEqual(DEFAULT_GO_MODE);
+  const v = createVariant("Default");
+  expect(v.settings).toEqual([]);
+  expect(v.go).toEqual(DEFAULT_GO_MODE);
 });
 
 test("duplicateVariant copies settings/go but assigns a new id and name", () => {
-    const original = createVariant("Aggressive", [{ name: "Threads", value: 4 }]);
-    const copy = duplicateVariant(original, "Aggressive (Copy)");
-    expect(copy.id).not.toBe(original.id);
-    expect(copy.name).toBe("Aggressive (Copy)");
-    expect(copy.settings).toEqual(original.settings);
-    expect(copy.go).toEqual(original.go);
+  const original = createVariant("Aggressive", [{ name: "Threads", value: 4 }]);
+  const copy = duplicateVariant(original, "Aggressive (Copy)");
+  expect(copy.id).not.toBe(original.id);
+  expect(copy.name).toBe("Aggressive (Copy)");
+  expect(copy.settings).toEqual(original.settings);
+  expect(copy.go).toEqual(original.go);
 });
 
 test("getDefaultVariant returns the first variant", () => {
-    const a = createVariant("A");
-    const b = createVariant("B");
-    expect(getDefaultVariant({ variants: [a, b] })).toBe(a);
+  const a = createVariant("A");
+  const b = createVariant("B");
+  expect(getDefaultVariant({ variants: [a, b] })).toBe(a);
 });
 
 test("withDefaultVariant patches only the first variant, leaving others untouched", () => {
-    const a = createVariant("A", [{ name: "Threads", value: 1 }]);
-    const b = createVariant("B", [{ name: "Threads", value: 2 }]);
-    const result = withDefaultVariant({ variants: [a, b] }, { settings: [{ name: "Threads", value: 8 }] });
-    expect(result.variants[0].settings).toEqual([{ name: "Threads", value: 8 }]);
-    expect(result.variants[0].id).toBe(a.id);
-    expect(result.variants[1]).toBe(b);
+  const a = createVariant("A", [{ name: "Threads", value: 1 }]);
+  const b = createVariant("B", [{ name: "Threads", value: 2 }]);
+  const result = withDefaultVariant(
+    { variants: [a, b] },
+    { settings: [{ name: "Threads", value: 8 }] },
+  );
+  expect(result.variants[0].settings).toEqual([{ name: "Threads", value: 8 }]);
+  expect(result.variants[0].id).toBe(a.id);
+  expect(result.variants[1]).toBe(b);
 });
 
 test("canDeleteVariant is false at exactly one variant, true above that", () => {
-    expect(canDeleteVariant(1)).toBe(false);
-    expect(canDeleteVariant(2)).toBe(true);
-    expect(canDeleteVariant(0)).toBe(false);
+  expect(canDeleteVariant(1)).toBe(false);
+  expect(canDeleteVariant(2)).toBe(true);
+  expect(canDeleteVariant(0)).toBe(false);
 });
 ```
 
@@ -103,37 +108,37 @@ import type { GoMode } from "@/bindings";
 export const DEFAULT_GO_MODE: GoMode = { t: "Depth", c: 24 };
 
 export const goModeSchema: z.ZodSchema<GoMode> = z.union([
-    z.object({
-        t: z.literal("Depth"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Time"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Nodes"),
-        c: z.number(),
-    }),
-    z.object({
-        t: z.literal("Infinite"),
-    }),
+  z.object({
+    t: z.literal("Depth"),
+    c: z.number(),
+  }),
+  z.object({
+    t: z.literal("Time"),
+    c: z.number(),
+  }),
+  z.object({
+    t: z.literal("Nodes"),
+    c: z.number(),
+  }),
+  z.object({
+    t: z.literal("Infinite"),
+  }),
 ]);
 
 export const engineSettingsSchema = z.array(
-    z.object({
-        name: z.string(),
-        value: z.string().or(z.number()).or(z.boolean()).nullable(),
-    }),
+  z.object({
+    name: z.string(),
+    value: z.string().or(z.number()).or(z.boolean()).nullable(),
+  }),
 );
 
 export type EngineSettings = z.infer<typeof engineSettingsSchema>;
 
 export const engineVariantSchema = z.object({
-    id: z.string().default(() => crypto.randomUUID()),
-    name: z.string(),
-    go: goModeSchema.default(DEFAULT_GO_MODE),
-    settings: engineSettingsSchema.default([]),
+  id: z.string().default(() => crypto.randomUUID()),
+  name: z.string(),
+  go: goModeSchema.default(DEFAULT_GO_MODE),
+  settings: engineSettingsSchema.default([]),
 });
 
 export type EngineVariant = z.output<typeof engineVariantSchema>;
@@ -142,35 +147,35 @@ type EngineLike = { variants: EngineVariant[] };
 
 /** Creates a new variant with a fresh id. `go` defaults to `DEFAULT_GO_MODE`. */
 export function createVariant(
-    name: string,
-    settings: EngineSettings = [],
-    go: GoMode = DEFAULT_GO_MODE,
+  name: string,
+  settings: EngineSettings = [],
+  go: GoMode = DEFAULT_GO_MODE,
 ): EngineVariant {
-    return { id: crypto.randomUUID(), name, go, settings };
+  return { id: crypto.randomUUID(), name, go, settings };
 }
 
 /** Copies a variant's settings/go under a new id and name. */
 export function duplicateVariant(variant: EngineVariant, name: string): EngineVariant {
-    return { ...variant, id: crypto.randomUUID(), name };
+  return { ...variant, id: crypto.randomUUID(), name };
 }
 
 /** The implicit default variant used wherever no explicit picker exists (e.g. the Analysis panel). */
 export function getDefaultVariant<E extends EngineLike>(engine: E): EngineVariant {
-    return engine.variants[0];
+  return engine.variants[0];
 }
 
 /** Returns a copy of `engine` with its default (first) variant patched; other variants untouched. */
 export function withDefaultVariant<E extends EngineLike>(
-    engine: E,
-    patch: Partial<Pick<EngineVariant, "go" | "settings">>,
+  engine: E,
+  patch: Partial<Pick<EngineVariant, "go" | "settings">>,
 ): E {
-    const [first, ...rest] = engine.variants;
-    return { ...engine, variants: [{ ...first, ...patch }, ...rest] };
+  const [first, ...rest] = engine.variants;
+  return { ...engine, variants: [{ ...first, ...patch }, ...rest] };
 }
 
 /** An engine must always keep at least one variant. */
 export function canDeleteVariant(variantCount: number): boolean {
-    return variantCount > 1;
+  return variantCount > 1;
 }
 ```
 
@@ -198,10 +203,12 @@ EOF
 ## Task 2: Migration from old flat settings/go to variants
 
 **Files:**
+
 - Create: `src/utils/engineVariantsMigration.ts`
 - Test: `src/utils/tests/engineVariantsMigration.test.ts`
 
 **Interfaces:**
+
 - Consumes: `createVariant`, `DEFAULT_GO_MODE`, `EngineVariant` from `./engineVariants` (Task 1).
 - Produces: `migrateEngineRecord(raw: unknown): unknown`, used as a `z.preprocess` step in Task 3.
 
@@ -213,98 +220,98 @@ import { expect, test } from "vitest";
 import { migrateEngineRecord } from "../engineVariantsMigration";
 
 test("upgrades an old-shape engine record into a single Default variant", () => {
-    const raw = {
-        type: "local",
-        id: "1",
-        name: "Stockfish",
-        version: "17",
-        path: "/usr/bin/stockfish",
-        settings: [{ name: "Threads", value: 4 }],
-        go: { t: "Depth", c: 20 },
-    };
-    const migrated = migrateEngineRecord(raw) as any;
-    expect(migrated.settings).toBeUndefined();
-    expect(migrated.go).toBeUndefined();
-    expect(migrated.variants).toHaveLength(1);
-    expect(migrated.variants[0]).toMatchObject({
-        name: "Default",
-        go: { t: "Depth", c: 20 },
-        settings: [{ name: "Threads", value: 4 }],
-    });
-    expect(typeof migrated.variants[0].id).toBe("string");
+  const raw = {
+    type: "local",
+    id: "1",
+    name: "Stockfish",
+    version: "17",
+    path: "/usr/bin/stockfish",
+    settings: [{ name: "Threads", value: 4 }],
+    go: { t: "Depth", c: 20 },
+  };
+  const migrated = migrateEngineRecord(raw) as any;
+  expect(migrated.settings).toBeUndefined();
+  expect(migrated.go).toBeUndefined();
+  expect(migrated.variants).toHaveLength(1);
+  expect(migrated.variants[0]).toMatchObject({
+    name: "Default",
+    go: { t: "Depth", c: 20 },
+    settings: [{ name: "Threads", value: 4 }],
+  });
+  expect(typeof migrated.variants[0].id).toBe("string");
 });
 
 test("defaults go and settings when the old record had neither", () => {
-    const migrated = migrateEngineRecord({
-        type: "local",
-        id: "2",
-        name: "X",
-        version: "",
-        path: "",
-    }) as any;
-    expect(migrated.variants[0].go).toEqual({ t: "Depth", c: 24 });
-    expect(migrated.variants[0].settings).toEqual([]);
+  const migrated = migrateEngineRecord({
+    type: "local",
+    id: "2",
+    name: "X",
+    version: "",
+    path: "",
+  }) as any;
+  expect(migrated.variants[0].go).toEqual({ t: "Depth", c: 24 });
+  expect(migrated.variants[0].settings).toEqual([]);
 });
 
 test("seeds the 10 Rodent II personalities as extra variants, matched case-insensitively", () => {
-    const migrated = migrateEngineRecord({
-        type: "local",
-        id: "3",
-        name: "Rodent II 0.9.64",
-        version: "0.9.64",
-        path: "/usr/bin/rodentii",
-        settings: [{ name: "Hash", value: 64 }],
-    }) as any;
-    expect(migrated.variants).toHaveLength(11); // Default + 10 personalities
-    const names = migrated.variants.map((v: any) => v.name);
-    expect(names).toContain("Victor (Masters)");
-    expect(names).toContain("Frank (School)");
+  const migrated = migrateEngineRecord({
+    type: "local",
+    id: "3",
+    name: "Rodent II 0.9.64",
+    version: "0.9.64",
+    path: "/usr/bin/rodentii",
+    settings: [{ name: "Hash", value: 64 }],
+  }) as any;
+  expect(migrated.variants).toHaveLength(11); // Default + 10 personalities
+  const names = migrated.variants.map((v: any) => v.name);
+  expect(names).toContain("Victor (Masters)");
+  expect(names).toContain("Frank (School)");
 
-    const victor = migrated.variants.find((v: any) => v.name === "Victor (Masters)");
-    // Base settings not touched by the personality are preserved...
-    expect(victor.settings).toContainEqual({ name: "Hash", value: 64 });
-    // ...and the personality's own values match src/utils/presets/rodentII.ts exactly.
-    expect(victor.settings).toContainEqual({ name: "NpsLimit", value: 28000 });
-    expect(victor.settings).toContainEqual({ name: "Material", value: 90 });
-    expect(victor.settings).toContainEqual({ name: "Selectivity", value: 175 });
+  const victor = migrated.variants.find((v: any) => v.name === "Victor (Masters)");
+  // Base settings not touched by the personality are preserved...
+  expect(victor.settings).toContainEqual({ name: "Hash", value: 64 });
+  // ...and the personality's own values match src/utils/presets/rodentII.ts exactly.
+  expect(victor.settings).toContainEqual({ name: "NpsLimit", value: 28000 });
+  expect(victor.settings).toContainEqual({ name: "Material", value: 90 });
+  expect(victor.settings).toContainEqual({ name: "Selectivity", value: 175 });
 });
 
 test("does not seed personalities for a non-Rodent-II engine", () => {
-    const migrated = migrateEngineRecord({
-        type: "local",
-        id: "4",
-        name: "Rodent 5",
-        version: "",
-        path: "",
-    }) as any;
-    expect(migrated.variants).toHaveLength(1);
+  const migrated = migrateEngineRecord({
+    type: "local",
+    id: "4",
+    name: "Rodent 5",
+    version: "",
+    path: "",
+  }) as any;
+  expect(migrated.variants).toHaveLength(1);
 
-    const migrated2 = migrateEngineRecord({
-        type: "local",
-        id: "5",
-        name: "Rodent IV",
-        version: "",
-        path: "",
-    }) as any;
-    expect(migrated2.variants).toHaveLength(1);
+  const migrated2 = migrateEngineRecord({
+    type: "local",
+    id: "5",
+    name: "Rodent IV",
+    version: "",
+    path: "",
+  }) as any;
+  expect(migrated2.variants).toHaveLength(1);
 });
 
 test("is idempotent for records that already have variants", () => {
-    const already = {
-        type: "local",
-        id: "6",
-        name: "X",
-        version: "",
-        path: "",
-        variants: [{ id: "v1", name: "Default", go: { t: "Depth", c: 24 }, settings: [] }],
-    };
-    expect(migrateEngineRecord(already)).toBe(already);
+  const already = {
+    type: "local",
+    id: "6",
+    name: "X",
+    version: "",
+    path: "",
+    variants: [{ id: "v1", name: "Default", go: { t: "Depth", c: 24 }, settings: [] }],
+  };
+  expect(migrateEngineRecord(already)).toBe(already);
 });
 
 test("passes through non-object input unchanged", () => {
-    expect(migrateEngineRecord(null)).toBeNull();
-    expect(migrateEngineRecord("oops")).toBe("oops");
-    expect(migrateEngineRecord(undefined)).toBeUndefined();
+  expect(migrateEngineRecord(null)).toBeNull();
+  expect(migrateEngineRecord("oops")).toBe("oops");
+  expect(migrateEngineRecord(undefined)).toBeUndefined();
 });
 ```
 
@@ -326,163 +333,163 @@ import { createVariant, DEFAULT_GO_MODE, type EngineVariant } from "./engineVari
 // since they reference paths relative to Rodent II's own install layout, which may not exist
 // alongside the copied binary.
 const RODENT_II_PERSONALITIES: { name: string; options: [string, string | number][] }[] = [
-    {
-        name: "Frank (School)",
-        options: [
-            ["KingTropism", 100],
-            ["OwnMobility", 100],
-            ["OppMobility", 100],
-            ["Forwardness", 100],
-            ["PstStyle", 2],
-            ["NpsLimit", 88],
-            ["EvalBlur", 36],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Amy (School)",
-        options: [
-            ["OwnAttack", 200],
-            ["OppAttack", 100],
-            ["OwnMobility", 200],
-            ["OppMobility", 100],
-            ["NpsLimit", 64],
-            ["EvalBlur", 48],
-            ["SlowMover", 150],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Chris (School)",
-        options: [
-            ["OwnAttack", 100],
-            ["OppAttack", 100],
-            ["OwnMobility", 100],
-            ["OppMobility", 120],
-            ["NpsLimit", 72],
-            ["EvalBlur", 48],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Mark (Club)",
-        options: [
-            ["OwnAttack", 100],
-            ["OppAttack", 120],
-            ["OwnMobility", 120],
-            ["OppMobility", 100],
-            ["NpsLimit", 450],
-            ["EvalBlur", 50],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Dory (School)",
-        options: [
-            ["OwnAttack", 100],
-            ["OppAttack", 150],
-            ["OwnMobility", 100],
-            ["OppMobility", 150],
-            ["MobilityStyle", 1],
-            ["NpsLimit", 88],
-            ["EvalBlur", 36],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Ben (School)",
-        options: [
-            ["OwnAttack", 100],
-            ["OppAttack", 100],
-            ["OwnMobility", 100],
-            ["OppMobility", 100],
-            ["NpsLimit", 64],
-            ["EvalBlur", 24],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Arthur (League)",
-        options: [
-            ["OwnAttack", 120],
-            ["OppAttack", 100],
-            ["OwnMobility", 100],
-            ["OppMobility", 120],
-            ["PawnStructure", 120],
-            ["Outposts", 120],
-            ["MobilityStyle", 1],
-            ["NpsLimit", 3000],
-            ["EvalBlur", 0],
-            ["SlowMover", 120],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Theresa (League)",
-        options: [
-            ["Material", 90],
-            ["OwnAttack", 50],
-            ["OppAttack", 70],
-            ["OwnMobility", 120],
-            ["OppMobility", 100],
-            ["PiecePressure", 150],
-            ["Lines", 105],
-            ["Outposts", 110],
-            ["NpsLimit", 5500],
-            ["EvalBlur", 0],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Victor (Masters)",
-        options: [
-            ["Material", 90],
-            ["OwnAttack", 120],
-            ["OppAttack", 100],
-            ["OwnMobility", 120],
-            ["OppMobility", 100],
-            ["KingTropism", 50],
-            ["Lines", 120],
-            ["Forwardness", 50],
-            ["PstStyle", 2],
-            ["NpsLimit", 28000],
-            ["EvalBlur", 0],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
-    {
-        name: "Nancy (Masters)",
-        options: [
-            ["OwnAttack", 120],
-            ["OppAttack", 100],
-            ["OwnMobility", 100],
-            ["OppMobility", 120],
-            ["KnightLikesClosed", 8],
-            ["Outposts", 120],
-            ["NpsLimit", 30000],
-            ["EvalBlur", 0],
-            ["SlowMover", 100],
-            ["Selectivity", 175],
-        ],
-    },
+  {
+    name: "Frank (School)",
+    options: [
+      ["KingTropism", 100],
+      ["OwnMobility", 100],
+      ["OppMobility", 100],
+      ["Forwardness", 100],
+      ["PstStyle", 2],
+      ["NpsLimit", 88],
+      ["EvalBlur", 36],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Amy (School)",
+    options: [
+      ["OwnAttack", 200],
+      ["OppAttack", 100],
+      ["OwnMobility", 200],
+      ["OppMobility", 100],
+      ["NpsLimit", 64],
+      ["EvalBlur", 48],
+      ["SlowMover", 150],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Chris (School)",
+    options: [
+      ["OwnAttack", 100],
+      ["OppAttack", 100],
+      ["OwnMobility", 100],
+      ["OppMobility", 120],
+      ["NpsLimit", 72],
+      ["EvalBlur", 48],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Mark (Club)",
+    options: [
+      ["OwnAttack", 100],
+      ["OppAttack", 120],
+      ["OwnMobility", 120],
+      ["OppMobility", 100],
+      ["NpsLimit", 450],
+      ["EvalBlur", 50],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Dory (School)",
+    options: [
+      ["OwnAttack", 100],
+      ["OppAttack", 150],
+      ["OwnMobility", 100],
+      ["OppMobility", 150],
+      ["MobilityStyle", 1],
+      ["NpsLimit", 88],
+      ["EvalBlur", 36],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Ben (School)",
+    options: [
+      ["OwnAttack", 100],
+      ["OppAttack", 100],
+      ["OwnMobility", 100],
+      ["OppMobility", 100],
+      ["NpsLimit", 64],
+      ["EvalBlur", 24],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Arthur (League)",
+    options: [
+      ["OwnAttack", 120],
+      ["OppAttack", 100],
+      ["OwnMobility", 100],
+      ["OppMobility", 120],
+      ["PawnStructure", 120],
+      ["Outposts", 120],
+      ["MobilityStyle", 1],
+      ["NpsLimit", 3000],
+      ["EvalBlur", 0],
+      ["SlowMover", 120],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Theresa (League)",
+    options: [
+      ["Material", 90],
+      ["OwnAttack", 50],
+      ["OppAttack", 70],
+      ["OwnMobility", 120],
+      ["OppMobility", 100],
+      ["PiecePressure", 150],
+      ["Lines", 105],
+      ["Outposts", 110],
+      ["NpsLimit", 5500],
+      ["EvalBlur", 0],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Victor (Masters)",
+    options: [
+      ["Material", 90],
+      ["OwnAttack", 120],
+      ["OppAttack", 100],
+      ["OwnMobility", 120],
+      ["OppMobility", 100],
+      ["KingTropism", 50],
+      ["Lines", 120],
+      ["Forwardness", 50],
+      ["PstStyle", 2],
+      ["NpsLimit", 28000],
+      ["EvalBlur", 0],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
+  {
+    name: "Nancy (Masters)",
+    options: [
+      ["OwnAttack", 120],
+      ["OppAttack", 100],
+      ["OwnMobility", 100],
+      ["OppMobility", 120],
+      ["KnightLikesClosed", 8],
+      ["Outposts", 120],
+      ["NpsLimit", 30000],
+      ["EvalBlur", 0],
+      ["SlowMover", 100],
+      ["Selectivity", 175],
+    ],
+  },
 ];
 
 const RODENT_II_NAME_RE = /rodent\s*ii\b/i;
 
 function mergeSettings(
-    base: { name: string; value: string | number | boolean | null }[],
-    overrides: [string, string | number][],
+  base: { name: string; value: string | number | boolean | null }[],
+  overrides: [string, string | number][],
 ): { name: string; value: string | number | boolean | null }[] {
-    const overrideNames = new Set(overrides.map(([name]) => name));
-    const remaining = base.filter((s) => !overrideNames.has(s.name));
-    return [...remaining, ...overrides.map(([name, value]) => ({ name, value }))];
+  const overrideNames = new Set(overrides.map(([name]) => name));
+  const remaining = base.filter((s) => !overrideNames.has(s.name));
+  return [...remaining, ...overrides.map(([name, value]) => ({ name, value }))];
 }
 
 /**
@@ -493,28 +500,28 @@ function mergeSettings(
  * returned unchanged, so this keeps working correctly forever without needing a version marker.
  */
 export function migrateEngineRecord(raw: unknown): unknown {
-    if (typeof raw !== "object" || raw === null) return raw;
-    const record = raw as Record<string, unknown>;
-    if (Array.isArray(record.variants)) return raw;
+  if (typeof raw !== "object" || raw === null) return raw;
+  const record = raw as Record<string, unknown>;
+  if (Array.isArray(record.variants)) return raw;
 
-    const { settings, go, ...rest } = record;
-    const baseSettings = Array.isArray(settings)
-        ? (settings as { name: string; value: string | number | boolean | null }[])
-        : [];
-    const baseGo = (go as GoMode | undefined) ?? DEFAULT_GO_MODE;
+  const { settings, go, ...rest } = record;
+  const baseSettings = Array.isArray(settings)
+    ? (settings as { name: string; value: string | number | boolean | null }[])
+    : [];
+  const baseGo = (go as GoMode | undefined) ?? DEFAULT_GO_MODE;
 
-    const variants: EngineVariant[] = [createVariant("Default", baseSettings, baseGo)];
+  const variants: EngineVariant[] = [createVariant("Default", baseSettings, baseGo)];
 
-    const name = typeof record.name === "string" ? record.name : "";
-    if (RODENT_II_NAME_RE.test(name)) {
-        for (const personality of RODENT_II_PERSONALITIES) {
-            variants.push(
-                createVariant(personality.name, mergeSettings(baseSettings, personality.options), baseGo),
-            );
-        }
+  const name = typeof record.name === "string" ? record.name : "";
+  if (RODENT_II_NAME_RE.test(name)) {
+    for (const personality of RODENT_II_PERSONALITIES) {
+      variants.push(
+        createVariant(personality.name, mergeSettings(baseSettings, personality.options), baseGo),
+      );
     }
+  }
 
-    return { ...rest, variants };
+  return { ...rest, variants };
 }
 ```
 
@@ -542,10 +549,12 @@ EOF
 ## Task 3: Wire the new schema and migration into `src/utils/engines.ts`
 
 **Files:**
+
 - Modify: `src/utils/engines.ts`
 - Modify: `src/utils/tests/syzygy.test.ts`
 
 **Interfaces:**
+
 - Consumes: everything from Task 1 (`engineVariantSchema`, `EngineVariant`, `getDefaultVariant`, `withDefaultVariant`, `createVariant`, `duplicateVariant`, `canDeleteVariant`, `DEFAULT_GO_MODE`, `engineSettingsSchema`, `EngineSettings`) and Task 2 (`migrateEngineRecord`).
 - Produces: `LocalEngine`/`RemoteEngine`/`Engine` now have `variants: EngineVariant[]` instead of `settings`/`go`. Re-exports `EngineSettings`, `engineSettingsSchema`, `EngineVariant`, `createVariant`, `duplicateVariant`, `canDeleteVariant`, `getDefaultVariant`, `withDefaultVariant`, `DEFAULT_GO_MODE` from `./engineVariants`, so every existing `import ... from "@/utils/engines"` across the codebase keeps working without a source-wide import-path rewrite.
 
@@ -564,125 +573,123 @@ import { migrateEngineRecord } from "./engineVariantsMigration";
 import { unwrap } from "./unwrap";
 
 export {
-    canDeleteVariant,
-    createVariant,
-    DEFAULT_GO_MODE,
-    duplicateVariant,
-    type EngineSettings,
-    engineSettingsSchema,
-    type EngineVariant,
-    getDefaultVariant,
-    withDefaultVariant,
+  canDeleteVariant,
+  createVariant,
+  DEFAULT_GO_MODE,
+  duplicateVariant,
+  type EngineSettings,
+  engineSettingsSchema,
+  type EngineVariant,
+  getDefaultVariant,
+  withDefaultVariant,
 } from "./engineVariants";
 
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
 
 const localEngineSchema = z.object({
-    type: z.literal("local"),
-    id: z.string().default(() => crypto.randomUUID()),
-    name: z.string(),
-    version: z.string(),
-    path: z.string(),
-    image: z.string().nullish(),
-    elo: z.number().nullish(),
-    downloadSize: z.number().nullish(),
-    downloadLink: z.string().nullish(),
-    loaded: z.boolean().nullish(),
-    enabled: z.boolean().nullish(),
-    variants: z.array(engineVariantSchema).min(1),
+  type: z.literal("local"),
+  id: z.string().default(() => crypto.randomUUID()),
+  name: z.string(),
+  version: z.string(),
+  path: z.string(),
+  image: z.string().nullish(),
+  elo: z.number().nullish(),
+  downloadSize: z.number().nullish(),
+  downloadLink: z.string().nullish(),
+  loaded: z.boolean().nullish(),
+  enabled: z.boolean().nullish(),
+  variants: z.array(engineVariantSchema).min(1),
 });
 
 export type LocalEngine = z.output<typeof localEngineSchema>;
 
 const remoteEngineSchema = z.object({
-    type: z.enum(["chessdb", "lichess"]),
-    id: z.string().default(() => crypto.randomUUID()),
-    name: z.string(),
-    url: z.string(),
-    image: z.string().nullish(),
-    loaded: z.boolean().nullish(),
-    enabled: z.boolean().nullish(),
-    variants: z.array(engineVariantSchema).min(1),
+  type: z.enum(["chessdb", "lichess"]),
+  id: z.string().default(() => crypto.randomUUID()),
+  name: z.string(),
+  url: z.string(),
+  image: z.string().nullish(),
+  loaded: z.boolean().nullish(),
+  enabled: z.boolean().nullish(),
+  variants: z.array(engineVariantSchema).min(1),
 });
 
 export type RemoteEngine = z.output<typeof remoteEngineSchema>;
 
 export const engineSchema = z.preprocess(
-    migrateEngineRecord,
-    z.union([localEngineSchema, remoteEngineSchema]),
+  migrateEngineRecord,
+  z.union([localEngineSchema, remoteEngineSchema]),
 );
 export type Engine = z.output<typeof engineSchema>;
 
 export function stopEngine(engine: LocalEngine, tab: string): Promise<void> {
-    return commands.stopEngine(engine.id, tab).then((r) => {
-        unwrap(r);
-    });
+  return commands.stopEngine(engine.id, tab).then((r) => {
+    unwrap(r);
+  });
 }
 
 export function killEngine(engine: LocalEngine, tab: string): Promise<void> {
-    return commands.killEngine(engine.id, tab).then((r) => {
-        unwrap(r);
-    });
+  return commands.killEngine(engine.id, tab).then((r) => {
+    unwrap(r);
+  });
 }
 
 export function getBestMoves(
-    engine: LocalEngine,
-    tab: string,
-    goMode: GoMode,
-    options: EngineOptions,
+  engine: LocalEngine,
+  tab: string,
+  goMode: GoMode,
+  options: EngineOptions,
 ): Promise<[number, BestMoves[]] | null> {
-    return commands
-        .getBestMoves(engine.id, engine.path, tab, goMode, options)
-        .then((r) => unwrap(r));
+  return commands.getBestMoves(engine.id, engine.path, tab, goMode, options).then((r) => unwrap(r));
 }
 
 export function useDefaultEngines(os: Platform | undefined, opened: boolean) {
-    const { data, error, isLoading } = useSWR(opened ? os : null, async (os: Platform) => {
-        const bmi2: boolean = await commands.isBmi2Compatible();
-        const data = await fetch(`https://www.encroissant.org/engines?os=${os}&bmi2=${bmi2}`, {
-            method: "GET",
-        });
-        if (!data.ok) {
-            throw new Error("Failed to fetch engines");
-        }
-        return (await data.json()).filter(
-            (e: { os: Platform; bmi2: boolean }) => e.os === os && e.bmi2 === bmi2,
-        );
+  const { data, error, isLoading } = useSWR(opened ? os : null, async (os: Platform) => {
+    const bmi2: boolean = await commands.isBmi2Compatible();
+    const data = await fetch(`https://www.encroissant.org/engines?os=${os}&bmi2=${bmi2}`, {
+      method: "GET",
     });
-    return {
-        defaultEngines: data as LocalEngine[],
-        error,
-        isLoading,
-    };
+    if (!data.ok) {
+      throw new Error("Failed to fetch engines");
+    }
+    return (await data.json()).filter(
+      (e: { os: Platform; bmi2: boolean }) => e.os === os && e.bmi2 === bmi2,
+    );
+  });
+  return {
+    defaultEngines: data as LocalEngine[],
+    error,
+    isLoading,
+  };
 }
 
 export function applySyzygyPathToEngine(engine: LocalEngine, syzygyPath: string): LocalEngine {
-    return {
-        ...engine,
-        variants: engine.variants.map((variant) => {
-            const settings = [...variant.settings];
-            const syzygyIndex = settings.findIndex((s) => s.name.toLowerCase() === "syzygypath");
-            if (syzygyIndex >= 0) {
-                settings[syzygyIndex] = {
-                    ...settings[syzygyIndex],
-                    value: syzygyPath,
-                };
-            } else {
-                settings.push({
-                    name: "SyzygyPath",
-                    value: syzygyPath,
-                });
-            }
-            return { ...variant, settings };
-        }),
-    };
+  return {
+    ...engine,
+    variants: engine.variants.map((variant) => {
+      const settings = [...variant.settings];
+      const syzygyIndex = settings.findIndex((s) => s.name.toLowerCase() === "syzygypath");
+      if (syzygyIndex >= 0) {
+        settings[syzygyIndex] = {
+          ...settings[syzygyIndex],
+          value: syzygyPath,
+        };
+      } else {
+        settings.push({
+          name: "SyzygyPath",
+          value: syzygyPath,
+        });
+      }
+      return { ...variant, settings };
+    }),
+  };
 }
 
 export function applySyzygyPathToAllEngines(engines: Engine[], syzygyPath: string): Engine[] {
-    return engines.map((engine) => {
-        if (engine.type !== "local") return engine;
-        return applySyzygyPathToEngine(engine, syzygyPath);
-    });
+  return engines.map((engine) => {
+    if (engine.type !== "local") return engine;
+    return applySyzygyPathToEngine(engine, syzygyPath);
+  });
 }
 ```
 
@@ -691,94 +698,94 @@ export function applySyzygyPathToAllEngines(engines: Engine[], syzygyPath: strin
 ```ts
 import { describe, expect, it } from "vitest";
 import {
-    applySyzygyPathToAllEngines,
-    applySyzygyPathToEngine,
-    createVariant,
-    type Engine,
-    type LocalEngine,
+  applySyzygyPathToAllEngines,
+  applySyzygyPathToEngine,
+  createVariant,
+  type Engine,
+  type LocalEngine,
 } from "@/utils/engines";
 
 describe("Syzygy tablebase engine configuration", () => {
-    it("applies syzygy path to a local engine without existing settings", () => {
-        const engine: LocalEngine = {
-            type: "local",
-            id: "1",
-            name: "Stockfish",
-            version: "17",
-            path: "/usr/bin/stockfish",
-            variants: [createVariant("Default", [])],
-        };
-        const updated = applySyzygyPathToEngine(engine, "/tablebases/syzygy");
-        expect(updated.variants[0].settings).toEqual([
-            { name: "SyzygyPath", value: "/tablebases/syzygy" },
-        ]);
-    });
+  it("applies syzygy path to a local engine without existing settings", () => {
+    const engine: LocalEngine = {
+      type: "local",
+      id: "1",
+      name: "Stockfish",
+      version: "17",
+      path: "/usr/bin/stockfish",
+      variants: [createVariant("Default", [])],
+    };
+    const updated = applySyzygyPathToEngine(engine, "/tablebases/syzygy");
+    expect(updated.variants[0].settings).toEqual([
+      { name: "SyzygyPath", value: "/tablebases/syzygy" },
+    ]);
+  });
 
-    it("updates existing syzygypath setting case-insensitively", () => {
-        const engine: LocalEngine = {
-            type: "local",
-            id: "2",
-            name: "Berserk",
-            version: "13",
-            path: "/usr/bin/berserk",
-            variants: [
-                createVariant("Default", [
-                    { name: "Threads", value: 4 },
-                    { name: "syzygypath", value: "/old/path" },
-                ]),
-            ],
-        };
-        const updated = applySyzygyPathToEngine(engine, "/new/tablebase/path");
-        expect(updated.variants[0].settings).toEqual([
-            { name: "Threads", value: 4 },
-            { name: "syzygypath", value: "/new/tablebase/path" },
-        ]);
-    });
+  it("updates existing syzygypath setting case-insensitively", () => {
+    const engine: LocalEngine = {
+      type: "local",
+      id: "2",
+      name: "Berserk",
+      version: "13",
+      path: "/usr/bin/berserk",
+      variants: [
+        createVariant("Default", [
+          { name: "Threads", value: 4 },
+          { name: "syzygypath", value: "/old/path" },
+        ]),
+      ],
+    };
+    const updated = applySyzygyPathToEngine(engine, "/new/tablebase/path");
+    expect(updated.variants[0].settings).toEqual([
+      { name: "Threads", value: 4 },
+      { name: "syzygypath", value: "/new/tablebase/path" },
+    ]);
+  });
 
-    it("applies syzygy path across all variants of all local engines, preserving non-local engines", () => {
-        const engines: Engine[] = [
-            {
-                type: "local",
-                id: "sf",
-                name: "Stockfish",
-                version: "17",
-                path: "/path/sf",
-                variants: [
-                    createVariant("Default", [{ name: "Hash", value: 512 }]),
-                    createVariant("Aggressive", [{ name: "Hash", value: 256 }]),
-                ],
-            },
-            {
-                type: "chessdb",
-                id: "cloud",
-                name: "ChessDB",
-                url: "https://chessdb.cn",
-                variants: [createVariant("Default", [])],
-            },
-            {
-                type: "local",
-                id: "koivisto",
-                name: "Koivisto",
-                version: "9.2",
-                path: "/path/koivisto",
-                variants: [createVariant("Default", [{ name: "SyzygyPath", value: "/old" }])],
-            },
-        ];
+  it("applies syzygy path across all variants of all local engines, preserving non-local engines", () => {
+    const engines: Engine[] = [
+      {
+        type: "local",
+        id: "sf",
+        name: "Stockfish",
+        version: "17",
+        path: "/path/sf",
+        variants: [
+          createVariant("Default", [{ name: "Hash", value: 512 }]),
+          createVariant("Aggressive", [{ name: "Hash", value: 256 }]),
+        ],
+      },
+      {
+        type: "chessdb",
+        id: "cloud",
+        name: "ChessDB",
+        url: "https://chessdb.cn",
+        variants: [createVariant("Default", [])],
+      },
+      {
+        type: "local",
+        id: "koivisto",
+        name: "Koivisto",
+        version: "9.2",
+        path: "/path/koivisto",
+        variants: [createVariant("Default", [{ name: "SyzygyPath", value: "/old" }])],
+      },
+    ];
 
-        const updated = applySyzygyPathToAllEngines(engines, "/global/syzygy");
-        expect((updated[0] as LocalEngine).variants[0].settings).toEqual([
-            { name: "Hash", value: 512 },
-            { name: "SyzygyPath", value: "/global/syzygy" },
-        ]);
-        expect((updated[0] as LocalEngine).variants[1].settings).toEqual([
-            { name: "Hash", value: 256 },
-            { name: "SyzygyPath", value: "/global/syzygy" },
-        ]);
-        expect(updated[1]).toEqual(engines[1]); // Cloud engine untouched
-        expect((updated[2] as LocalEngine).variants[0].settings).toEqual([
-            { name: "SyzygyPath", value: "/global/syzygy" },
-        ]);
-    });
+    const updated = applySyzygyPathToAllEngines(engines, "/global/syzygy");
+    expect((updated[0] as LocalEngine).variants[0].settings).toEqual([
+      { name: "Hash", value: 512 },
+      { name: "SyzygyPath", value: "/global/syzygy" },
+    ]);
+    expect((updated[0] as LocalEngine).variants[1].settings).toEqual([
+      { name: "Hash", value: 256 },
+      { name: "SyzygyPath", value: "/global/syzygy" },
+    ]);
+    expect(updated[1]).toEqual(engines[1]); // Cloud engine untouched
+    expect((updated[2] as LocalEngine).variants[0].settings).toEqual([
+      { name: "SyzygyPath", value: "/global/syzygy" },
+    ]);
+  });
 });
 ```
 
@@ -807,10 +814,12 @@ EOF
 ## Task 4: Update engine-creation call sites to build a variants array
 
 **Files:**
+
 - Modify: `src/components/engines/EngineForm.tsx`
 - Modify: `src/components/engines/AddEngine.tsx`
 
 **Interfaces:**
+
 - Consumes: `createVariant` from `@/utils/engines` (Task 1, re-exported via Task 3).
 
 - [ ] **Step 1: Update `EngineForm.tsx`'s submit handler**
@@ -901,6 +910,7 @@ EOF
 ## Task 5: Repoint Analysis-panel and report-generation consumers at the default variant
 
 **Files:**
+
 - Modify: `src/state/atoms.ts` (`allEnabledAtom`, `enableAllAtom`, ~lines 731-763)
 - Modify: `src/components/panels/analysis/BestMoves.tsx` (~lines 83-115)
 - Modify: `src/components/common/DetachedEval.tsx` (~lines 25-44)
@@ -909,6 +919,7 @@ EOF
 - Modify: `src/components/panels/analysis/ReportModal.tsx` (~line 83)
 
 **Interfaces:**
+
 - Consumes: `getDefaultVariant`, `withDefaultVariant` from `@/utils/engines` (Task 1/3).
 
 This task is plumbing-only: it keeps every one of these files' existing behavior exactly the same, just reading/writing the engine's `variants[0]` instead of its old top-level `settings`/`go`. No UI changes.
@@ -923,37 +934,37 @@ import { type Engine, type EngineSettings, engineSchema, getDefaultVariant } fro
 
 ```ts
 export const allEnabledAtom = atom((get) => {
-    const engines = get(enginesAtom);
-    if (!engines) return false;
+  const engines = get(enginesAtom);
+  if (!engines) return false;
 
-    const v = engines
-        .filter((e) => e.loaded)
-        .every((engine) => {
-            const atom = tabEngineSettingsFamily({
-                tab: get(activeTabAtom)!,
-                engineId: engine.id,
-                defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
-                defaultGo: getDefaultVariant(engine).go,
-            });
-            return get(atom).enabled;
-        });
+  const v = engines
+    .filter((e) => e.loaded)
+    .every((engine) => {
+      const atom = tabEngineSettingsFamily({
+        tab: get(activeTabAtom)!,
+        engineId: engine.id,
+        defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+        defaultGo: getDefaultVariant(engine).go,
+      });
+      return get(atom).enabled;
+    });
 
-    return v;
+  return v;
 });
 
 export const enableAllAtom = atom(null, (get, set, value: boolean) => {
-    const engines = get(enginesAtom);
-    if (!engines) return;
+  const engines = get(enginesAtom);
+  if (!engines) return;
 
-    for (const engine of engines.filter((e) => e.loaded)) {
-        const atom = tabEngineSettingsFamily({
-            tab: get(activeTabAtom)!,
-            engineId: engine.id,
-            defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
-            defaultGo: getDefaultVariant(engine).go,
-        });
-        set(atom, { ...get(atom), enabled: value });
-    }
+  for (const engine of engines.filter((e) => e.loaded)) {
+    const atom = tabEngineSettingsFamily({
+      tab: get(activeTabAtom)!,
+      engineId: engine.id,
+      defaultSettings: engine.type === "local" ? getDefaultVariant(engine).settings : undefined,
+      defaultGo: getDefaultVariant(engine).go,
+    });
+    set(atom, { ...get(atom), enabled: value });
+  }
 });
 ```
 
@@ -964,46 +975,46 @@ import { type Engine, getDefaultVariant, withDefaultVariant } from "@/utils/engi
 ```
 
 ```tsx
-  const activeTab = useAtomValue(activeTabAtom);
-  const ev = useAtomValue(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
-  const progress = useAtomValue(engineProgressFamily({ engine: engine.id, tab: activeTab! }));
-  const [, setEngines] = useAtom(enginesAtom);
-  const defaultVariant = getDefaultVariant(engine);
-  const [settings, setSettings2] = useAtom(
-    tabEngineSettingsFamily({
-      engineId: engine.id,
-      defaultSettings: defaultVariant.settings,
-      defaultGo: defaultVariant.go,
-      tab: activeTab!,
-    }),
-  );
+const activeTab = useAtomValue(activeTabAtom);
+const ev = useAtomValue(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
+const progress = useAtomValue(engineProgressFamily({ engine: engine.id, tab: activeTab! }));
+const [, setEngines] = useAtom(enginesAtom);
+const defaultVariant = getDefaultVariant(engine);
+const [settings, setSettings2] = useAtom(
+  tabEngineSettingsFamily({
+    engineId: engine.id,
+    defaultSettings: defaultVariant.settings,
+    defaultGo: defaultVariant.go,
+    tab: activeTab!,
+  }),
+);
 
-  useEffect(() => {
-    if (settings.synced) {
-      setSettings2((prev) => ({
-        ...prev,
-        go: defaultVariant.go,
-        settings: defaultVariant.settings,
-      }));
+useEffect(() => {
+  if (settings.synced) {
+    setSettings2((prev) => ({
+      ...prev,
+      go: defaultVariant.go,
+      settings: defaultVariant.settings,
+    }));
+  }
+}, [defaultVariant.settings, defaultVariant.go, settings.synced, setSettings2]);
+
+const setSettings = useCallback(
+  (fn: (prev: Settings) => Settings) => {
+    const newSettings = fn(settings);
+    setSettings2(newSettings);
+    if (newSettings.synced) {
+      setEngines(async (prev) =>
+        (await prev).map((o) =>
+          o.id === engine.id
+            ? withDefaultVariant(o, { settings: newSettings.settings, go: newSettings.go })
+            : o,
+        ),
+      );
     }
-  }, [defaultVariant.settings, defaultVariant.go, settings.synced, setSettings2]);
-
-  const setSettings = useCallback(
-    (fn: (prev: Settings) => Settings) => {
-      const newSettings = fn(settings);
-      setSettings2(newSettings);
-      if (newSettings.synced) {
-        setEngines(async (prev) =>
-          (await prev).map((o) =>
-            o.id === engine.id
-              ? withDefaultVariant(o, { settings: newSettings.settings, go: newSettings.go })
-              : o,
-          ),
-        );
-      }
-    },
-    [engine, settings, setSettings2, setEngines],
-  );
+  },
+  [engine, settings, setSettings2, setEngines],
+);
 ```
 
 - [ ] **Step 3: `src/components/common/DetachedEval.tsx`**
@@ -1054,16 +1065,16 @@ import {
 ```
 
 ```tsx
-  const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
-  const defaultVariant = getDefaultVariant(engine);
-  const [settings] = useAtom(
-    tabEngineSettingsFamily({
-      engineId: engine.id,
-      defaultSettings: defaultVariant.settings,
-      defaultGo: defaultVariant.go,
-      tab: activeTab!,
-    }),
-  );
+const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
+const defaultVariant = getDefaultVariant(engine);
+const [settings] = useAtom(
+  tabEngineSettingsFamily({
+    engineId: engine.id,
+    defaultSettings: defaultVariant.settings,
+    defaultGo: defaultVariant.go,
+    tab: activeTab!,
+  }),
+);
 ```
 
 - [ ] **Step 5: `src/components/panels/analysis/EngineSettingsForm.tsx`**
@@ -1122,11 +1133,11 @@ import { getDefaultVariant, type LocalEngine } from "@/utils/engines";
 ```
 
 ```tsx
-    const engine = localEngines.find((e) => e.id === form.values.engine);
-    const engineSettings = (engine ? getDefaultVariant(engine).settings : []).map((s) => ({
-      ...s,
-      value: s.value?.toString() ?? "",
-    }));
+const engine = localEngines.find((e) => e.id === form.values.engine);
+const engineSettings = (engine ? getDefaultVariant(engine).settings : []).map((s) => ({
+  ...s,
+  value: s.value?.toString() ?? "",
+}));
 ```
 
 - [ ] **Step 7: Verify**
@@ -1155,9 +1166,11 @@ EOF
 ## Task 6: Reusable `EngineVariantSelect` component
 
 **Files:**
+
 - Create: `src/components/common/EngineVariantSelect.tsx`
 
 **Interfaces:**
+
 - Consumes: `LocalEngine` type from `@/utils/engines`.
 - Produces: `EngineVariantSelect({ engine, variantId, setVariantId })` — used by Create Game (Task 10) and Coach settings (Task 9).
 
@@ -1232,9 +1245,11 @@ EOF
 ## Task 7: `VariantManager` component for engine management
 
 **Files:**
+
 - Create: `src/components/engines/VariantManager.tsx`
 
 **Interfaces:**
+
 - Consumes: `canDeleteVariant`, `duplicateVariant`, `EngineVariant`, `LocalEngine` from `@/utils/engines`; `ConfirmModal` from `../common/ConfirmModal`.
 - Produces: `VariantManager({ engine, selectedVariantId, setSelectedVariantId, setEngine })` — used inside `EnginesPage.tsx`'s per-engine detail pane (Task 8).
 
@@ -1420,9 +1435,11 @@ EOF
 ## Task 8: Wire variant editing into `EnginesPage.tsx`
 
 **Files:**
+
 - Modify: `src/components/engines/EnginesPage.tsx`
 
 **Interfaces:**
+
 - Consumes: `VariantManager` (Task 7), `getDefaultVariant`/`withDefaultVariant`/`EngineVariant`/`RemoteEngine` (Task 1/3).
 
 - [ ] **Step 1: Add `key={selected}` so variant selection resets per engine**
@@ -1964,12 +1981,14 @@ EOF
 ## Task 9: Coach settings switch to picking a variant
 
 **Files:**
+
 - Modify: `src/state/atoms.ts` (`CoachEngineConfig`, `liveEvalEngineConfigAtom`, `hintEngineConfigAtom`)
 - Modify: `src/hooks/useLiveCoachEngine.ts`
 - Modify: `src/hooks/useCoachHint.ts`
 - Modify: `src/components/settings/CoachSettingsTab.tsx`
 
 **Interfaces:**
+
 - Consumes: `getDefaultVariant` from `@/utils/engines` (Task 1/3); `EngineVariantSelect` from `@/components/common/EngineVariantSelect` (Task 6).
 - Produces: `CoachEngineConfig = { engineId: string | null; variantId: string | null }` (drops `go`/`settings`).
 
@@ -1977,19 +1996,19 @@ EOF
 
 ```ts
 export type CoachEngineConfig = {
-    engineId: string | null;
-    variantId: string | null;
+  engineId: string | null;
+  variantId: string | null;
 };
 
 export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
-    "live-eval-engine-config",
-    { engineId: null, variantId: null },
+  "live-eval-engine-config",
+  { engineId: null, variantId: null },
 );
 
-export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
-    "hint-engine-config",
-    { engineId: null, variantId: null },
-);
+export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>("hint-engine-config", {
+  engineId: null,
+  variantId: null,
+});
 ```
 
 (If the old atom keys' persisted values on disk still have `go`/`settings` fields from before this change, `atomWithStorage` will just carry those unused extra keys forward in localStorage until next write — harmless, since nothing reads them anymore.)
@@ -2009,33 +2028,30 @@ const DEFAULT_COACH_GO_MODE: GoMode = { t: "Time", c: 300 };
 ```
 
 ```ts
-    const config = useAtomValue(liveEvalEngineConfigAtom);
+const config = useAtomValue(liveEvalEngineConfigAtom);
 
-    const engines = useAtomValue(enginesAtom);
-    const engine = useMemo(() => {
-        const loadedLocal = (engines ?? []).filter(
-            (e): e is LocalEngine => e.type === "local" && !!e.loaded,
-        );
-        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
-    }, [engines, config.engineId]);
+const engines = useAtomValue(enginesAtom);
+const engine = useMemo(() => {
+  const loadedLocal = (engines ?? []).filter(
+    (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+  );
+  return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
+}, [engines, config.engineId]);
 
-    const variant = useMemo(
-        () =>
-            engine
-                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
-                : null,
-        [engine, config.variantId],
-    );
+const variant = useMemo(
+  () =>
+    engine
+      ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+      : null,
+  [engine, config.variantId],
+);
 
-    const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
-    // Merge the MultiPV floor into whatever is configured rather than only using
-    // it when nothing is configured: any UI write of the engine's own UCI
-    // defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
-    // permanently disable "Good" move detection. See `withMultiPvFloor`.
-    const extraOptions = useMemo(
-        () => withMultiPvFloor(variant?.settings ?? []),
-        [variant],
-    );
+const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
+// Merge the MultiPV floor into whatever is configured rather than only using
+// it when nothing is configured: any UI write of the engine's own UCI
+// defaults (MultiPV 1 for a stock Stockfish) would otherwise silently and
+// permanently disable "Good" move detection. See `withMultiPvFloor`.
+const extraOptions = useMemo(() => withMultiPvFloor(variant?.settings ?? []), [variant]);
 ```
 
 (The rest of the hook is unchanged — `goMode` and `extraOptions` are consumed downstream exactly as before.)
@@ -2055,33 +2071,33 @@ const DEFAULT_COACH_GO_MODE: GoMode = { t: "Time", c: 300 };
 ```
 
 ```ts
-    const config = useAtomValue(hintEngineConfigAtom);
+const config = useAtomValue(hintEngineConfigAtom);
 
-    const engines = useAtomValue(enginesAtom);
-    const engine = useMemo(() => {
-        const loadedLocal = (engines ?? []).filter(
-            (e): e is LocalEngine => e.type === "local" && !!e.loaded,
-        );
-        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
-    }, [engines, config.engineId]);
+const engines = useAtomValue(enginesAtom);
+const engine = useMemo(() => {
+  const loadedLocal = (engines ?? []).filter(
+    (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+  );
+  return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
+}, [engines, config.engineId]);
 
-    const variant = useMemo(
-        () =>
-            engine
-                ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
-                : null,
-        [engine, config.variantId],
-    );
+const variant = useMemo(
+  () =>
+    engine
+      ? (engine.variants.find((v) => v.id === config.variantId) ?? getDefaultVariant(engine))
+      : null,
+  [engine, config.variantId],
+);
 
-    const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
-    const isContinuous = goMode.t === "Infinite";
-    const isStreaming = goMode.t === "Infinite" || goMode.t === "PlayersTime";
-    const extraOptions = useMemo(() => {
-        const settings = variant?.settings ?? [];
-        return settings.length > 0
-            ? settings.map((s) => ({ name: s.name, value: s.value?.toString() ?? "" }))
-            : [{ name: "MultiPV", value: "1" }];
-    }, [variant]);
+const goMode = variant?.go ?? DEFAULT_COACH_GO_MODE;
+const isContinuous = goMode.t === "Infinite";
+const isStreaming = goMode.t === "Infinite" || goMode.t === "PlayersTime";
+const extraOptions = useMemo(() => {
+  const settings = variant?.settings ?? [];
+  return settings.length > 0
+    ? settings.map((s) => ({ name: s.name, value: s.value?.toString() ?? "" }))
+    : [{ name: "MultiPV", value: "1" }];
+}, [variant]);
 ```
 
 - [ ] **Step 4: Rewrite `src/components/settings/CoachSettingsTab.tsx`**
@@ -2204,17 +2220,27 @@ EOF
 ## Task 10: Create Game switches to a variant dropdown
 
 **Files:**
+
 - Modify: `src/components/boards/OpponentForm.tsx`
 - Modify: `src/components/boards/BoardGame.tsx`
 
 **Interfaces:**
+
 - Consumes: `EngineVariantSelect` (Task 6), `getDefaultVariant` (Task 1/3).
 - Produces: `OpponentSettings`'s engine branch becomes `{ type: "engine"; timeControl?; engine: LocalEngine | null; variantId: string | null; timeUnit?; incrementUnit? }`.
 
 - [ ] **Step 1: Rewrite `src/components/boards/OpponentForm.tsx`**
 
 ```tsx
-import { Center, Divider, Group, InputWrapper, SegmentedControl, Stack, TextInput } from "@mantine/core";
+import {
+  Center,
+  Divider,
+  Group,
+  InputWrapper,
+  SegmentedControl,
+  Stack,
+  TextInput,
+} from "@mantine/core";
 import { IconCpu, IconUser } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
@@ -2438,37 +2464,37 @@ import { getDefaultVariant } from "@/utils/engines";
 (remove `import { describeStrengthSuffix } from "@/utils/engineStrength";`)
 
 ```ts
-  async function toPlayerConfig(settings: OpponentSettings): Promise<PlayerConfig> {
-    if (settings.type === "human") {
-      return {
-        type: "human",
-        name: settings.name ?? "Player",
-      };
-    }
-    const engine = settings.engine;
-    const baseName = engine?.name ?? "Engine";
-    const variant = engine
-      ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
-      : null;
-    const engineOptions = (variant?.settings ?? []).filter((s) => s.name !== "MultiPV");
-
-    // The chosen variant isn't otherwise visible in the saved PGN, so fold its name into the
-    // White/Black headers - but only when it isn't the engine's own default variant, matching
-    // the old "no suffix at full strength" behavior.
-    const isDefaultVariant = engine && variant ? variant.id === getDefaultVariant(engine).id : true;
-    const name = engine && variant && !isDefaultVariant ? `${baseName} (${variant.name})` : baseName;
-
+async function toPlayerConfig(settings: OpponentSettings): Promise<PlayerConfig> {
+  if (settings.type === "human") {
     return {
-      type: "engine",
-      name,
-      path: engine?.path ?? "",
-      options: engineOptions.map((s) => ({
-        name: s.name,
-        value: s.value?.toString() ?? "",
-      })),
-      go: settings.timeControl ? null : (variant?.go ?? null),
+      type: "human",
+      name: settings.name ?? "Player",
     };
   }
+  const engine = settings.engine;
+  const baseName = engine?.name ?? "Engine";
+  const variant = engine
+    ? (engine.variants.find((v) => v.id === settings.variantId) ?? getDefaultVariant(engine))
+    : null;
+  const engineOptions = (variant?.settings ?? []).filter((s) => s.name !== "MultiPV");
+
+  // The chosen variant isn't otherwise visible in the saved PGN, so fold its name into the
+  // White/Black headers - but only when it isn't the engine's own default variant, matching
+  // the old "no suffix at full strength" behavior.
+  const isDefaultVariant = engine && variant ? variant.id === getDefaultVariant(engine).id : true;
+  const name = engine && variant && !isDefaultVariant ? `${baseName} (${variant.name})` : baseName;
+
+  return {
+    type: "engine",
+    name,
+    path: engine?.path ?? "",
+    options: engineOptions.map((s) => ({
+      name: s.name,
+      value: s.value?.toString() ?? "",
+    })),
+    go: settings.timeControl ? null : (variant?.go ?? null),
+  };
+}
 ```
 
 - [ ] **Step 3: Manual verification (dev server)**
@@ -2502,6 +2528,7 @@ EOF
 ## Task 11: Delete the superseded preset/strength-control code
 
 **Files:**
+
 - Delete: `src/components/boards/EngineStrengthControl.tsx`
 - Delete: `src/utils/engineStrength.ts`
 - Delete: `src/utils/tests/engineStrength.test.ts`
@@ -2512,9 +2539,11 @@ By this point nothing imports from any of these four files (Task 10 removed the 
 - [ ] **Step 1: Confirm nothing still references them**
 
 Run:
+
 ```bash
 grep -rn "engineStrength\|EngineStrengthControl\|presets/rodentII" src --include=*.ts --include=*.tsx
 ```
+
 Expected: no output (or only matches inside the four files about to be deleted).
 
 - [ ] **Step 2: Delete the files**
@@ -2561,6 +2590,7 @@ EOF
 pnpm lint
 pnpm test
 ```
+
 Expected: both PASS.
 
 - [ ] **Step 2: Manual pass on a fresh dev build**
@@ -2568,6 +2598,7 @@ Expected: both PASS.
 Run: `pnpm dev:tauri`
 
 Walk the full checklist from the spec's Testing section:
+
 1. `EnginesPage`: add/rename/edit/duplicate/delete variants on at least two different engines (including one with many UCI options, e.g. Stockfish, and if available, Rodent II — confirm its 10 personalities appear as real variants with the expected option values and are independently editable).
 2. Create Game: engine selection populates the variant dropdown correctly and defaults sensibly for both White and Black; start a game with each side on a different variant and confirm both engines play using their own configured options (check the Engine Logs panel for the `setoption` calls if you want direct confirmation).
 3. Coach settings: pick engine+variant for both Live Eval and Hint roles independently; confirm the hint still returns a move (MultiPV floor still applied) and live eval still populates the eval bar.

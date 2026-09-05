@@ -1,0 +1,689 @@
+diff --git a/src/components/boards/BoardGame.tsx b/src/components/boards/BoardGame.tsx
+index ebc1206e..5d801bb6 100644
+--- a/src/components/boards/BoardGame.tsx
++++ b/src/components/boards/BoardGame.tsx
+@@ -80,6 +80,7 @@ import { positionFromFen } from "@/utils/chessops";
+ import { getDocumentDir } from "@/utils/directories";
+ import type { GameHeaders } from "@/utils/treeReducer";
+ import { unwrap } from "@/utils/unwrap";
++import { useCoachHint } from "@/hooks/useCoachHint";
+ import { useLiveCoachEngine } from "@/hooks/useLiveCoachEngine";
+ import EngineLogsView from "../common/EngineLogsView";
+ import FileInput from "../common/FileInput";
+@@ -134,7 +135,8 @@ function BoardGame() {
+   // Set when a hint was asked for before the engine had an answer; the reveal then
+   // happens as soon as `bestMoveUci` arrives.
+   const [hintPending, setHintPending] = useState(false);
+-  const { bestMoveUci, engine: coachEngine } = useLiveCoachEngine(hintActive);
++  const { engine: liveEvalEngine } = useLiveCoachEngine();
++  const { bestMoveUci, engine: hintEngine } = useCoachHint(hintActive);
+   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
+   const [whiteFeedbackEnabled, setWhiteFeedbackEnabled] = useAtom(coachFeedbackWhiteAtom);
+   const [blackFeedbackEnabled, setBlackFeedbackEnabled] = useAtom(coachFeedbackBlackAtom);
+@@ -1193,11 +1195,13 @@ function BoardGame() {
+                   </Box>
+                   <Group gap="xs">
+                     <Tooltip
+-                      label={coachEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")}
++                      label={
++                        liveEvalEngine ? t("Board.Coach.LiveEval") : t("Board.Coach.NoEngine")
++                      }
+                     >
+                       <ActionIcon
+                         variant={liveEvalEnabled ? "filled" : "default"}
+-                        disabled={!coachEngine}
++                        disabled={!liveEvalEngine}
+                         onClick={() => setLiveEvalEnabled((v) => !v)}
+                       >
+                         <IconChartBar size="1rem" />
+@@ -1205,12 +1209,14 @@ function BoardGame() {
+                     </Tooltip>
+                     <Tooltip
+                       label={
+-                        coachEngine ? t("Board.Coach.WhiteFeedback") : t("Board.Coach.NoEngine")
++                        liveEvalEngine
++                          ? t("Board.Coach.WhiteFeedback")
++                          : t("Board.Coach.NoEngine")
+                       }
+                     >
+                       <ActionIcon
+                         variant={whiteFeedbackEnabled ? "filled" : "default"}
+-                        disabled={!coachEngine}
++                        disabled={!liveEvalEngine}
+                         onClick={() => setWhiteFeedbackEnabled((v) => !v)}
+                       >
+                         <Text fz="xs" fw="bold">
+@@ -1220,12 +1226,14 @@ function BoardGame() {
+                     </Tooltip>
+                     <Tooltip
+                       label={
+-                        coachEngine ? t("Board.Coach.BlackFeedback") : t("Board.Coach.NoEngine")
++                        liveEvalEngine
++                          ? t("Board.Coach.BlackFeedback")
++                          : t("Board.Coach.NoEngine")
+                       }
+                     >
+                       <ActionIcon
+                         variant={blackFeedbackEnabled ? "filled" : "default"}
+-                        disabled={!coachEngine}
++                        disabled={!liveEvalEngine}
+                         onClick={() => setBlackFeedbackEnabled((v) => !v)}
+                       >
+                         <Text fz="xs" fw="bold">
+@@ -1268,7 +1276,7 @@ function BoardGame() {
+                       variant="default"
+                       leftSection={<IconBulb size="1rem" />}
+                       disabled={
+-                        !coachEngine ||
++                        !hintEngine ||
+                         gameState !== "playing" ||
+                         (pos?.turn === "white"
+                           ? players.white.type !== "human"
+diff --git a/src/components/settings/CoachSettingsTab.tsx b/src/components/settings/CoachSettingsTab.tsx
+new file mode 100644
+index 00000000..cfe742b5
+--- /dev/null
++++ b/src/components/settings/CoachSettingsTab.tsx
+@@ -0,0 +1,87 @@
++import { Stack, Text } from "@mantine/core";
++import { useAtom, useAtomValue } from "jotai";
++import { useTranslation } from "react-i18next";
++import { EnginesSelect } from "@/components/boards/EnginesSelect";
++import EngineSettingsForm from "@/components/panels/analysis/EngineSettingsForm";
++import {
++  type CoachEngineConfig,
++  enginesAtom,
++  hintEngineConfigAtom,
++  liveEvalEngineConfigAtom,
++} from "@/state/atoms";
++import type { LocalEngine } from "@/utils/engines";
++
++function CoachEngineSection({
++  configAtom,
++  title,
++  description,
++}: {
++  configAtom: typeof liveEvalEngineConfigAtom | typeof hintEngineConfigAtom;
++  title: string;
++  description: string;
++}) {
++  const [config, setConfig] = useAtom(configAtom);
++  const allEngines = useAtomValue(enginesAtom);
++  const localEngines = (allEngines ?? []).filter((e): e is LocalEngine => e.type === "local");
++  const selectedEngine = localEngines.find((e) => e.id === config.engineId) ?? null;
++
++  const setEngine = (engine: LocalEngine | null) => {
++    setConfig((prev: CoachEngineConfig) => ({
++      ...prev,
++      engineId: engine?.id ?? null,
++      settings: engine?.settings ?? [],
++    }));
++  };
++
++  return (
++    <Stack gap="xs">
++      <Text fw={500}>{title}</Text>
++      <Text size="xs" c="dimmed">
++        {description}
++      </Text>
++      <EnginesSelect engine={selectedEngine} setEngine={setEngine} />
++      {selectedEngine && (
++        <EngineSettingsForm
++          engine={selectedEngine}
++          remote={false}
++          settings={{
++            go: config.go,
++            settings: config.settings,
++            enabled: true,
++            synced: false,
++          }}
++          setSettings={(fn) =>
++            setConfig((prev) => {
++              const next = fn({
++                go: prev.go,
++                settings: prev.settings,
++                enabled: true,
++                synced: false,
++              });
++              return { ...prev, go: next.go, settings: next.settings };
++            })
++          }
++        />
++      )}
++    </Stack>
++  );
++}
++
++export default function CoachSettingsTab() {
++  const { t } = useTranslation();
++
++  return (
++    <Stack>
++      <CoachEngineSection
++        configAtom={liveEvalEngineConfigAtom}
++        title={t("Settings.Coach.LiveEval")}
++        description={t("Settings.Coach.LiveEval.Desc")}
++      />
++      <CoachEngineSection
++        configAtom={hintEngineConfigAtom}
++        title={t("Settings.Coach.Hint")}
++        description={t("Settings.Coach.Hint.Desc")}
++      />
++    </Stack>
++  );
++}
+diff --git a/src/components/settings/SettingsPage.tsx b/src/components/settings/SettingsPage.tsx
+index c4d5080c..18b07a65 100644
+--- a/src/components/settings/SettingsPage.tsx
++++ b/src/components/settings/SettingsPage.tsx
+@@ -22,6 +22,7 @@ import {
+   IconKeyboard,
+   IconMouse,
+   IconReload,
++  IconRobot,
+   IconSearch,
+   IconShield,
+   IconVolume,
+@@ -68,6 +69,7 @@ import { notifications } from "@mantine/notifications";
+ import { platform } from "@tauri-apps/plugin-os";
+ import FileInput from "../common/FileInput";
+ import BoardSelect from "./BoardSelect";
++import CoachSettingsTab from "./CoachSettingsTab";
+ import ColorControl from "./ColorControl";
+ import FontSizeSlider from "./FontSizeSlider";
+ import KeybindInput from "./KeybindInput";
+@@ -82,6 +84,7 @@ import VolumeSlider from "./VolumeSlider";
+ 
+ type SettingCategory =
+   | "board"
++  | "coach"
+   | "inputs"
+   | "anarchy"
+   | "appearance"
+@@ -721,6 +724,11 @@ export default function Page() {
+         description: t("Settings.Board.Desc"),
+         icon: <IconChess size="1rem" />,
+       },
++      coach: {
++        title: t("Settings.Coach"),
++        description: t("Settings.Coach.Desc"),
++        icon: <IconRobot size="1rem" />,
++      },
+       inputs: {
+         title: t("Settings.Inputs"),
+         description: t("Settings.Inputs.Desc"),
+@@ -877,6 +885,9 @@ export default function Page() {
+             <Tabs.Tab value="board" leftSection={<IconChess size="1rem" />}>
+               {t("Settings.Board")}
+             </Tabs.Tab>
++            <Tabs.Tab value="coach" leftSection={<IconRobot size="1rem" />}>
++              {t("Settings.Coach")}
++            </Tabs.Tab>
+             <Tabs.Tab value="inputs" leftSection={<IconMouse size="1rem" />}>
+               {t("Settings.Inputs")}
+             </Tabs.Tab>
+@@ -915,6 +926,13 @@ export default function Page() {
+                   {renderCategorySettings("board")}
+                 </Tabs.Panel>
+ 
++                <Tabs.Panel value="coach">
++                  <Text size="lg" fw={500} className={classes.title}>
++                    {t("Settings.Coach")}
++                  </Text>
++                  <CoachSettingsTab />
++                </Tabs.Panel>
++
+                 <Tabs.Panel value="inputs">
+                   <Text size="lg" fw={500} className={classes.title}>
+                     {t("Settings.Inputs")}
+diff --git a/src/hooks/useCoachHint.ts b/src/hooks/useCoachHint.ts
+new file mode 100644
+index 00000000..3cd0f8dc
+--- /dev/null
++++ b/src/hooks/useCoachHint.ts
+@@ -0,0 +1,217 @@
++import { parseUci } from "chessops";
++import { makeFen } from "chessops/fen";
++import equal from "fast-deep-equal";
++import { useAtomValue } from "jotai";
++import { useContext, useEffect, useMemo, useRef, useState } from "react";
++import { useStore } from "zustand";
++import { useShallow } from "zustand/react/shallow";
++import { type BestMoves, commands, events } from "@/bindings";
++import { TreeStateContext } from "@/components/common/TreeStateContext";
++import {
++    activeTabAtom,
++    currentGameStateAtom,
++    enginesAtom,
++    hintEngineConfigAtom,
++} from "@/state/atoms";
++import { getVariationLine } from "@/utils/chess";
++import { positionFromFen } from "@/utils/chessops";
++import type { LocalEngine } from "@/utils/engines";
++import { useThrottledEffect } from "@/utils/misc";
++import { unwrap } from "@/utils/unwrap";
++
++const COACH_HINT_SUFFIX = "-coach-hint";
++
++function coachHintId(engineId: string): string {
++    return `${engineId}${COACH_HINT_SUFFIX}`;
++}
++
++/**
++ * Drives the Hint button's engine session, independent of the live-eval/coach
++ * feedback session in `useLiveCoachEngine`. Deliberately mirrors that hook's
++ * lifecycle plumbing (event listener + throttled search effect + synchronous
++ * short-circuit consumption + unmount cleanup) rather than sharing an
++ * abstraction with it: that lifecycle already went through a full review
++ * cycle that caught real concurrency/lifecycle bugs, so duplicating the
++ * proven shape here is lower risk than factoring out a shared helper under
++ * time pressure.
++ *
++ * Two modes, selected purely by the configured go-mode:
++ * - Bounded go-mode (Time/Depth/Nodes): on-demand. Only searches while
++ *   `requested` is true (i.e. after the Hint button has been clicked).
++ * - `{ t: "Infinite" }` go-mode: continuous. Searches for the whole game,
++ *   independent of `requested` — Hint just reveals whatever's been found.
++ */
++export function useCoachHint(requested: boolean): {
++    bestMoveUci: string | null;
++    engine: LocalEngine | null;
++} {
++    const config = useAtomValue(hintEngineConfigAtom);
++
++    const engines = useAtomValue(enginesAtom);
++    const engine = useMemo(() => {
++        const loadedLocal = (engines ?? []).filter(
++            (e): e is LocalEngine => e.type === "local" && !!e.loaded,
++        );
++        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
++    }, [engines, config.engineId]);
++
++    const goMode = config.go;
++    const isContinuous = goMode.t === "Infinite";
++    const extraOptions = useMemo(
++        () =>
++            config.settings.length > 0
++                ? config.settings.map((s) => ({
++                      name: s.name,
++                      value: s.value?.toString() ?? "",
++                  }))
++                : [{ name: "MultiPV", value: "1" }],
++        [config.settings],
++    );
++
++    const activeTab = useAtomValue(activeTabAtom);
++    const store = useContext(TreeStateContext)!;
++    const fen = useStore(store, (s) => s.root.fen);
++    const moves = useStore(
++        store,
++        useShallow((s) => getVariationLine(s.root, s.position)),
++    );
++
++    const [pos] = positionFromFen(fen);
++    if (pos) {
++        for (const uci of moves) {
++            const move = parseUci(uci);
++            if (!move) break;
++            pos.play(move);
++        }
++    }
++    const isGameOver = pos?.isEnd() ?? false;
++    const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : fen), [pos, fen]);
++
++    // `isGameOver` is a pure board predicate (checkmate/stalemate/etc.) — it says
++    // nothing about resignation, timeout, or abort, which end the game via
++    // `currentGameStateAtom` while the board position is still very much "in
++    // progress". Continuous mode must track the app's actual game state, or an
++    // Infinite search never gets told to stop after those endings (and would
++    // also start during "settingUp", before a game even exists).
++    const gameState = useAtomValue(currentGameStateAtom);
++    const active = isContinuous ? gameState === "playing" && !isGameOver : requested;
++
++    const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
++    // The engine process we last asked to search, so it can still be stopped or
++    // killed after `engine`/`activeTab` changed or became null.
++    const startedRef = useRef<{ id: string; tab: string } | null>(null);
++    const searchingRef = useRef(false);
++
++    // The best move belongs to exactly one position: drop it as soon as the
++    // position changes so a hint can never reveal a stale move.
++    useEffect(() => {
++        setBestMoveUci(null);
++    }, [finalFen]);
++
++    // Shared handling of engine output, used both by the event listener and by
++    // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
++    // is refreshed after every render so neither effect needs it as a dependency.
++    const handleResultRef = useRef<(resultFen: string, bestLines: BestMoves[]) => void>(() => {});
++    useEffect(() => {
++        handleResultRef.current = (resultFen, bestLines) => {
++            // Late answer for a position we already left.
++            if (bestLines.length === 0 || resultFen !== finalFen) return;
++            setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
++        };
++    });
++
++    useEffect(() => {
++        if (!active || !engine || !activeTab) return;
++        const listenerId = coachHintId(engine.id);
++
++        const unlisten = events.bestMovesPayload.listen(({ payload }) => {
++            if (
++                payload.engine !== listenerId ||
++                payload.tab !== activeTab ||
++                payload.fen !== fen ||
++                !equal(payload.moves, moves)
++            ) {
++                return;
++            }
++
++            handleResultRef.current(finalFen, payload.bestLines);
++        });
++
++        return () => {
++            unlisten.then((f) => f());
++        };
++    }, [active, engine, activeTab, fen, JSON.stringify(moves), finalFen]);
++
++    useThrottledEffect(
++        () => {
++            if (!engine || !activeTab) return;
++            const id = coachHintId(engine.id);
++
++            if (!active || isGameOver) {
++                if (searchingRef.current) {
++                    searchingRef.current = false;
++                    // Stop the process that's actually running, not `id`: if the
++                    // configured engine changed since the search was started, `id`
++                    // (recomputed from the current `engine`) no longer matches it.
++                    const started = startedRef.current;
++                    if (started) {
++                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
++                    }
++                }
++                return;
++            }
++
++            const requestFen = finalFen;
++            // The engine (or tab) resolved to something new since the last search
++            // was started: that old process is no longer referenced by anything
++            // below, so it would otherwise be orphaned. Kill it before moving on.
++            const prevStarted = startedRef.current;
++            if (prevStarted && (prevStarted.id !== id || prevStarted.tab !== activeTab)) {
++                commands.killEngine(prevStarted.id, prevStarted.tab).catch(() => {});
++            }
++            searchingRef.current = true;
++            startedRef.current = { id, tab: activeTab };
++            commands
++                .getBestMoves(id, engine.path, activeTab, goMode, {
++                    fen,
++                    moves,
++                    extraOptions,
++                })
++                .then((r) => {
++                    // A matching search is already running: the backend answers
++                    // directly and emits no event, so consume the result here.
++                    const result = unwrap(r);
++                    if (!result) return;
++                    const [, bestLines] = result;
++                    handleResultRef.current(requestFen, bestLines);
++                });
++        },
++        50,
++        [
++            active,
++            engine,
++            activeTab,
++            fen,
++            JSON.stringify(moves),
++            finalFen,
++            isGameOver,
++            goMode,
++            extraOptions,
++        ],
++    );
++
++    // Leaving the play tab unmounts this hook: tear the process down entirely.
++    useEffect(() => {
++        return () => {
++            const started = startedRef.current;
++            if (!started) return;
++            startedRef.current = null;
++            searchingRef.current = false;
++            commands.killEngine(started.id, started.tab).catch(() => {});
++        };
++    }, []);
++
++    return { bestMoveUci, engine };
++}
++
++export default useCoachHint;
+diff --git a/src/hooks/useLiveCoachEngine.ts b/src/hooks/useLiveCoachEngine.ts
+index 5445b908..c4371b42 100644
+--- a/src/hooks/useLiveCoachEngine.ts
++++ b/src/hooks/useLiveCoachEngine.ts
+@@ -2,10 +2,10 @@ import { parseUci } from "chessops";
+ import { makeFen } from "chessops/fen";
+ import equal from "fast-deep-equal";
+ import { useAtomValue } from "jotai";
+-import { useContext, useEffect, useMemo, useRef, useState } from "react";
++import { useContext, useEffect, useMemo, useRef } from "react";
+ import { useStore } from "zustand";
+ import { useShallow } from "zustand/react/shallow";
+-import { type BestMoves, commands, events, type GoMode } from "@/bindings";
++import { type BestMoves, commands, events } from "@/bindings";
+ import { TreeStateContext } from "@/components/common/TreeStateContext";
+ import {
+     activeTabAtom,
+@@ -13,6 +13,7 @@ import {
+     coachFeedbackWhiteAtom,
+     enginesAtom,
+     liveEvalEnabledAtom,
++    liveEvalEngineConfigAtom,
+ } from "@/state/atoms";
+ import { getVariationLine } from "@/utils/chess";
+ import { positionFromFen } from "@/utils/chessops";
+@@ -23,28 +24,39 @@ import { treeIteratorMainLine } from "@/utils/treeReducer";
+ import { unwrap } from "@/utils/unwrap";
+ 
+ const LIVE_COACH_SUFFIX = "-live-coach";
+-const LIVE_COACH_GO_MODE: GoMode = { t: "Time", c: 300 };
+ 
+ function liveCoachId(engineId: string): string {
+     return `${engineId}${LIVE_COACH_SUFFIX}`;
+ }
+ 
+-export function useLiveCoachEngine(hintActive: boolean): {
+-    bestMoveUci: string | null;
++export function useLiveCoachEngine(): {
+     engine: LocalEngine | null;
+ } {
+     const liveEvalEnabled = useAtomValue(liveEvalEnabledAtom);
+     const whiteFeedbackEnabled = useAtomValue(coachFeedbackWhiteAtom);
+     const blackFeedbackEnabled = useAtomValue(coachFeedbackBlackAtom);
+-    const active = liveEvalEnabled || whiteFeedbackEnabled || blackFeedbackEnabled || hintActive;
++    const active = liveEvalEnabled || whiteFeedbackEnabled || blackFeedbackEnabled;
++
++    const config = useAtomValue(liveEvalEngineConfigAtom);
+ 
+     const engines = useAtomValue(enginesAtom);
+-    const engine = useMemo(
++    const engine = useMemo(() => {
++        const loadedLocal = (engines ?? []).filter(
++            (e): e is LocalEngine => e.type === "local" && !!e.loaded,
++        );
++        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
++    }, [engines, config.engineId]);
++
++    const goMode = config.go;
++    const extraOptions = useMemo(
+         () =>
+-            (engines ?? []).find(
+-                (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+-            ) ?? null,
+-        [engines],
++            config.settings.length > 0
++                ? config.settings.map((s) => ({
++                      name: s.name,
++                      value: s.value?.toString() ?? "",
++                  }))
++                : [{ name: "MultiPV", value: "2" }],
++        [config.settings],
+     );
+ 
+     const activeTab = useAtomValue(activeTabAtom);
+@@ -68,7 +80,6 @@ export function useLiveCoachEngine(hintActive: boolean): {
+     const isGameOver = pos?.isEnd() ?? false;
+     const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : fen), [pos, fen]);
+ 
+-    const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
+     const bestLinesCacheRef = useRef<Map<string, BestMoves[]>>(new Map());
+     // Keyed by the fen of the classified node (not by its tree path): paths are
+     // reused across a new game or a take-back, fens identify the actual position.
+@@ -79,12 +90,6 @@ export function useLiveCoachEngine(hintActive: boolean): {
+     const searchingRef = useRef(false);
+     const mainLineLengthRef = useRef(0);
+ 
+-    // The best move belongs to exactly one position: drop it as soon as the
+-    // position changes so a hint can never reveal a stale move.
+-    useEffect(() => {
+-        setBestMoveUci(null);
+-    }, [finalFen]);
+-
+     // Shared handling of engine output, used both by the event listener and by
+     // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
+     // is refreshed after every render so neither effect needs it as a dependency.
+@@ -97,13 +102,21 @@ export function useLiveCoachEngine(hintActive: boolean): {
+             if (bestLines.length === 0 || resultFen !== finalFen) return;
+ 
+             bestLinesCacheRef.current.set(finalFen, bestLines);
+-            setBestMoveUci(bestLines[0].uciMoves[0] ?? null);
+ 
+             if (liveEvalEnabled) {
+                 setScore(bestLines[0].score);
+             }
+ 
+-            if (progress < 100) return;
++            // GoMode::Infinite and GoMode::PlayersTime never report progress===100
++            // from the backend (it caps at 99.99 until an explicit `stop()`, whose
++            // final message usually arrives after the listener has already moved on
++            // to a new position and gets discarded above) — so treat those go-modes
++            // as always complete enough to classify here. `classifiedFens` already
++            // dedupes, so this doesn't reclassify the same fen on every intermediate
++            // line a long-running search keeps emitting. Do not revert this to a
++            // plain `progress < 100` check: that silently disables all move
++            // classification whenever live-eval is configured to Infinite/PlayersTime.
++            if (progress < 100 && goMode.t !== "Infinite" && goMode.t !== "PlayersTime") return;
+ 
+             const mainLine = Array.from(treeIteratorMainLine(store.getState().root));
+             // The main line only gets shorter when the tree was rebuilt: a new game
+@@ -165,19 +178,32 @@ export function useLiveCoachEngine(hintActive: boolean): {
+             if (!active || isGameOver) {
+                 if (searchingRef.current) {
+                     searchingRef.current = false;
+-                    commands.stopEngine(id, activeTab).then((r) => unwrap(r));
++                    // Stop the process that's actually running, not `id`: if the
++                    // configured engine changed since the search was started, `id`
++                    // (recomputed from the current `engine`) no longer matches it.
++                    const started = startedRef.current;
++                    if (started) {
++                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
++                    }
+                 }
+                 return;
+             }
+ 
+             const requestFen = finalFen;
++            // The engine (or tab) resolved to something new since the last search
++            // was started: that old process is no longer referenced by anything
++            // below, so it would otherwise be orphaned. Kill it before moving on.
++            const prevStarted = startedRef.current;
++            if (prevStarted && (prevStarted.id !== id || prevStarted.tab !== activeTab)) {
++                commands.killEngine(prevStarted.id, prevStarted.tab).catch(() => {});
++            }
+             searchingRef.current = true;
+             startedRef.current = { id, tab: activeTab };
+             commands
+-                .getBestMoves(id, engine.path, activeTab, LIVE_COACH_GO_MODE, {
++                .getBestMoves(id, engine.path, activeTab, goMode, {
+                     fen,
+                     moves,
+-                    extraOptions: [{ name: "MultiPV", value: "2" }],
++                    extraOptions,
+                 })
+                 .then((r) => {
+                     // A matching search is already running: the backend answers
+@@ -189,7 +215,17 @@ export function useLiveCoachEngine(hintActive: boolean): {
+                 });
+         },
+         50,
+-        [active, engine, activeTab, fen, JSON.stringify(moves), finalFen, isGameOver],
++        [
++            active,
++            engine,
++            activeTab,
++            fen,
++            JSON.stringify(moves),
++            finalFen,
++            isGameOver,
++            goMode,
++            extraOptions,
++        ],
+     );
+ 
+     // Leaving the play tab unmounts this hook: tear the process down entirely.
+@@ -203,7 +239,7 @@ export function useLiveCoachEngine(hintActive: boolean): {
+         };
+     }, []);
+ 
+-    return { bestMoveUci, engine };
++    return { engine };
+ }
+ 
+ export default useLiveCoachEngine;
+diff --git a/src/state/atoms.ts b/src/state/atoms.ts
+index 1ae0864b..9395929a 100644
+--- a/src/state/atoms.ts
++++ b/src/state/atoms.ts
+@@ -221,6 +221,23 @@ export const flipBoardAfterMoveAtom = atomWithStorage<boolean>("flip-board-after
+ export const liveEvalEnabledAtom = atomWithStorage<boolean>("live-eval-enabled", false);
+ export const coachFeedbackWhiteAtom = atomWithStorage<boolean>("coach-feedback-white", false);
+ export const coachFeedbackBlackAtom = atomWithStorage<boolean>("coach-feedback-black", false);
++
++export type CoachEngineConfig = {
++    engineId: string | null;
++    go: GoMode;
++    settings: EngineSettings;
++};
++
++export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
++    "live-eval-engine-config",
++    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
++);
++
++export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
++    "hint-engine-config",
++    { engineId: null, go: { t: "Time", c: 300 }, settings: [] },
++);
++
+ export const enableBoardScrollAtom = atomWithStorage<boolean>("board-scroll", true);
+ export const materialDisplayAtom = atomWithStorage<"diff" | "all">("material-display", "diff");
+ export const forcedEnPassantAtom = atomWithStorage<boolean>("forced-ep", false);
+diff --git a/src/translation/en-US.json b/src/translation/en-US.json
+index 83338741..f5c9b261 100644
+--- a/src/translation/en-US.json
++++ b/src/translation/en-US.json
+@@ -537,6 +537,12 @@
+     "Settings.AutoSave.Desc": "Auto save to file after each move",
+     "Settings.Board": "Board",
+     "Settings.Board.Desc": "Customize the analysis board and game controls",
++    "Settings.Coach": "Coach",
++    "Settings.Coach.Desc": "Configure the engines used for live evaluation and hints during play",
++    "Settings.Coach.Hint": "Hint",
++    "Settings.Coach.Hint.Desc": "Setting the go mode to \"Infinite\" makes the hint run continuously in the background for the whole game (better hints, more CPU). Any other go mode makes it search only when you click Hint.",
++    "Settings.Coach.LiveEval": "Live Evaluation",
++    "Settings.Coach.LiveEval.Desc": "MultiPV must be at least 2 for \"Good\" move detection to work (lower values still detect Mistakes and Blunders).",
+     "Settings.ConsecutiveArrows": "Consecutive Arrows",
+     "Settings.ConsecutiveArrows.Desc": "Show multiple arrows for the best line, if it involves moving the same piece several times",
+     "Settings.Coordinates": "Coordinates",

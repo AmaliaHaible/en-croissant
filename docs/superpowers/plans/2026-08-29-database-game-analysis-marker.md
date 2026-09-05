@@ -22,9 +22,11 @@
 ### Task 1: `GameAnalysis` table + query functions + Rust unit tests
 
 **Files:**
+
 - Modify: `src-tauri/src/db/mod.rs`
 
 **Interfaces:**
+
 - Produces: `fn ensure_game_analysis_table(db: &mut SqliteConnection) -> Result<(), Error>`, `fn get_game_analysis_label_query(db: &mut SqliteConnection, game_id: i32) -> Result<Option<String>, Error>`, `fn set_game_analysis_label_query(db: &mut SqliteConnection, game_id: i32, label: Option<&str>) -> Result<(), Error>` — Task 2 calls all three from the new `#[tauri::command]` wrappers.
 
 This task adds the table and its plain (non-Tauri-command) query functions, following the existing pattern in this file where testable logic is a plain function taking `&mut SqliteConnection`, and commands are thin wrappers around it (see `delete_orphaned_data` / `check_index_exists`).
@@ -179,11 +181,13 @@ git commit -m "feat(db): add GameAnalysis table and query functions"
 ### Task 2: Tauri commands, table creation on connect, registration, bindings
 
 **Files:**
+
 - Modify: `src-tauri/src/db/mod.rs`
 - Modify: `src-tauri/src/main.rs`
 - Modify: `src/bindings/generated.ts`
 
 **Interfaces:**
+
 - Consumes: `ensure_game_analysis_table`, `get_game_analysis_label_query`, `set_game_analysis_label_query` (Task 1).
 - Produces: Tauri commands `get_game_analysis_label(file, game_id) -> Result<Option<String>, Error>` and `set_game_analysis_label(file, game_id, label: Option<String>) -> Result<(), Error>`, plus their TypeScript bindings `commands.getGameAnalysisLabel(file: string, gameId: number): Promise<Result<string | null, string>>` and `commands.setGameAnalysisLabel(file: string, gameId: number, label: string | null): Promise<Result<null, string>>` — Task 3 calls these from the frontend.
 
@@ -357,10 +361,12 @@ git commit -m "feat(db): add get/set game analysis label Tauri commands"
 ### Task 3: Frontend read/write wiring in `createTab()` / `saveToFile()`
 
 **Files:**
+
 - Modify: `src/utils/tabs.ts`
 - Test: `src/utils/tests/tabs.test.ts` (new)
 
 **Interfaces:**
+
 - Consumes: `commands.getGameAnalysisLabel`, `commands.setGameAnalysisLabel` (Task 2); `GameHeaders` (already imported in `tabs.ts` from `./treeReducer`).
 - Produces: `mergeAnalysisLabel(headers: GameHeaders, label: string | null): GameHeaders` and `resolveAnalysisLabel(headers: GameHeaders): string | null`, exported from `src/utils/tabs.ts`.
 
@@ -376,39 +382,39 @@ import { mergeAnalysisLabel, resolveAnalysisLabel } from "../tabs";
 import type { GameHeaders } from "../treeReducer";
 
 const baseHeaders: GameHeaders = {
-    id: 0,
-    fen: "startpos",
-    event: "?",
-    site: "?",
-    white: "?",
-    black: "?",
-    result: "*",
+  id: 0,
+  fen: "startpos",
+  event: "?",
+  site: "?",
+  white: "?",
+  black: "?",
+  result: "*",
 };
 
 test("mergeAnalysisLabel adds the label into headers.other", () => {
-    const merged = mergeAnalysisLabel(baseHeaders, "Stockfish 16, depth 20 — 2026-08-29");
-    expect(merged.other?.Analysis).toBe("Stockfish 16, depth 20 — 2026-08-29");
+  const merged = mergeAnalysisLabel(baseHeaders, "Stockfish 16, depth 20 — 2026-08-29");
+  expect(merged.other?.Analysis).toBe("Stockfish 16, depth 20 — 2026-08-29");
 });
 
 test("mergeAnalysisLabel preserves existing other headers", () => {
-    const headers: GameHeaders = { ...baseHeaders, other: { ECO: "B90" } };
-    const merged = mergeAnalysisLabel(headers, "Stockfish 16, depth 20 — 2026-08-29");
-    expect(merged.other).toEqual({ ECO: "B90", Analysis: "Stockfish 16, depth 20 — 2026-08-29" });
+  const headers: GameHeaders = { ...baseHeaders, other: { ECO: "B90" } };
+  const merged = mergeAnalysisLabel(headers, "Stockfish 16, depth 20 — 2026-08-29");
+  expect(merged.other).toEqual({ ECO: "B90", Analysis: "Stockfish 16, depth 20 — 2026-08-29" });
 });
 
 test("mergeAnalysisLabel returns the same headers unchanged when label is null", () => {
-    const merged = mergeAnalysisLabel(baseHeaders, null);
-    expect(merged).toBe(baseHeaders);
+  const merged = mergeAnalysisLabel(baseHeaders, null);
+  expect(merged).toBe(baseHeaders);
 });
 
 test("resolveAnalysisLabel reads the label back out", () => {
-    const headers: GameHeaders = { ...baseHeaders, other: { Analysis: "Stockfish 16 — 2026-08-29" } };
-    expect(resolveAnalysisLabel(headers)).toBe("Stockfish 16 — 2026-08-29");
+  const headers: GameHeaders = { ...baseHeaders, other: { Analysis: "Stockfish 16 — 2026-08-29" } };
+  expect(resolveAnalysisLabel(headers)).toBe("Stockfish 16 — 2026-08-29");
 });
 
 test("resolveAnalysisLabel returns null when there is no analysis label", () => {
-    expect(resolveAnalysisLabel(baseHeaders)).toBeNull();
-    expect(resolveAnalysisLabel({ ...baseHeaders, other: { ECO: "B90" } })).toBeNull();
+  expect(resolveAnalysisLabel(baseHeaders)).toBeNull();
+  expect(resolveAnalysisLabel({ ...baseHeaders, other: { ECO: "B90" } })).toBeNull();
 });
 ```
 
@@ -426,12 +432,12 @@ In `src/utils/tabs.ts`, add these two exported functions (anywhere at module sco
 
 ```typescript
 export function mergeAnalysisLabel(headers: GameHeaders, label: string | null): GameHeaders {
-    if (!label) return headers;
-    return { ...headers, other: { ...headers.other, Analysis: label } };
+  if (!label) return headers;
+  return { ...headers, other: { ...headers.other, Analysis: label } };
 }
 
 export function resolveAnalysisLabel(headers: GameHeaders): string | null {
-    return headers.other?.Analysis ?? null;
+  return headers.other?.Analysis ?? null;
 }
 ```
 
@@ -448,44 +454,41 @@ Expected: all 5 tests `PASS`.
 In `src/utils/tabs.ts`, find:
 
 ```typescript
-    if (pgn !== undefined) {
-        const tree = await parsePGN(pgn, headers?.fen);
-        if (headers) {
-            tree.headers = headers;
-            if (position) {
-                tree.position = position;
-            }
-        }
-        sessionStorage.setItem(id, JSON.stringify({ version: 0, state: tree }));
+if (pgn !== undefined) {
+  const tree = await parsePGN(pgn, headers?.fen);
+  if (headers) {
+    tree.headers = headers;
+    if (position) {
+      tree.position = position;
     }
+  }
+  sessionStorage.setItem(id, JSON.stringify({ version: 0, state: tree }));
+}
 ```
 
 Replace it with:
 
 ```typescript
-    if (pgn !== undefined) {
-        const tree = await parsePGN(pgn, headers?.fen);
-        if (headers) {
-            tree.headers = headers;
-            if (position) {
-                tree.position = position;
-            }
-        }
-        if (gameOrigin?.kind === "database") {
-            let label: string | null = null;
-            try {
-                const result = await commands.getGameAnalysisLabel(
-                    gameOrigin.database,
-                    gameOrigin.gameId,
-                );
-                label = result.status === "ok" ? result.data : null;
-            } catch {
-                label = null;
-            }
-            tree.headers = mergeAnalysisLabel(tree.headers, label);
-        }
-        sessionStorage.setItem(id, JSON.stringify({ version: 0, state: tree }));
+if (pgn !== undefined) {
+  const tree = await parsePGN(pgn, headers?.fen);
+  if (headers) {
+    tree.headers = headers;
+    if (position) {
+      tree.position = position;
     }
+  }
+  if (gameOrigin?.kind === "database") {
+    let label: string | null = null;
+    try {
+      const result = await commands.getGameAnalysisLabel(gameOrigin.database, gameOrigin.gameId);
+      label = result.status === "ok" ? result.data : null;
+    } catch {
+      label = null;
+    }
+    tree.headers = mergeAnalysisLabel(tree.headers, label);
+  }
+  sessionStorage.setItem(id, JSON.stringify({ version: 0, state: tree }));
+}
 ```
 
 - [ ] **Step 6: Wire the write path into `saveToFile()`**
@@ -493,26 +496,26 @@ Replace it with:
 In `src/utils/tabs.ts`, find:
 
 ```typescript
-    if (databaseOrigin) {
-        await commands.writeDbGame(databaseOrigin.database, databaseOrigin.gameId, pgn);
-        store.getState().save();
-        return;
-    }
+if (databaseOrigin) {
+  await commands.writeDbGame(databaseOrigin.database, databaseOrigin.gameId, pgn);
+  store.getState().save();
+  return;
+}
 ```
 
 Replace it with:
 
 ```typescript
-    if (databaseOrigin) {
-        await commands.writeDbGame(databaseOrigin.database, databaseOrigin.gameId, pgn);
-        await commands.setGameAnalysisLabel(
-            databaseOrigin.database,
-            databaseOrigin.gameId,
-            resolveAnalysisLabel(store.getState().headers),
-        );
-        store.getState().save();
-        return;
-    }
+if (databaseOrigin) {
+  await commands.writeDbGame(databaseOrigin.database, databaseOrigin.gameId, pgn);
+  await commands.setGameAnalysisLabel(
+    databaseOrigin.database,
+    databaseOrigin.gameId,
+    resolveAnalysisLabel(store.getState().headers),
+  );
+  store.getState().save();
+  return;
+}
 ```
 
 - [ ] **Step 7: Typecheck, lint, and format**
@@ -539,6 +542,7 @@ git commit -m "fix(tabs): persist and restore the analysis-report marker for dat
 **Files:** none (verification only)
 
 **Interfaces:**
+
 - Consumes: everything from Tasks 1–3.
 
 - [ ] **Step 1: Run the full Rust test suite again**

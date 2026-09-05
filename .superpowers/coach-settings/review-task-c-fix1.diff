@@ -1,0 +1,143 @@
+diff --git a/src/hooks/useCoachHint.ts b/src/hooks/useCoachHint.ts
+index f31ca4d5..3cd0f8dc 100644
+--- a/src/hooks/useCoachHint.ts
++++ b/src/hooks/useCoachHint.ts
+@@ -7,7 +7,12 @@ import { useStore } from "zustand";
+ import { useShallow } from "zustand/react/shallow";
+ import { type BestMoves, commands, events } from "@/bindings";
+ import { TreeStateContext } from "@/components/common/TreeStateContext";
+-import { activeTabAtom, enginesAtom, hintEngineConfigAtom } from "@/state/atoms";
++import {
++    activeTabAtom,
++    currentGameStateAtom,
++    enginesAtom,
++    hintEngineConfigAtom,
++} from "@/state/atoms";
+ import { getVariationLine } from "@/utils/chess";
+ import { positionFromFen } from "@/utils/chessops";
+ import type { LocalEngine } from "@/utils/engines";
+@@ -47,9 +52,7 @@ export function useCoachHint(requested: boolean): {
+         const loadedLocal = (engines ?? []).filter(
+             (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+         );
+-        return (
+-            loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null
+-        );
++        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
+     }, [engines, config.engineId]);
+ 
+     const goMode = config.go;
+@@ -84,7 +87,14 @@ export function useCoachHint(requested: boolean): {
+     const isGameOver = pos?.isEnd() ?? false;
+     const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : fen), [pos, fen]);
+ 
+-    const active = isContinuous ? !isGameOver : requested;
++    // `isGameOver` is a pure board predicate (checkmate/stalemate/etc.) — it says
++    // nothing about resignation, timeout, or abort, which end the game via
++    // `currentGameStateAtom` while the board position is still very much "in
++    // progress". Continuous mode must track the app's actual game state, or an
++    // Infinite search never gets told to stop after those endings (and would
++    // also start during "settingUp", before a game even exists).
++    const gameState = useAtomValue(currentGameStateAtom);
++    const active = isContinuous ? gameState === "playing" && !isGameOver : requested;
+ 
+     const [bestMoveUci, setBestMoveUci] = useState<string | null>(null);
+     // The engine process we last asked to search, so it can still be stopped or
+@@ -101,9 +111,7 @@ export function useCoachHint(requested: boolean): {
+     // Shared handling of engine output, used both by the event listener and by
+     // `get_best_moves`' synchronous short-circuit return value. Kept in a ref that
+     // is refreshed after every render so neither effect needs it as a dependency.
+-    const handleResultRef = useRef<
+-        (resultFen: string, bestLines: BestMoves[]) => void
+-    >(() => {});
++    const handleResultRef = useRef<(resultFen: string, bestLines: BestMoves[]) => void>(() => {});
+     useEffect(() => {
+         handleResultRef.current = (resultFen, bestLines) => {
+             // Late answer for a position we already left.
+@@ -142,12 +150,25 @@ export function useCoachHint(requested: boolean): {
+             if (!active || isGameOver) {
+                 if (searchingRef.current) {
+                     searchingRef.current = false;
+-                    commands.stopEngine(id, activeTab).then((r) => unwrap(r));
++                    // Stop the process that's actually running, not `id`: if the
++                    // configured engine changed since the search was started, `id`
++                    // (recomputed from the current `engine`) no longer matches it.
++                    const started = startedRef.current;
++                    if (started) {
++                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
++                    }
+                 }
+                 return;
+             }
+ 
+             const requestFen = finalFen;
++            // The engine (or tab) resolved to something new since the last search
++            // was started: that old process is no longer referenced by anything
++            // below, so it would otherwise be orphaned. Kill it before moving on.
++            const prevStarted = startedRef.current;
++            if (prevStarted && (prevStarted.id !== id || prevStarted.tab !== activeTab)) {
++                commands.killEngine(prevStarted.id, prevStarted.tab).catch(() => {});
++            }
+             searchingRef.current = true;
+             startedRef.current = { id, tab: activeTab };
+             commands
+diff --git a/src/hooks/useLiveCoachEngine.ts b/src/hooks/useLiveCoachEngine.ts
+index 376e4e8c..c4371b42 100644
+--- a/src/hooks/useLiveCoachEngine.ts
++++ b/src/hooks/useLiveCoachEngine.ts
+@@ -44,9 +44,7 @@ export function useLiveCoachEngine(): {
+         const loadedLocal = (engines ?? []).filter(
+             (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+         );
+-        return (
+-            loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null
+-        );
++        return loadedLocal.find((e) => e.id === config.engineId) ?? loadedLocal[0] ?? null;
+     }, [engines, config.engineId]);
+ 
+     const goMode = config.go;
+@@ -109,7 +107,16 @@ export function useLiveCoachEngine(): {
+                 setScore(bestLines[0].score);
+             }
+ 
+-            if (progress < 100) return;
++            // GoMode::Infinite and GoMode::PlayersTime never report progress===100
++            // from the backend (it caps at 99.99 until an explicit `stop()`, whose
++            // final message usually arrives after the listener has already moved on
++            // to a new position and gets discarded above) — so treat those go-modes
++            // as always complete enough to classify here. `classifiedFens` already
++            // dedupes, so this doesn't reclassify the same fen on every intermediate
++            // line a long-running search keeps emitting. Do not revert this to a
++            // plain `progress < 100` check: that silently disables all move
++            // classification whenever live-eval is configured to Infinite/PlayersTime.
++            if (progress < 100 && goMode.t !== "Infinite" && goMode.t !== "PlayersTime") return;
+ 
+             const mainLine = Array.from(treeIteratorMainLine(store.getState().root));
+             // The main line only gets shorter when the tree was rebuilt: a new game
+@@ -171,12 +178,25 @@ export function useLiveCoachEngine(): {
+             if (!active || isGameOver) {
+                 if (searchingRef.current) {
+                     searchingRef.current = false;
+-                    commands.stopEngine(id, activeTab).then((r) => unwrap(r));
++                    // Stop the process that's actually running, not `id`: if the
++                    // configured engine changed since the search was started, `id`
++                    // (recomputed from the current `engine`) no longer matches it.
++                    const started = startedRef.current;
++                    if (started) {
++                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
++                    }
+                 }
+                 return;
+             }
+ 
+             const requestFen = finalFen;
++            // The engine (or tab) resolved to something new since the last search
++            // was started: that old process is no longer referenced by anything
++            // below, so it would otherwise be orphaned. Kill it before moving on.
++            const prevStarted = startedRef.current;
++            if (prevStarted && (prevStarted.id !== id || prevStarted.tab !== activeTab)) {
++                commands.killEngine(prevStarted.id, prevStarted.tab).catch(() => {});
++            }
+             searchingRef.current = true;
+             startedRef.current = { id, tab: activeTab };
+             commands

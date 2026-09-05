@@ -14,6 +14,7 @@ games.
 ## Scope
 
 In scope:
+
 - New `GameAnalysis` table in the per-account/per-collection `.db3`
   SQLite files, created lazily and idempotently so it backfills onto
   already-existing database files with no explicit migration step.
@@ -25,6 +26,7 @@ In scope:
 - A Rust unit test for the two new commands.
 
 Out of scope:
+
 - Any change to the `Games` table, `schema.rs`, `models.rs`,
   `NormalizedGame`, or `get_games`. This is a separate table with no
   foreign-key enforcement; existing queries are untouched.
@@ -84,6 +86,7 @@ the one place (`src/utils/tabs.ts`) all database-game opens and saves
 already flow through.
 
 Two alternatives considered and rejected in the prior discussion:
+
 - Adding an `Analysis` column to `Games` itself: requires an
   `ALTER TABLE` migration path (checking column existence via
   `PRAGMA table_info`) plus `schema.rs`/`models.rs`/`get_games`/
