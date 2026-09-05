@@ -10,7 +10,7 @@ import {
 import { useLoaderData } from "@tanstack/react-router";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -26,6 +26,8 @@ import {
   enableAllAtom,
   enginesAtom,
   evalPreviewEnabledAtom,
+  playHintAtom,
+  playStateAtom,
   practiceStateAtom,
   referenceDbAtom,
   reportSettingsAtom,
@@ -183,6 +185,7 @@ function BoardAnalysis() {
   const practiceTabSelected = useAtomValue(currentPracticeTabAtom);
   const isRepertoire = tabFile?.metadata.type === "repertoire";
   const practicing = currentTabSelected === "practice" && practiceTabSelected === "train";
+  const playing = currentTabSelected === "practice" && practiceTabSelected === "play";
   const practiceState = useAtomValue(practiceStateAtom);
   const isPracticeRating = practicing && practiceState.phase === "correct";
 
@@ -192,6 +195,15 @@ function BoardAnalysis() {
       setPracticePath(null);
     }
   }, [practicing, setPracticePath]);
+
+  const setPlayState = useSetAtom(playStateAtom);
+  const setPlayHint = useSetAtom(playHintAtom);
+  useEffect(() => {
+    if (!playing) {
+      setPlayState({ phase: "idle" });
+      setPlayHint({ stage: 0 });
+    }
+  }, [playing, setPlayState, setPlayHint]);
 
   useHotkeys([[keyMap.SAVE_FILE.keys, () => userSaveFile()]]);
   useHotkeys([
@@ -235,6 +247,7 @@ function BoardAnalysis() {
       <Portal target="#left" style={{ height: "100%" }}>
         <Board
           practicing={practicing}
+          playing={playing}
           editingMode={editingMode}
           boardRef={boardRef}
           selectedPiece={selectedPiece}

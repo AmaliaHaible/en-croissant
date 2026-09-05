@@ -43,6 +43,9 @@ import {
   materialDisplayAtom,
   moveHighlightAtom,
   moveInputAtom,
+  playHintAtom,
+  playSessionStatsAtom,
+  playStateAtom,
   practiceCardStartTimeAtom,
   practiceSessionStatsAtom,
   practiceStateAtom,
@@ -63,6 +66,7 @@ import {
 } from "@/utils/annotation";
 import { getVariationLine } from "@/utils/chess";
 import { chessopsError, forceEnPassant, positionFromFen } from "@/utils/chessops";
+import { matchUserMove } from "@/utils/repertoirePlay";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
 import ShowMaterial from "../common/ShowMaterial";
 import { TreeStateContext } from "../common/TreeStateContext";
@@ -101,6 +105,7 @@ interface ChessboardProps {
   whiteTime?: number;
   blackTime?: number;
   practicing?: boolean;
+  playing?: boolean;
   selectedPiece?: Piece | null;
   onMove?: (uci: string) => void;
   cgRef?: React.Ref<ChessgroundRef>;
@@ -117,6 +122,7 @@ function Board({
   whiteTime,
   blackTime,
   practicing,
+  playing,
   selectedPiece,
   onMove,
   cgRef,
@@ -150,6 +156,8 @@ function Board({
   const clearShapes = useStore(store, (s) => s.clearShapes);
   const setShapes = useStore(store, (s) => s.setShapes);
   const setFen = useStore(store, (s) => s.setFen);
+  const position = useStore(store, (s) => s.position);
+  const goToMove = useStore(store, (s) => s.goToMove);
 
   const [pos, error] = positionFromFen(currentNode.fen);
   const [whiteFideOpen, setWhiteFideOpen] = useState(false);
@@ -208,10 +216,32 @@ function Board({
   const setPracticeState = useSetAtom(practiceStateAtom);
   const [sessionStats, setSessionStats] = useAtom(practiceSessionStatsAtom);
   const cardStartTime = useAtomValue(practiceCardStartTimeAtom);
+  const playState = useAtomValue(playStateAtom);
+  const setPlaySessionStats = useSetAtom(playSessionStatsAtom);
+  const playHint = useAtomValue(playHintAtom);
 
   async function makeMove(move: NormalMove) {
     if (!pos) return;
     const san = makeSan(pos, move);
+    if (playing) {
+      if (playState.phase !== "waiting") {
+        setPendingMove(null);
+        return;
+      }
+      const res = matchUserMove(root, position, san);
+      if (!res.ok) {
+        // Silent undo: never commit the move, just let the board re-render from
+        // the unchanged FEN. The hint is the only feedback offered.
+        setPendingMove(null);
+        setPlaySessionStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
+        return;
+      }
+      setPendingMove(null);
+      goToMove(res.nextPath);
+      // The phase transition is driven by the PracticePlay effect watching the
+      // pointer position.
+      return;
+    }
     if (practicing) {
       const c = deck.positions.find((c) => c.fen === currentNode.fen);
       if (!c) {
@@ -378,6 +408,18 @@ function Board({
     shapes = shapes.concat(currentNode.shapes);
   }
 
+  if (playing && playHint.stage > 0 && currentNode.children[0]?.move) {
+    const hm = currentNode.children[0].move as NormalMove;
+    const from = makeSquare(hm.from);
+    const to = makeSquare(hm.to);
+    if (from && playHint.stage === 1) {
+      shapes.push({ orig: from, brush: "green" });
+    }
+    if (from && to && playHint.stage >= 2) {
+      shapes.push({ orig: from, dest: to, brush: "green" });
+    }
+  }
+
   const hasClock =
     !!whiteTime ||
     !!blackTime ||
@@ -386,9 +428,10 @@ function Board({
     !!headers.black_time_control;
 
   const practiceLock = !!practicing && !deck.positions.find((c) => c.fen === currentNode.fen);
+  const playLock = !!playing && playState.phase !== "waiting";
 
   const movableColor: "white" | "black" | "both" | undefined = useMemo(() => {
-    return practiceLock
+    return practiceLock || playLock
       ? undefined
       : editingMode
         ? "both"
@@ -399,7 +442,7 @@ function Board({
             .with("both", () => "both" as const)
             .with("none", () => undefined)
             .exhaustive();
-  }, [practiceLock, editingMode, movable, turn]);
+  }, [practiceLock, playLock, editingMode, movable, turn]);
 
   const theme = useMantineTheme();
   const visibleAnnotations = currentNode.annotations.filter((a) => !isBestMoveSuggestion(a));
