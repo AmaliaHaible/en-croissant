@@ -11,6 +11,7 @@ mod chess;
 mod db;
 mod engine;
 mod error;
+mod explorer;
 mod game;
 
 mod fs;

@@ -62,7 +62,7 @@ pub use self::schema::puzzles;
 pub use self::schema::themes;
 pub use self::search::{
     positions_in_db, search_position, search_positions_batch, BatchPositionCache, LineCache,
-    PositionQueryJs,
+    PositionQueryJs, PositionStats,
 };
 
 const DATABASE_VERSION: &str = "1.0.0";
