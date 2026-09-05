@@ -665,6 +665,32 @@ export const practiceAutoDifficultyAtom = atomWithStorage<"none" | "1" | "2" | "
 const practiceCardStartTimeFamily = atomFamily((_tab: string) => atom<number>(0));
 export const practiceCardStartTimeAtom = tabValue(practiceCardStartTimeFamily);
 
+// Repertoire "Play" mode — ephemeral, per-tab. Nothing here is persisted except
+// the opponent-source preference.
+
+export type PlayPhase = "idle" | "opponentThinking" | "waiting" | "lineComplete" | "gap";
+export type PlayState = { phase: PlayPhase };
+
+const playStateFamily = atomFamily((_tab: string) => atom<PlayState>({ phase: "idle" }));
+export const playStateAtom = tabValue(playStateFamily);
+
+export type PlayHint = { stage: 0 | 1 | 2 };
+
+const playHintFamily = atomFamily((_tab: string) => atom<PlayHint>({ stage: 0 }));
+export const playHintAtom = tabValue(playHintFamily);
+
+export type PlaySessionStats = { linesCompleted: number; mistakes: number };
+
+const playSessionStatsFamily = atomFamily((_tab: string) =>
+    atom<PlaySessionStats>({ linesCompleted: 0, mistakes: 0 }),
+);
+export const playSessionStatsAtom = tabValue(playSessionStatsFamily);
+
+export const repertoirePlaySourceAtom = atomWithStorage<"lichess" | "masters">(
+    "repertoire-play-source",
+    "lichess",
+);
+
 export const engineMovesFamily = atomFamily(
     ({ tab: _tab, engine: _engine }: { tab: string; engine: string }) =>
         atom<Map<string, BestMoves[]>>(new Map()),
