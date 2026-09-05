@@ -1,8 +1,13 @@
 import { memoize } from "proxy-memoize";
 import type { PositionStats } from "@/bindings";
 import { TreeStoreState } from "@/state/store/tree";
-import { searchPositionsBatch } from "./db";
+import { searchExplorerMoves, searchPositionsBatch } from "./db";
 import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
+
+export type RepertoireReference =
+    | { kind: "local"; path: string }
+    | { kind: "lichess" }
+    | { kind: "masters" };
 
 export type PositionMove = {
     san: string;
@@ -20,7 +25,7 @@ export type PositionMove = {
 export async function computeTreeCoverage(
     root: TreeNode,
     userColor: "white" | "black",
-    dbPath: string,
+    reference: RepertoireReference,
     minGames: number,
     startPath: number[] = [],
     signal?: AbortSignal,
@@ -54,7 +59,10 @@ export async function computeTreeCoverage(
     const fenList = [...uniqueFens];
 
     signal?.throwIfAborted();
-    const batch = await searchPositionsBatch(dbPath, fenList);
+    const batch =
+        reference.kind === "local"
+            ? await searchPositionsBatch(reference.path, fenList)
+            : await searchExplorerMoves(reference.kind, fenList);
     signal?.throwIfAborted();
 
     const dbMovesByFen = new Map<

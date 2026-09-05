@@ -175,6 +175,16 @@ export async function searchPositionsBatch(dbPath: string, fens: string[]) {
     return unwrap(await commands.searchPositionsBatch(dbPath, fens));
 }
 
+/**
+ * Fetch opening-move stats for a batch of FENs from the Lichess opening
+ * explorer, cached permanently on disk by the backend. Same result shape as
+ * {@link searchPositionsBatch} (per-move rows plus a synthesized `*` summary),
+ * so repertoire coverage can consume either interchangeably.
+ */
+export async function searchExplorerMoves(source: "lichess" | "masters", fens: string[]) {
+    return unwrap(await commands.getExplorerMoves(source, fens));
+}
+
 export async function searchPosition(options: LocalOptions, tab: string) {
     const res = await commands.searchPosition(
         options.path!,

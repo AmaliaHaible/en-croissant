@@ -178,7 +178,14 @@ function RepertoireInfo() {
     const version = ++coverageVersionRef.current;
     const controller = new AbortController();
     setCoverageLoading(true);
-    computeTreeCoverage(root, orientation, referenceDb, minGames, startPath, controller.signal)
+    computeTreeCoverage(
+      root,
+      orientation,
+      { kind: "local", path: referenceDb },
+      minGames,
+      startPath,
+      controller.signal,
+    )
       .then((result) => {
         if (version === coverageVersionRef.current) {
           setCoverageMap(result.coverageMap);

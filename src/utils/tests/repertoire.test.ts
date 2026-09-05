@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PositionStats } from "@/bindings";
-import { searchPositionsBatch as realSearchPositionsBatch } from "../db";
+import {
+    searchExplorerMoves as realSearchExplorerMoves,
+    searchPositionsBatch as realSearchPositionsBatch,
+} from "../db";
 import { computeTreeCoverage } from "../repertoire";
 import type { TreeNode } from "../treeReducer";
 
 vi.mock("../db");
 const searchPositionsBatch = vi.mocked(realSearchPositionsBatch);
+const searchExplorerMoves = vi.mocked(realSearchExplorerMoves);
 
 function node(fen: string, san: string | null, halfMoves: number, children: TreeNode[]): TreeNode {
     return {
@@ -38,13 +42,14 @@ const stats = (move: string, n: number): PositionStats => ({
 
 beforeEach(() => {
     searchPositionsBatch.mockReset();
+    searchExplorerMoves.mockReset();
 });
 
 describe("computeTreeCoverage", () => {
     test("resolves every position in one batch call, not one per node", async () => {
         searchPositionsBatch.mockResolvedValue([]);
 
-        await computeTreeCoverage(sampleTree(), "white", "db.db3", 10);
+        await computeTreeCoverage(sampleTree(), "white", { kind: "local", path: "db.db3" }, 10);
 
         expect(searchPositionsBatch).toHaveBeenCalledTimes(1);
         expect(searchPositionsBatch).toHaveBeenCalledWith(
@@ -68,7 +73,7 @@ describe("computeTreeCoverage", () => {
         const { coverageMap, missingGamesMap, gamesMap } = await computeTreeCoverage(
             sampleTree(),
             "white",
-            "db.db3",
+            { kind: "local", path: "db.db3" },
             10,
         );
 
@@ -81,7 +86,14 @@ describe("computeTreeCoverage", () => {
         searchPositionsBatch.mockResolvedValue([]);
 
         await expect(
-            computeTreeCoverage(sampleTree(), "white", "db.db3", 10, [], AbortSignal.abort()),
+            computeTreeCoverage(
+                sampleTree(),
+                "white",
+                { kind: "local", path: "db.db3" },
+                10,
+                [],
+                AbortSignal.abort(),
+            ),
         ).rejects.toMatchObject({ name: "AbortError" });
 
         expect(searchPositionsBatch).not.toHaveBeenCalled();
@@ -95,7 +107,40 @@ describe("computeTreeCoverage", () => {
         });
 
         await expect(
-            computeTreeCoverage(sampleTree(), "white", "db.db3", 10, [], controller.signal),
+            computeTreeCoverage(
+                sampleTree(),
+                "white",
+                { kind: "local", path: "db.db3" },
+                10,
+                [],
+                controller.signal,
+            ),
         ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    test("uses the lichess explorer when the reference is a lichess source", async () => {
+        searchExplorerMoves.mockImplementation(async (_source: string, fens: string[]) =>
+            fens.map((fen) => {
+                if (fen === "fen-root") return [stats("e4", 100)];
+                if (fen === "fen-e4") return [stats("e5", 15), stats("c5", 15)];
+                return [];
+            }),
+        );
+
+        const { coverageMap, missingGamesMap } = await computeTreeCoverage(
+            sampleTree(),
+            "white",
+            { kind: "lichess" },
+            10,
+        );
+
+        expect(searchExplorerMoves).toHaveBeenCalledTimes(1);
+        expect(searchExplorerMoves).toHaveBeenCalledWith(
+            "lichess",
+            expect.arrayContaining(["fen-root", "fen-e4", "fen-e5"]),
+        );
+        expect(searchPositionsBatch).not.toHaveBeenCalled();
+        expect(coverageMap.get("0")).toBeCloseTo(0.5);
+        expect(missingGamesMap.get("0")).toBe(15);
     });
 });
