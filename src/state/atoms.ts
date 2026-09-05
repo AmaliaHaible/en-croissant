@@ -669,7 +669,10 @@ export const practiceCardStartTimeAtom = tabValue(practiceCardStartTimeFamily);
 // the opponent-source preference.
 
 export type PlayPhase = "idle" | "opponentThinking" | "waiting" | "lineComplete" | "gap";
-export type PlayState = { phase: PlayPhase };
+// `fen` pins the position the machine expects during `opponentThinking`/`waiting`,
+// so navigating away during your turn neither starts a phantom opponent turn nor
+// lets a move from a different line count.
+export type PlayState = { phase: PlayPhase; fen?: string };
 
 const playStateFamily = atomFamily((_tab: string) => atom<PlayState>({ phase: "idle" }));
 export const playStateAtom = tabValue(playStateFamily);

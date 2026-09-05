@@ -81,11 +81,16 @@ export default function PracticePlay() {
     const node = getNodeAtPath(root, startPath);
     const status = lineStatus(node, userColor);
     if (status !== "continue") {
-      finish(status);
+      // A start position with no prepared moves is not a completed line —
+      // surface it as a gap rather than crediting linesCompleted.
+      finish(node.children.length === 0 ? "gap" : status);
       return;
     }
     const userToMove = node.halfMoves % 2 === userParity;
-    setPlayState({ phase: userToMove ? "waiting" : "opponentThinking" });
+    setPlayState({
+      phase: userToMove ? "waiting" : "opponentThinking",
+      fen: node.fen,
+    });
   }, [
     root,
     startPath,
@@ -109,28 +114,51 @@ export default function PracticePlay() {
   // where the pointer landed.
   useEffect(() => {
     if (phase !== "waiting") return;
+    // Only react to the pointer landing exactly where the machine expects it
+    // (Board advances playState.fen when it accepts the user's move). Looking
+    // around the move list during your turn must not start an opponent turn.
+    if (playState.fen !== undefined && currentNode.fen !== playState.fen) return;
     const userToMove = currentNode.halfMoves % 2 === userParity;
     if (userToMove) return; // still the user's turn — nothing happened yet
     setHint({ stage: 0 });
     const status = lineStatus(currentNode, userColor);
     if (status === "continue") {
-      setPlayState({ phase: "opponentThinking" });
+      setPlayState({ phase: "opponentThinking", fen: currentNode.fen });
     } else {
       finish(status);
     }
-  }, [phase, positionKey, currentNode, userColor, userParity, setHint, setPlayState, finish]);
+  }, [
+    phase,
+    positionKey,
+    currentNode,
+    playState.fen,
+    userColor,
+    userParity,
+    setHint,
+    setPlayState,
+    finish,
+  ]);
 
   // Opponent's turn: fetch cached explorer stats, pick a reply, navigate.
   useEffect(() => {
     if (phase !== "opponentThinking") return;
     const fenAtStart = currentNode.fen;
+    // The pointer wandered off the position the machine expects — don't think
+    // from here. It will resume once the user navigates back (Board's lock keeps
+    // them from moving in the meantime).
+    if (playState.fen !== undefined && fenAtStart !== playState.fen) return;
     const pathAtStart = position;
     let cancelled = false;
 
     (async () => {
-      const [statsForFen] = await searchExplorerMoves(source, [fenAtStart], token);
+      // Total: `searchExplorerMoves` unwraps and throws on a Tauri command error
+      // (e.g. a locked explorer cache). An empty list flows through
+      // `pickOpponentMove` as all-EPSILON → uniform pick, so the game continues.
+      const statsForFen = await searchExplorerMoves(source, [fenAtStart], token)
+        .then((r) => r[0] ?? [])
+        .catch(() => []);
       if (cancelled || currentFenRef.current !== fenAtStart) return;
-      const pick = pickOpponentMove(root, pathAtStart, statsForFen ?? []);
+      const pick = pickOpponentMove(root, pathAtStart, statsForFen);
       await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS));
       if (cancelled || currentFenRef.current !== fenAtStart) return;
 
@@ -142,9 +170,10 @@ export default function PracticePlay() {
       }
       goToMove(pick.nextPath);
       setHint({ stage: 0 });
-      const status = lineStatus(getNodeAtPath(root, pick.nextPath), userColor);
+      const nextNode = getNodeAtPath(root, pick.nextPath);
+      const status = lineStatus(nextNode, userColor);
       if (status === "continue") {
-        setPlayState({ phase: "waiting" });
+        setPlayState({ phase: "waiting", fen: nextNode.fen });
       } else {
         finish(status);
       }
@@ -165,7 +194,7 @@ export default function PracticePlay() {
     setHint((h) => ({ stage: h.stage === 0 ? 1 : h.stage === 1 ? 2 : 1 }));
   }, [setHint]);
 
-  useHotkeys("h", () => cycleHint(), { enabled: phase === "waiting" });
+  useHotkeys("h", cycleHint, { enabled: phase === "waiting" });
 
   const isRepertoireEmpty = root.children.length === 0;
 
@@ -240,12 +269,17 @@ export default function PracticePlay() {
 
       {phase === "opponentThinking" && (
         <Paper p="sm" withBorder>
-          <Group gap="xs" justify="center">
-            <Loader size="xs" />
-            <Text fz="sm" c="dimmed">
-              {t("Board.Practice.Play.OpponentThinking")}
-            </Text>
-          </Group>
+          <Stack gap="xs" align="center">
+            <Group gap="xs" justify="center">
+              <Loader size="xs" />
+              <Text fz="sm" c="dimmed">
+                {t("Board.Practice.Play.OpponentThinking")}
+              </Text>
+            </Group>
+            <Button variant="subtle" size="compact-xs" color="red" onClick={stopGame}>
+              {t("Common.Stop")}
+            </Button>
+          </Stack>
         </Paper>
       )}
 

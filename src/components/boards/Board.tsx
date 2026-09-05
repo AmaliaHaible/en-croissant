@@ -15,7 +15,7 @@ import { chessgroundDests, chessgroundMove } from "chessops/compat";
 import { makeFen, parseFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { memo, useCallback, useContext, useMemo, useState } from "react";
+import { memo, useCallback, useContext, useMemo, useReducer, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
@@ -68,6 +68,7 @@ import { getVariationLine } from "@/utils/chess";
 import { chessopsError, forceEnPassant, positionFromFen } from "@/utils/chessops";
 import { matchUserMove } from "@/utils/repertoirePlay";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
+import { getNodeAtPath } from "@/utils/treeReducer";
 import ShowMaterial from "../common/ShowMaterial";
 import { TreeStateContext } from "../common/TreeStateContext";
 import FideInfo from "../databases/FideInfo";
@@ -217,8 +218,13 @@ function Board({
   const [sessionStats, setSessionStats] = useAtom(practiceSessionStatsAtom);
   const cardStartTime = useAtomValue(practiceCardStartTimeAtom);
   const playState = useAtomValue(playStateAtom);
+  const setPlayState = useSetAtom(playStateAtom);
   const setPlaySessionStats = useSetAtom(playSessionStatsAtom);
   const playHint = useAtomValue(playHintAtom);
+  // Bumped to force a re-render when a rejected play-mode move must be snapped
+  // back: chessground has already moved the piece optimistically, and nothing
+  // else in the reject path changes a prop Board is subscribed to.
+  const [, snapBack] = useReducer((n: number) => n + 1, 0);
 
   async function makeMove(move: NormalMove) {
     if (!pos) return;
@@ -230,14 +236,21 @@ function Board({
       }
       const res = matchUserMove(root, position, san);
       if (!res.ok) {
-        // Silent undo: never commit the move, just let the board re-render from
-        // the unchanged FEN. The hint is the only feedback offered.
+        // Silent undo: never commit the move. Chessground already moved the
+        // piece optimistically, so force a Board re-render — the Chessground
+        // prop-sync effect then re-applies `currentNode.fen` and snaps it back.
+        // The hint is the only feedback offered.
         setPendingMove(null);
         setPlaySessionStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
+        snapBack();
         return;
       }
       setPendingMove(null);
       goToMove(res.nextPath);
+      // Advance the position the machine expects so the PracticePlay effect
+      // (which watches the pointer) recognises this as a real move rather than
+      // idle navigation, and so the lock re-arms against the new node.
+      setPlayState((s) => ({ ...s, fen: getNodeAtPath(root, res.nextPath).fen }));
       // The phase transition is driven by the PracticePlay effect watching the
       // pointer position.
       return;
@@ -428,7 +441,10 @@ function Board({
     !!headers.black_time_control;
 
   const practiceLock = !!practicing && !deck.positions.find((c) => c.fen === currentNode.fen);
-  const playLock = !!playing && playState.phase !== "waiting";
+  const playLock =
+    !!playing &&
+    (playState.phase !== "waiting" ||
+      (playState.fen !== undefined && currentNode.fen !== playState.fen));
 
   const movableColor: "white" | "black" | "both" | undefined = useMemo(() => {
     return practiceLock || playLock

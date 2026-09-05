@@ -19,6 +19,7 @@ import {
   autoGenerateReportAtom,
   autoSaveAtom,
   currentAnalysisTabAtom,
+  currentInvisibleAtom,
   currentPracticeTabAtom,
   currentReportModalOpenAtom,
   currentTabAtom,
@@ -198,12 +199,16 @@ function BoardAnalysis() {
 
   const setPlayState = useSetAtom(playStateAtom);
   const setPlayHint = useSetAtom(playHintAtom);
+  const setInvisible = useSetAtom(currentInvisibleAtom);
   useEffect(() => {
     if (!playing) {
       setPlayState({ phase: "idle" });
       setPlayHint({ stage: 0 });
+      // The Play panel unmounts with keepMounted={false}, so its own idle-unblur
+      // effect never runs; clear the blur here unless Train still needs it.
+      if (!practicing) setInvisible(false);
     }
-  }, [playing, setPlayState, setPlayHint]);
+  }, [playing, practicing, setPlayState, setPlayHint, setInvisible]);
 
   useHotkeys([[keyMap.SAVE_FILE.keys, () => userSaveFile()]]);
   useHotkeys([

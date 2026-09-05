@@ -3,7 +3,14 @@ import { Chess } from "chessops";
 import { makeFen } from "chessops/fen";
 import { parseSan } from "chessops/san";
 import { getNodeAtPath, type TreeNode } from "../treeReducer";
-import { findNode, lineStatus, normalizeFen, resolvePointer } from "../repertoirePlay";
+import {
+    findNode,
+    lineStatus,
+    matchUserMove,
+    normalizeFen,
+    pickOpponentMove,
+    resolvePointer,
+} from "../repertoirePlay";
 
 function mkNode(
     fen: string,
@@ -129,8 +136,6 @@ describe("lineStatus", () => {
     });
 });
 
-import { matchUserMove, pickOpponentMove } from "../repertoirePlay";
-
 describe("matchUserMove", () => {
     test("accepts a direct child and follows the transposition after it", () => {
         const { root, lineBBeforeNf3, lineABuilt } = transpositionTree();
@@ -153,6 +158,19 @@ describe("matchUserMove", () => {
     test("rejects a move that is neither a child nor a transposition", () => {
         const { root, lineBBeforeNf3 } = transpositionTree();
         expect(matchUserMove(root, lineBBeforeNf3, "e4")).toEqual({ ok: false });
+    });
+
+    test("accepts a move that transposes only to a childless leaf elsewhere (unconstrained fallback)", () => {
+        const { root, lineABuilt, lineBBeforeNf3 } = transpositionTree();
+        // Strip both stored 3.Nf3 nodes of their continuations: Nf3 is now
+        // reachable only as a transposition to a dead-end leaf. The spec still
+        // counts this as a match (ok: true) with a dead-end nextPath.
+        getNodeAtPath(root, lineABuilt).children = [];
+        getNodeAtPath(root, lineBBeforeNf3).children = [];
+        const res = matchUserMove(root, lineBBeforeNf3, "Nf3");
+        expect(res.ok).toBe(true);
+        expect(res.ok && res.nextPath).toEqual(lineABuilt);
+        expect(getNodeAtPath(root, res.ok ? res.nextPath : []).children.length).toBe(0);
     });
 });
 
@@ -198,5 +216,18 @@ describe("pickOpponentMove", () => {
         const root = twoReplyNode();
         const pick = pickOpponentMove(root, NF3_PATH, stats, () => 0.5);
         expect(pick?.nextPath).toEqual([0, 0, 0, 0]); // Nc6 child
+    });
+
+    test("ignores a '*' summary row in lichessStats when weighting", () => {
+        const root = twoReplyNode();
+        // The explorer's aggregate row (move "*") carries the position totals; it
+        // must not be mistaken for a per-move weight.
+        const withSummary = [
+            { move: "*", white: 5000, draw: 5000, black: 5000 },
+            { move: "Nc6", white: 90, draw: 0, black: 0 },
+            { move: "c5", white: 10, draw: 0, black: 0 },
+        ];
+        expect(pickOpponentMove(root, NF3_PATH, withSummary, () => 0.5)?.san).toBe("Nc6");
+        expect(pickOpponentMove(root, NF3_PATH, withSummary, () => 0.95)?.san).toBe("c5");
     });
 });

@@ -62,8 +62,8 @@ import {
 } from "@/state/atoms";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
 import { findFen, getNodeAtPath } from "@/utils/treeReducer";
-import RepertoireInfo from "./RepertoireInfo";
 import PracticePlay from "./PracticePlay";
+import RepertoireInfo from "./RepertoireInfo";
 
 function PracticePanel() {
   const { t } = useTranslation();
