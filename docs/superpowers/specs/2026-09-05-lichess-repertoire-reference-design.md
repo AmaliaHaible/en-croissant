@@ -215,11 +215,18 @@ cache file for `bytes` (0 if absent).
 
 ### Endpoints
 
-- Lichess: `https://explorer.lichess.org/lichess?variant=standard&fen=<normalized>`
-- Masters: `https://explorer.lichess.org/masters?fen=<normalized>`
+- Lichess: `https://explorer.lichess.org/lichess?variant=standard&fen=<normalized>&moves=50&topGames=0&recentGames=0`
+- Masters: `https://explorer.lichess.org/masters?fen=<normalized>&moves=50&topGames=0`
 
-No auth token. The explorer endpoints do not require one; the app's existing
-`missingExplorerToken` gate on the analysis panel is unrelated and untouched.
+**Correction (post-merge, 2026-09-05):** the explorer endpoints *do* require
+authentication — an unauthenticated request gets a bare `401` (the app's
+`missingExplorerToken` gate on the analysis panel already reflects this). Every
+request must send a `User-Agent` and, threaded from the active session, an
+`Authorization: Bearer <lichess-oauth-token>`. The `RepertoireReference`
+lichess/masters variants carry that token; the Build panel shows the
+analysis panel's "add a Lichess account" prompt when there is none.
+`moves=50` overrides the explorer's default of 12 (which truncated the move
+list and overstated coverage).
 
 Rate limiter constant: 1 request / second (shared across all
 `get_explorer_moves` calls). Tunable in one place.
