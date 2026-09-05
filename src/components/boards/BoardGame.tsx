@@ -60,6 +60,7 @@ import {
   currentGameIdAtom,
   currentGameStateAtom,
   currentPlayersAtom,
+  evalPreviewEnabledAtom,
   gameInputColorAtom,
   gameMatchAlternateColorsAtom,
   gameMatchGameCountAtom,
@@ -167,6 +168,7 @@ function BoardGame() {
   const [liveEvalEnabled, setLiveEvalEnabled] = useAtom(liveEvalEnabledAtom);
   const [whiteFeedbackEnabled, setWhiteFeedbackEnabled] = useAtom(coachFeedbackWhiteAtom);
   const [blackFeedbackEnabled, setBlackFeedbackEnabled] = useAtom(coachFeedbackBlackAtom);
+  const evalPreviewEnabled = useAtomValue(evalPreviewEnabledAtom);
 
   const [inputColor, setInputColor] = useAtom(gameInputColorAtom);
   function cycleColor() {
@@ -1074,6 +1076,7 @@ function BoardGame() {
           selectedPiece={selectedPiece}
           cgRef={cgRef}
           enablePremoves={isPlayerVsEngine && gameState === "playing"}
+          evalPreviewEnabled={evalPreviewEnabled}
         />
       </Portal>
       <Portal target="#topRight" style={{ height: "100%", overflow: "hidden" }}>

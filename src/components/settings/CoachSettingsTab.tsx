@@ -8,6 +8,7 @@ import {
   autoGenerateReportAtom,
   type CoachEngineConfig,
   enginesAtom,
+  evalPreviewEngineConfigAtom,
   hintEngineConfigAtom,
   liveEvalEngineConfigAtom,
   MAX_BEST_MOVES_COUNT,
@@ -21,7 +22,10 @@ function CoachEngineSection({
   title,
   description,
 }: {
-  configAtom: typeof liveEvalEngineConfigAtom | typeof hintEngineConfigAtom;
+  configAtom:
+    | typeof liveEvalEngineConfigAtom
+    | typeof hintEngineConfigAtom
+    | typeof evalPreviewEngineConfigAtom;
   title: string;
   description: string;
 }) {
@@ -217,6 +221,11 @@ export default function CoachSettingsTab() {
         configAtom={hintEngineConfigAtom}
         title={t("Settings.Coach.Hint")}
         description={t("Settings.Coach.Hint.Desc")}
+      />
+      <CoachEngineSection
+        configAtom={evalPreviewEngineConfigAtom}
+        title={t("Settings.Coach.EvalPreview")}
+        description={t("Settings.Coach.EvalPreview.Desc")}
       />
       <ReportSection />
     </Stack>

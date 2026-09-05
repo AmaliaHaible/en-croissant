@@ -237,6 +237,13 @@ export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>("hint-eng
     variantId: null,
 });
 
+export const evalPreviewEnabledAtom = atomWithStorage<boolean>("eval-preview-enabled", false);
+
+export const evalPreviewEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "eval-preview-engine-config",
+    { engineId: null, variantId: null },
+);
+
 export const MAX_BEST_MOVES_COUNT = 3;
 
 export const defaultReportSettings = {

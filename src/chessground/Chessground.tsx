@@ -1,6 +1,7 @@
 import { Chessground as NativeChessground } from "@lichess-org/chessground";
 import type { Api } from "@lichess-org/chessground/api";
 import type { Config } from "@lichess-org/chessground/config";
+import type { Key } from "@lichess-org/chessground/types";
 import { Box } from "@mantine/core";
 import { useAtomValue } from "jotai";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -53,8 +54,14 @@ export interface ChessgroundRef {
   cancelPremove: () => void;
 }
 
+export type ChessgroundHoverDest = { orig: Key; dest: Key } | null;
+
 interface ChessgroundProps extends Config {
   setBoardFen?: (fen: string) => void;
+  // Chessground has no built-in "hovering a legal destination while dragging" event
+  // (`movable.events` only fires on drop, and `draggable` has no events at all), so
+  // this is tracked here with a manual pointermove listener + `getKeyAtDomPos`.
+  onDragOverDest?: (hover: ChessgroundHoverDest) => void;
   ref?: Ref<ChessgroundRef>;
 }
 
@@ -134,6 +141,45 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
       },
     });
   }, [api, props, moveMethod]);
+
+  const onDragOverDestRef = useRef(props.onDragOverDest);
+  onDragOverDestRef.current = props.onDragOverDest;
+
+  useEffect(() => {
+    if (!api) return;
+    let lastReported: ChessgroundHoverDest = null;
+
+    const report = (next: ChessgroundHoverDest) => {
+      if (next?.orig === lastReported?.orig && next?.dest === lastReported?.dest) return;
+      lastReported = next;
+      onDragOverDestRef.current?.(next);
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const current = api.state.draggable.current;
+      if (!current) {
+        report(null);
+        return;
+      }
+      const hoveredKey = api.getKeyAtDomPos([e.clientX, e.clientY]);
+      const legalDests = api.state.movable.dests?.get(current.orig);
+      if (hoveredKey && legalDests?.includes(hoveredKey)) {
+        report({ orig: current.orig, dest: hoveredKey });
+      } else {
+        report(null);
+      }
+    };
+    const handlePointerEnd = () => report(null);
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [api]);
 
   const boardImage = useAtomValue(boardImageAtom);
   const boardCoordColors = getBoardCoordinateColors(boardImage);

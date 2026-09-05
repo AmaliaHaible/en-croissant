@@ -20,7 +20,12 @@ import { useTranslation } from "react-i18next";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { Chessground, type ChessgroundRef } from "@/chessground/Chessground";
+import {
+  Chessground,
+  type ChessgroundHoverDest,
+  type ChessgroundRef,
+} from "@/chessground/Chessground";
+import { useEvalPreview } from "@/hooks/useEvalPreview";
 import { useKeybind } from "@/hooks/useKeybind";
 import {
   autoPromoteAtom,
@@ -68,6 +73,7 @@ import AnnotationHint from "./AnnotationHint";
 import { BoardBar } from "./BoardBar";
 import Clock from "./Clock";
 import EvalBar from "./EvalBar";
+import EvalPreviewBadge from "./EvalPreviewBadge";
 import MoveInput from "./MoveInput";
 import PromotionModal from "./PromotionModal";
 
@@ -99,6 +105,7 @@ interface ChessboardProps {
   onMove?: (uci: string) => void;
   cgRef?: React.Ref<ChessgroundRef>;
   enablePremoves?: boolean;
+  evalPreviewEnabled?: boolean;
 }
 
 function Board({
@@ -114,6 +121,7 @@ function Board({
   onMove,
   cgRef,
   enablePremoves = false,
+  evalPreviewEnabled = false,
 }: ChessboardProps) {
   const { t } = useTranslation();
 
@@ -165,6 +173,14 @@ function Board({
   }
 
   const [pendingMove, setPendingMove] = useState<NormalMove | null>(null);
+  const [dragHover, setDragHover] = useState<ChessgroundHoverDest>(null);
+  const evalPreview = useEvalPreview(
+    evalPreviewEnabled,
+    dragHover,
+    currentNode.fen,
+    rootFen,
+    moves,
+  );
 
   const turn = pos?.turn || "white";
   const orientation = headers.orientation || "white";
@@ -309,10 +325,11 @@ function Board({
     }
   }
 
-  // Variation arrows: show all children moves when there are alternatives. Best-move
+  // Variation arrows: show all children moves, even a lone one (a report-flagged best
+  // move should still get its arrow when the game only went one way). Best-move
   // suggestion arrows always show (they're an explicit opt-in from the report settings);
   // plain/manual variation arrows stay gated behind the general toggle.
-  if (currentNode.children.length > 1) {
+  if (currentNode.children.length > 0) {
     const suggestionRanks = currentNode.children.map((c) =>
       getBestMoveSuggestionRank(c.annotations),
     );
@@ -656,6 +673,7 @@ function Board({
                 turnColor={turn}
                 check={moveHighlight && pos?.isCheck()}
                 lastMove={moveHighlight && !editingMode ? lastMove : undefined}
+                onDragOverDest={setDragHover}
                 premovable={{
                   enabled: enablePremoves && !editingMode && !viewOnly,
                 }}
@@ -684,6 +702,13 @@ function Board({
                   },
                 }}
               />
+              {evalPreviewEnabled && evalPreview && pos && (
+                <EvalPreviewBadge
+                  square={parseSquare(evalPreview.square)!}
+                  score={evalPreview.score}
+                  orientation={orientation}
+                />
+              )}
             </Box>
           </Group>
           <BoardBar

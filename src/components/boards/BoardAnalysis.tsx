@@ -25,6 +25,7 @@ import {
   currentTabSelectedAtom,
   enableAllAtom,
   enginesAtom,
+  evalPreviewEnabledAtom,
   practiceStateAtom,
   referenceDbAtom,
   reportSettingsAtom,
@@ -101,6 +102,7 @@ function BoardAnalysis() {
   const setReportInProgress = useStore(store, (s) => s.setReportInProgress);
   const autoReportAttempted = useRef<Set<string>>(new Set());
   const [, setAnalysisTab] = useAtom(currentAnalysisTabAtom);
+  const evalPreviewEnabled = useAtomValue(evalPreviewEnabledAtom);
   const [currentTabSelected, setCurrentTabSelected] = useAtom(currentTabSelectedAtom);
 
   useEffect(() => {
@@ -236,6 +238,7 @@ function BoardAnalysis() {
           editingMode={editingMode}
           boardRef={boardRef}
           selectedPiece={selectedPiece}
+          evalPreviewEnabled={evalPreviewEnabled}
         />
       </Portal>
       <Portal target="#topRight" style={{ height: "100%" }}>

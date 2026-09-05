@@ -7,6 +7,7 @@ import {
   IconEditOff,
   IconEraser,
   IconExternalLink,
+  IconEye,
   IconSwitchVertical,
   IconTarget,
   IconZoomCheck,
@@ -17,7 +18,7 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import domtoimage from "dom-to-image";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { memo, useContext } from "react";
+import { memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
@@ -25,9 +26,13 @@ import {
   autoSaveAtom,
   currentGameStateAtom,
   currentTabAtom,
+  enginesAtom,
   eraseDrawablesOnClickAtom,
+  evalPreviewEnabledAtom,
+  evalPreviewEngineConfigAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
+import { type LocalEngine } from "@/utils/engines";
 import { getNodeAtPath } from "@/utils/treeReducer";
 
 interface BoardControlsProps {
@@ -66,6 +71,16 @@ function BoardControls({
   const setGameState = useSetAtom(currentGameStateAtom);
   const autoSave = useAtomValue(autoSaveAtom);
   const eraseDrawablesOnClick = useAtomValue(eraseDrawablesOnClickAtom);
+
+  const [evalPreviewEnabled, setEvalPreviewEnabled] = useAtom(evalPreviewEnabledAtom);
+  const evalPreviewConfig = useAtomValue(evalPreviewEngineConfigAtom);
+  const allEngines = useAtomValue(enginesAtom);
+  const evalPreviewEngine = useMemo(() => {
+    const loadedLocal = (allEngines ?? []).filter(
+      (e): e is LocalEngine => e.type === "local" && !!e.loaded,
+    );
+    return loadedLocal.find((e) => e.id === evalPreviewConfig.engineId) ?? loadedLocal[0] ?? null;
+  }, [allEngines, evalPreviewConfig.engineId]);
 
   const orientation = headers.orientation || "white";
   const toggleOrientation = () =>
@@ -148,6 +163,18 @@ function BoardControls({
           ) : (
             <IconZoomCheck size="1.2rem" />
           )}
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip
+        position="right"
+        label={evalPreviewEngine ? t("Board.Coach.EvalPreview") : t("Board.Coach.NoEngine")}
+      >
+        <ActionIcon
+          variant={evalPreviewEnabled ? "filled" : undefined}
+          disabled={!evalPreviewEngine}
+          onClick={() => setEvalPreviewEnabled((v) => !v)}
+        >
+          <IconEye size="1.2rem" />
         </ActionIcon>
       </Tooltip>
       {!eraseDrawablesOnClick && (
