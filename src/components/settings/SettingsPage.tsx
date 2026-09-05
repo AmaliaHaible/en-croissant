@@ -74,6 +74,7 @@ import FileInput from "../common/FileInput";
 import BoardSelect from "./BoardSelect";
 import CoachSettingsTab from "./CoachSettingsTab";
 import ColorControl from "./ColorControl";
+import ExplorerCacheSetting from "./ExplorerCacheSetting";
 import FontSizeSlider from "./FontSizeSlider";
 import KeybindInput from "./KeybindInput";
 import PiecesSelect from "./PiecesSelect";
@@ -575,6 +576,14 @@ export default function Page() {
             onChange={(val) => setPracticeAutoDifficulty(val as "none" | "1" | "2" | "3" | "4")}
           />
         ),
+      },
+      {
+        id: "repertoire-lichess-cache",
+        category: "repertoire",
+        title: t("Settings.Repertoire.LichessCache"),
+        description: t("Settings.Repertoire.LichessCache.Desc"),
+        keywords: ["lichess", "cache", "explorer", "repertoire", "clear", "storage"],
+        render: () => <ExplorerCacheSetting />,
       },
       // Sound settings
       {
