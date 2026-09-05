@@ -63,6 +63,7 @@ import {
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
 import { findFen, getNodeAtPath } from "@/utils/treeReducer";
 import RepertoireInfo from "./RepertoireInfo";
+import PracticePlay from "./PracticePlay";
 
 function PracticePanel() {
   const { t } = useTranslation();
@@ -317,6 +318,7 @@ function PracticePanel() {
         <Tabs.List>
           <Tabs.Tab value="train">{t("Board.Practice.Train")}</Tabs.Tab>
           <Tabs.Tab value="build">{t("Board.Practice.Build")}</Tabs.Tab>
+          <Tabs.Tab value="play">{t("Board.Practice.Play")}</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="train" style={{ overflow: "hidden" }}>
@@ -627,6 +629,10 @@ function PracticePanel() {
 
         <Tabs.Panel value="build" style={{ overflow: "hidden" }}>
           <RepertoireInfo />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="play" style={{ overflow: "hidden" }}>
+          <PracticePlay />
         </Tabs.Panel>
       </Tabs>
 
