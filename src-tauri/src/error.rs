@@ -63,6 +63,12 @@ pub enum Error {
     #[error("Missing reference database")]
     MissingReferenceDatabase,
 
+    #[error(transparent)]
+    Json(Box<serde_json::Error>),
+
+    #[error("Explorer cache not initialized")]
+    ExplorerCacheUninitialized,
+
     #[error("No opening found")]
     NoOpeningFound,
 
@@ -190,6 +196,12 @@ impl From<diesel::r2d2::PoolError> for Error {
 impl From<std::time::SystemTimeError> for Error {
     fn from(value: std::time::SystemTimeError) -> Self {
         Self::SystemTime(Box::new(value))
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::Json(Box::new(value))
     }
 }
 
