@@ -128,3 +128,75 @@ describe("lineStatus", () => {
         expect(lineStatus(leaf, "white")).toBe("gap");
     });
 });
+
+import { matchUserMove, pickOpponentMove } from "../repertoirePlay";
+
+describe("matchUserMove", () => {
+    test("accepts a direct child and follows the transposition after it", () => {
+        const { root, lineBBeforeNf3, lineABuilt } = transpositionTree();
+        // At Line B's 1.d4 e6 2.c4 Nf6 node (White to move) the stored child is
+        // 3.Nf3, a leaf whose position transposes into the built-out Line A.
+        const res = matchUserMove(root, lineBBeforeNf3, "Nf3");
+        expect(res.ok).toBe(true);
+        expect(res.ok && res.nextPath).toEqual(lineABuilt);
+    });
+
+    test("accepts a move that is not a stored child but transposes into a prepared line", () => {
+        const { root, lineABuilt, lineBBeforeNf3 } = transpositionTree();
+        // Drop Line B's stored 3.Nf3 leaf, so Nf3 is reachable only as a transposition.
+        getNodeAtPath(root, lineBBeforeNf3).children = [];
+        const res = matchUserMove(root, lineBBeforeNf3, "Nf3");
+        expect(res.ok).toBe(true);
+        expect(res.ok && res.nextPath).toEqual(lineABuilt);
+    });
+
+    test("rejects a move that is neither a child nor a transposition", () => {
+        const { root, lineBBeforeNf3 } = transpositionTree();
+        expect(matchUserMove(root, lineBBeforeNf3, "e4")).toEqual({ ok: false });
+    });
+});
+
+describe("pickOpponentMove", () => {
+    function twoReplyNode() {
+        // node (black to move) with two prepared replies: Nc6 and c5.
+        const nc6 = mkNode(fenAfter(["e4", "e5", "Nf3", "Nc6"]), "Nc6", 4, [
+            mkNode(fenAfter(["e4", "e5", "Nf3", "Nc6", "Bb5"]), "Bb5", 5, []),
+        ]);
+        const c5 = mkNode(fenAfter(["e4", "e5", "Nf3", "c5"]), "c5", 4, [
+            mkNode(fenAfter(["e4", "e5", "Nf3", "c5", "Bc4"]), "Bc4", 5, []),
+        ]);
+        const nf3 = mkNode(fenAfter(["e4", "e5", "Nf3"]), "Nf3", 3, [nc6, c5]);
+        const e5 = mkNode(fenAfter(["e4", "e5"]), "e5", 2, [nf3]);
+        const e4 = mkNode(fenAfter(["e4"]), "e4", 1, [e5]);
+        return mkNode(fenAfter([]), null, 0, [e4]);
+    }
+    const NF3_PATH = [0, 0, 0];
+    const stats = [
+        { move: "Nc6", white: 90, draw: 0, black: 0 },
+        { move: "c5", white: 10, draw: 0, black: 0 },
+    ];
+
+    test("returns null when the node has no children", () => {
+        const root = twoReplyNode();
+        expect(pickOpponentMove(root, [0, 0, 0, 0, 0], stats)).toBeNull();
+    });
+
+    test("weighted pick — low rng lands on the frequent move, high rng on the rare one", () => {
+        const root = twoReplyNode();
+        expect(pickOpponentMove(root, NF3_PATH, stats, () => 0.5)?.san).toBe("Nc6");
+        expect(pickOpponentMove(root, NF3_PATH, stats, () => 0.95)?.san).toBe("c5");
+    });
+
+    test("a reply Lichess has never seen still gets a small floor and is reachable only at the extreme", () => {
+        const root = twoReplyNode();
+        const onlyNc6 = [{ move: "Nc6", white: 100, draw: 0, black: 0 }];
+        expect(pickOpponentMove(root, NF3_PATH, onlyNc6, () => 0.5)?.san).toBe("Nc6");
+        expect(pickOpponentMove(root, NF3_PATH, onlyNc6, () => 0.999)?.san).toBe("c5");
+    });
+
+    test("nextPath is resolved through transpositions", () => {
+        const root = twoReplyNode();
+        const pick = pickOpponentMove(root, NF3_PATH, stats, () => 0.5);
+        expect(pick?.nextPath).toEqual([0, 0, 0, 0]); // Nc6 child
+    });
+});
