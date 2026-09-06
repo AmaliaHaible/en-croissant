@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Alert,
   Badge,
-  Box,
   Button,
   Group,
   Loader,
@@ -122,27 +121,28 @@ function CandidateList({
 }: {
   moves: Candidate[];
   playedUci?: string | null;
+  /** When set, rows are clickable to jump back and play that move. Otherwise
+   *  they render with the same footprint but inert (keeps the layout static). */
   onSelect?: (uci: string) => void;
 }) {
+  const interactive = !!onSelect;
   return (
-    <Stack gap={onSelect ? 2 : 0}>
+    <Stack gap={2}>
       {moves.map((m) => {
         const played = playedUci != null && m.uci === playedUci;
-        return onSelect ? (
+        return (
           <Button
             key={m.uci}
+            component={interactive ? "button" : "div"}
             variant="subtle"
             color="gray"
             size="compact-xs"
             fullWidth
-            onClick={() => onSelect(m.uci)}
+            onClick={interactive ? () => onSelect?.(m.uci) : undefined}
+            style={interactive ? undefined : { cursor: "default" }}
           >
             <CandidateRow m={m} played={played} />
           </Button>
-        ) : (
-          <Box key={m.uci} px={6} py={2}>
-            <CandidateRow m={m} played={played} />
-          </Box>
         );
       })}
     </Stack>
@@ -765,15 +765,30 @@ function BoardTraining() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const showBestNow = state.phase === "waiting" && state.priorScore !== undefined;
-  const lastTurnPanel =
-    state.lastTurn &&
-    // Hide while the board is still on that position — right after an auto-undo
-    // it would just repeat "best moves now". Shown once play has moved on.
-    currentNode.fen !== state.lastTurn.fen &&
-    (state.phase === "waiting" || state.phase === "outOfBook" || state.phase === "gameOver")
-      ? state.lastTurn
-      : null;
+  const activePlay =
+    state.phase === "waiting" || state.phase === "checking" || state.phase === "opponentThinking";
+  const canHint = state.phase === "waiting" && state.priorScore !== undefined;
+  const canRedo =
+    state.phase === "waiting" || state.phase === "outOfBook" || state.phase === "gameOver";
+  // Whether "best moves last turn" would just duplicate "best moves now" (board
+  // is still on that position — e.g. right after an auto-undo).
+  const lastTurnIsCurrent = !!state.lastTurn && currentNode.fen === state.lastTurn.fen;
+  const statusText =
+    state.phase === "checking"
+      ? t("Board.Training.CheckingMove", "Checking your move…")
+      : state.phase === "opponentThinking"
+        ? t("Board.Training.OpponentThinking", "Opponent is thinking…")
+        : state.phase === "outOfBook"
+          ? t("Board.Training.OutOfBook", "Out of book.")
+          : state.phase === "gameOver"
+            ? `${t("Board.Training.GameOver", "Game over")} ${state.result ?? ""}`.trim()
+            : state.priorScore === undefined
+              ? t("Board.Training.Evaluating", "Evaluating…")
+              : t("Board.Training.YourMove", "Your move");
+  const busy =
+    state.phase === "checking" ||
+    state.phase === "opponentThinking" ||
+    (state.phase === "waiting" && state.priorScore === undefined);
 
   return (
     <>
@@ -990,77 +1005,34 @@ function BoardTraining() {
                   </Paper>
                 </SimpleGrid>
 
-                {state.phase === "waiting" && (
+                {state.phase !== "setup" && (
                   <Paper p="sm" withBorder>
-                    <Stack gap="xs" align="center">
-                      {state.priorScore === undefined ? (
-                        <Group gap="xs">
-                          <Loader size="xs" />
-                          <Text fz="sm" c="dimmed">
-                            {t("Board.Training.Evaluating", "Evaluating…")}
-                          </Text>
-                        </Group>
-                      ) : (
-                        <>
-                          <Text fz="sm" c="dimmed">
-                            {t("Board.Training.YourMove", "Your move")}
-                          </Text>
-                          <Button variant="light" size="sm" fullWidth onClick={cycleHint}>
-                            {hint.stage === 1
-                              ? t("Board.Training.ShowArrows", "Show arrows")
-                              : t("Board.Training.Hint", "Hint")}
-                          </Button>
-                        </>
-                      )}
-                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                        {t("Common.Stop")}
-                      </Button>
-                    </Stack>
-                  </Paper>
-                )}
-
-                {state.phase === "checking" && (
-                  <Paper p="sm" withBorder>
-                    <Stack gap="xs" align="center">
-                      <Group gap="xs" justify="center">
-                        <Loader size="xs" />
-                        <Text fz="sm" c="dimmed">
-                          {t("Board.Training.CheckingMove", "Checking your move…")}
+                    <Stack gap="xs">
+                      <Group gap="xs" justify="center" mih={22} wrap="nowrap">
+                        {busy && <Loader size="xs" />}
+                        <Text
+                          fz="sm"
+                          fw={state.phase === "gameOver" ? 600 : undefined}
+                          c={state.phase === "gameOver" ? undefined : "dimmed"}
+                        >
+                          {statusText}
                         </Text>
                       </Group>
-                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                        {t("Common.Stop")}
+                      <Button
+                        variant="light"
+                        size="sm"
+                        fullWidth
+                        disabled={!canHint}
+                        onClick={cycleHint}
+                      >
+                        {hint.stage === 1
+                          ? t("Board.Training.ShowArrows", "Show arrows")
+                          : t("Board.Training.Hint", "Hint")}
                       </Button>
-                    </Stack>
-                  </Paper>
-                )}
-
-                {state.phase === "opponentThinking" && (
-                  <Paper p="sm" withBorder>
-                    <Stack gap="xs" align="center">
-                      <Group gap="xs">
-                        <Loader size="xs" />
-                        <Text fz="sm" c="dimmed">
-                          {t("Board.Training.OpponentThinking", "Opponent is thinking…")}
-                        </Text>
-                      </Group>
-                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                        {t("Common.Stop")}
-                      </Button>
-                    </Stack>
-                  </Paper>
-                )}
-
-                {state.phase === "outOfBook" && (
-                  <Paper p="sm" withBorder>
-                    <Stack gap="xs" align="center">
-                      <Text fz="sm" c="dimmed" ta="center">
-                        {t("Board.Training.OutOfBook", "Out of book.")}
-                      </Text>
-                      {opponentEngine && (
+                      {state.phase === "outOfBook" && opponentEngine && (
                         <Button
-                          variant="light"
-                          size="sm"
+                          variant="default"
+                          size="xs"
                           fullWidth
                           onClick={() =>
                             setState((s) => ({
@@ -1075,81 +1047,77 @@ function BoardTraining() {
                           })}
                         </Button>
                       )}
-                      <Button variant="light" size="sm" fullWidth onClick={newGame}>
-                        {t("Board.Training.NewGame", "New game")}
-                      </Button>
-                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                        {t("Common.Stop")}
-                      </Button>
+                      <Group gap="xs" grow wrap="nowrap">
+                        {(state.phase === "outOfBook" || state.phase === "gameOver") && (
+                          <Button variant="default" size="xs" onClick={newGame}>
+                            {t("Board.Training.NewGame", "New game")}
+                          </Button>
+                        )}
+                        <Button variant="subtle" size="xs" color="red" onClick={stopSession}>
+                          {t("Common.Stop")}
+                        </Button>
+                      </Group>
                     </Stack>
                   </Paper>
                 )}
 
-                {state.phase === "gameOver" && (
-                  <Paper p="sm" withBorder>
-                    <Stack gap="xs" align="center">
-                      <Text fw={500}>
-                        {t("Board.Training.GameOver", "Game over")} {state.result}
-                      </Text>
-                      <Button variant="light" size="sm" fullWidth onClick={newGame}>
-                        {t("Board.Training.NewGame", "New game")}
-                      </Button>
-                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                        {t("Common.Stop")}
-                      </Button>
-                    </Stack>
-                  </Paper>
-                )}
-
-                {(showBestNow || lastTurnPanel) && (
+                {(activePlay || state.lastTurn) && (
                   <Group grow align="stretch" wrap="nowrap" gap="xs">
-                    {showBestNow && (
-                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
+                    {activePlay && (
+                      <Paper p="xs" withBorder mih={172} style={{ minWidth: 0 }}>
                         <Text fz="xs" fw={600} tt="uppercase" c="dimmed" mb={4}>
                           {t("Board.Training.BestNow", "Best moves now")}
                         </Text>
-                        {hint.stage === 0 ? (
-                          <Text fz="xs" c="dimmed">
-                            {t(
-                              "Board.Training.BestNowHidden",
-                              "Press Hint to reveal the candidate moves.",
-                            )}
-                          </Text>
-                        ) : currentCandidates.length > 0 ? (
+                        {canHint && hint.stage > 0 && currentCandidates.length > 0 ? (
                           <CandidateList moves={currentCandidates} />
                         ) : (
-                          <Group gap="xs">
-                            <Loader size="xs" />
-                            <Text fz="xs" c="dimmed">
-                              {t("Board.Training.Evaluating", "Evaluating…")}
-                            </Text>
-                          </Group>
+                          <Text fz="xs" c="dimmed">
+                            {canHint
+                              ? t(
+                                  "Board.Training.BestNowHidden",
+                                  "Press Hint to reveal the candidate moves.",
+                                )
+                              : t("Board.Training.BestNowWait", "Revealed on your move.")}
+                          </Text>
                         )}
                       </Paper>
                     )}
-                    {lastTurnPanel && (
-                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
+                    {state.lastTurn && (
+                      <Paper p="xs" withBorder mih={172} style={{ minWidth: 0 }}>
                         <Group justify="space-between" mb={4} wrap="nowrap">
                           <Text fz="xs" fw={600} tt="uppercase" c="dimmed">
                             {t("Board.Training.BestLastTurn", "Best moves last turn")}
                           </Text>
-                          {lastTurnPanel.rejected && (
+                          {state.lastTurn.rejected && (
                             <Badge size="xs" color="red" variant="light">
                               {t("Board.Training.Undone", "undone")}
                             </Badge>
                           )}
                         </Group>
-                        <Text fz="xs" c="dimmed" mb={4}>
-                          {t(
-                            "Board.Training.RedoHint",
-                            "Pick a move to jump back and play it instead.",
-                          )}
-                        </Text>
-                        <CandidateList
-                          moves={lastTurnPanel.candidates}
-                          playedUci={lastTurnPanel.playedUci}
-                          onSelect={redoLastTurn}
-                        />
+                        {lastTurnIsCurrent ? (
+                          <Text fz="xs" c="dimmed">
+                            {t(
+                              "Board.Training.RetryingPosition",
+                              "You're back on this position — see “Best moves now”.",
+                            )}
+                          </Text>
+                        ) : (
+                          <>
+                            {canRedo && (
+                              <Text fz="xs" c="dimmed" mb={4}>
+                                {t(
+                                  "Board.Training.RedoHint",
+                                  "Pick a move to jump back and play it instead.",
+                                )}
+                              </Text>
+                            )}
+                            <CandidateList
+                              moves={state.lastTurn.candidates}
+                              playedUci={state.lastTurn.playedUci}
+                              onSelect={canRedo ? redoLastTurn : undefined}
+                            />
+                          </>
+                        )}
                       </Paper>
                     )}
                   </Group>
