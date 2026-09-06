@@ -228,7 +228,7 @@ function BoardTraining() {
   const setFen = useStore(store, (s) => s.setFen);
   const setHeaders = useStore(store, (s) => s.setHeaders);
   const headers = useStore(store, (s) => s.headers);
-  const appendMove = useStore(store, (s) => s.appendMove);
+  const storeMakeMove = useStore(store, (s) => s.makeMove);
   const goToMove = useStore(store, (s) => s.goToMove);
   const deleteMove = useStore(store, (s) => s.deleteMove);
   const setPracticePath = useStore(store, (s) => s.setPracticePath);
@@ -363,7 +363,6 @@ function BoardTraining() {
     setHeaders({ ...headers, fen: startFen, orientation: color });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
-    setInvisible(true);
     setState({
       phase: pos?.turn === color ? "waiting" : "opponentThinking",
       fen: startFen,
@@ -381,7 +380,6 @@ function BoardTraining() {
     setHeaders({ ...headers, fen: startFen, orientation: color });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
-    setInvisible(true);
     setState({
       phase: pos?.turn === color ? "waiting" : "opponentThinking",
       fen: startFen,
@@ -405,9 +403,10 @@ function BoardTraining() {
   }
   useHotkeys("h", cycleHint, { enabled: state.phase === "waiting" });
 
-  // Jump back to the position last turn was played from, drop the line that
-  // followed, and play `uci` instead — then continue with a fresh opponent
-  // reply. Offered from the "best moves last turn" panel.
+  // Jump back to the position last turn was played from and play `uci` there
+  // instead — as a *variation*, keeping the line you actually played — then
+  // continue with a fresh opponent reply. The "best moves last turn" list
+  // stays put so you can keep trying alternatives from the same position.
   const redoLastTurn = useCallback(
     (uci: string) => {
       const lt = state.lastTurn;
@@ -415,16 +414,17 @@ function BoardTraining() {
       const move = parseUci(uci);
       if (!move) return;
       goToMove(lt.path);
-      const node = getNodeAtPath(store.getState().root, lt.path);
-      if (node.children.length > 0) deleteMove([...lt.path, 0]);
-      appendMove({ payload: move });
+      // `makeMove` (unlike `appendMove`) works off the pointer, so it branches
+      // from `lt.path`: a new child if this move isn't there yet, else it just
+      // navigates into the existing branch.
+      storeMakeMove({ payload: move });
       const newPath = store.getState().position;
       const newNode = getNodeAtPath(store.getState().root, newPath);
       const [newPos] = positionFromFen(newNode.fen);
       setHint({ stage: 0 });
       setState((s) => ({
         ...s,
-        lastTurn: undefined,
+        lastTurn: s.lastTurn ? { ...s.lastTurn, playedUci: uci, rejected: false } : undefined,
         priorScore: undefined,
         checkParent: undefined,
         checkChild: undefined,
@@ -433,7 +433,7 @@ function BoardTraining() {
           : { phase: "opponentThinking" as const, fen: newNode.fen, path: newPath }),
       }));
     },
-    [state.lastTurn, goToMove, deleteMove, appendMove, store, setHint, setState],
+    [state.lastTurn, goToMove, storeMakeMove, store, setHint, setState],
   );
 
   // Reset the hint stage whenever the position changes (a move was played, or
@@ -548,18 +548,12 @@ function BoardTraining() {
     setPracticePath(state.phase !== "setup" ? (state.path ?? null) : null);
   }, [state.phase, state.path, setPracticePath]);
 
-  // Blur notation during active play; restore otherwise.
+  // The move list is never blurred in training — the moves are generated live,
+  // so there is nothing to "read ahead" to, and the candidate panels want it
+  // legible.
   useEffect(() => {
-    if (
-      state.phase === "waiting" ||
-      state.phase === "checking" ||
-      state.phase === "opponentThinking"
-    ) {
-      setInvisible(true);
-    } else {
-      setInvisible(false);
-    }
-  }, [state.phase, setInvisible]);
+    setInvisible(false);
+  }, [setInvisible]);
 
   // waiting: capture the prior score once the engine answers for this position.
   useEffect(() => {
@@ -701,9 +695,11 @@ function BoardTraining() {
       }
       await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS));
       if (cancelled || currentFenRef.current !== fenAtStart) return;
-      appendMove({ payload: move });
-      // Fresh reads: `appendMove` mutated the tree and advanced the store's
-      // position to the new node.
+      // `makeMove` branches from the pointer (`pathAtStart`), so the opponent's
+      // reply lands on whatever line the user is on — mainline or a variation
+      // entered via "best moves last turn".
+      storeMakeMove({ payload: move });
+      // Fresh reads: the tree was mutated and the pointer advanced to the new node.
       const freshRoot = store.getState().root;
       const newPath = store.getState().position;
       const newNode = getNodeAtPath(freshRoot, newPath);
@@ -757,6 +753,13 @@ function BoardTraining() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const showBestNow = state.phase === "waiting" && state.priorScore !== undefined;
+  const lastTurnPanel =
+    state.lastTurn &&
+    (state.phase === "waiting" || state.phase === "outOfBook" || state.phase === "gameOver")
+      ? state.lastTurn
+      : null;
 
   return (
     <>
@@ -1002,31 +1005,6 @@ function BoardTraining() {
                   </Paper>
                 )}
 
-                {state.phase === "waiting" && state.priorScore !== undefined && (
-                  <Paper p="sm" withBorder>
-                    <Text fz="xs" fw={600} tt="uppercase" c="dimmed" mb={4}>
-                      {t("Board.Training.BestNow", "Best moves now")}
-                    </Text>
-                    {hint.stage === 0 ? (
-                      <Text fz="xs" c="dimmed">
-                        {t(
-                          "Board.Training.BestNowHidden",
-                          "Press Hint to reveal the candidate moves.",
-                        )}
-                      </Text>
-                    ) : currentCandidates.length > 0 ? (
-                      <CandidateList moves={currentCandidates} />
-                    ) : (
-                      <Group gap="xs">
-                        <Loader size="xs" />
-                        <Text fz="xs" c="dimmed">
-                          {t("Board.Training.Evaluating", "Evaluating…")}
-                        </Text>
-                      </Group>
-                    )}
-                  </Paper>
-                )}
-
                 {state.phase === "checking" && (
                   <Paper p="sm" withBorder>
                     <Stack gap="xs" align="center">
@@ -1109,34 +1087,59 @@ function BoardTraining() {
                   </Paper>
                 )}
 
-                {state.lastTurn &&
-                  (state.phase === "waiting" ||
-                    state.phase === "outOfBook" ||
-                    state.phase === "gameOver") && (
-                    <Paper p="sm" withBorder>
-                      <Group justify="space-between" mb={4}>
-                        <Text fz="xs" fw={600} tt="uppercase" c="dimmed">
-                          {t("Board.Training.BestLastTurn", "Best moves last turn")}
+                {(showBestNow || lastTurnPanel) && (
+                  <Group grow align="stretch" wrap="nowrap" gap="xs">
+                    {showBestNow && (
+                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
+                        <Text fz="xs" fw={600} tt="uppercase" c="dimmed" mb={4}>
+                          {t("Board.Training.BestNow", "Best moves now")}
                         </Text>
-                        {state.lastTurn.rejected && (
-                          <Badge size="xs" color="red" variant="light">
-                            {t("Board.Training.Undone", "undone")}
-                          </Badge>
+                        {hint.stage === 0 ? (
+                          <Text fz="xs" c="dimmed">
+                            {t(
+                              "Board.Training.BestNowHidden",
+                              "Press Hint to reveal the candidate moves.",
+                            )}
+                          </Text>
+                        ) : currentCandidates.length > 0 ? (
+                          <CandidateList moves={currentCandidates} />
+                        ) : (
+                          <Group gap="xs">
+                            <Loader size="xs" />
+                            <Text fz="xs" c="dimmed">
+                              {t("Board.Training.Evaluating", "Evaluating…")}
+                            </Text>
+                          </Group>
                         )}
-                      </Group>
-                      <Text fz="xs" c="dimmed" mb={4}>
-                        {t(
-                          "Board.Training.RedoHint",
-                          "Pick a move to jump back and play it instead.",
-                        )}
-                      </Text>
-                      <CandidateList
-                        moves={state.lastTurn.candidates}
-                        playedUci={state.lastTurn.playedUci}
-                        onSelect={redoLastTurn}
-                      />
-                    </Paper>
-                  )}
+                      </Paper>
+                    )}
+                    {lastTurnPanel && (
+                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
+                        <Group justify="space-between" mb={4} wrap="nowrap">
+                          <Text fz="xs" fw={600} tt="uppercase" c="dimmed">
+                            {t("Board.Training.BestLastTurn", "Best moves last turn")}
+                          </Text>
+                          {lastTurnPanel.rejected && (
+                            <Badge size="xs" color="red" variant="light">
+                              {t("Board.Training.Undone", "undone")}
+                            </Badge>
+                          )}
+                        </Group>
+                        <Text fz="xs" c="dimmed" mb={4}>
+                          {t(
+                            "Board.Training.RedoHint",
+                            "Pick a move to jump back and play it instead.",
+                          )}
+                        </Text>
+                        <CandidateList
+                          moves={lastTurnPanel.candidates}
+                          playedUci={lastTurnPanel.playedUci}
+                          onSelect={redoLastTurn}
+                        />
+                      </Paper>
+                    )}
+                  </Group>
+                )}
 
                 <Badge variant="light" color="gray" style={{ alignSelf: "flex-start" }}>
                   {color === "white" ? t("Fen.White") : t("Fen.Black")}
