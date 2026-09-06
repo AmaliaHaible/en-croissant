@@ -97,7 +97,6 @@ export function useTrainingEngine(): {
 
     const [lines, setLines] = useState<BestMoves[]>([]);
     const [resultFen, setResultFen] = useState("");
-    const linesRef = useRef<{ fen: string; lines: BestMoves[] }>({ fen: "", lines: [] });
 
     // The engine process we last asked to search, so it can still be stopped or
     // killed after `engine`/`activeTab` changed or became null.
@@ -125,7 +124,6 @@ export function useTrainingEngine(): {
             // A `{ t: "Time" }` search reports progress===100 on completion, but
             // intermediate lines are published too: the eval keeps improving
             // while the user thinks, so there's no reason to withhold them.
-            linesRef.current = { fen: finalFen, lines: bestLines };
             setLines(bestLines);
             setResultFen(finalFen);
             setScore(bestLines[0].score);

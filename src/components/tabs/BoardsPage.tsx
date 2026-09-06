@@ -371,7 +371,7 @@ function TabSwitch({
           .with("training", () => (
             <>
               {mosaic}
-              <BoardTraining id={tab.value} />
+              <BoardTraining />
             </>
           ))
           .exhaustive()}
