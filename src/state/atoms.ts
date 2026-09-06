@@ -727,9 +727,17 @@ export type TrainingState = {
     engineOpponentActive: boolean;
     /** Terminal result string for the gameOver panel. */
     result?: string;
-    /** The move just undone by the threshold gate, so the panel can show the
-     *  user what eval it would have given. Cleared on the next accepted move. */
-    lastRejected?: { san: string | null; cp: number; prior: number };
+    /** The turn the user just played: the position it was played from, the
+     *  engine's candidate moves there, which one the user played and whether it
+     *  was undone. Powers the "best moves last turn" panel and lets the user
+     *  jump back to redo the turn. Kept until the next turn is played. */
+    lastTurn?: {
+        path: number[];
+        prior: number;
+        playedUci: string | null;
+        rejected: boolean;
+        candidates: { san: string; uci: string; cp: number; goodEnough: boolean }[];
+    };
 };
 
 const trainingStateFamily = atomFamily((_tab: string) =>

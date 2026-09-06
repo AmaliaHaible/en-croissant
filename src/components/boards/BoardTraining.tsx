@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
@@ -15,9 +16,9 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconArrowsExchange, IconInfoCircle } from "@tabler/icons-react";
+import { IconArrowsExchange, IconCheck, IconInfoCircle } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
-import type { Position } from "chessops";
+import { makeUci, parseUci, type Position } from "chessops";
 import { makeFen, parseFen } from "chessops/fen";
 import { parseSan } from "chessops/san";
 import equal from "fast-deep-equal";
@@ -30,7 +31,7 @@ import { EnginesSelect } from "@/components/boards/EnginesSelect";
 import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
 import { ImportantEngineSettings } from "@/components/common/ImportantEngineSettings";
 import { useTrainingEngine } from "@/hooks/useTrainingEngine";
-import { commands, events, type GoMode } from "@/bindings";
+import { type BestMoves, commands, events, type GoMode } from "@/bindings";
 import {
   activeTabAtom,
   currentInvisibleAtom,
@@ -72,6 +73,81 @@ const OPPONENT_DELAY_MS = 400;
 
 const otherColor = (c: "white" | "black") => (c === "white" ? "black" : "white");
 const fmtEval = (cp: number) => `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(2)}`;
+
+type Candidate = { san: string; uci: string; cp: number; goodEnough: boolean };
+
+/** Turn the eval engine's MultiPV lines into a ranked candidate list, from the
+ *  user's POV, flagging which ones clear the "good enough" threshold. */
+function toCandidates(
+  lines: BestMoves[],
+  priorCp: number,
+  userIsWhite: boolean,
+  cfg: ThresholdConfig,
+): Candidate[] {
+  return lines
+    .filter((l) => l.uciMoves[0])
+    .map((l) => {
+      const cp = scoreToCp(l.score, userIsWhite);
+      return {
+        san: l.sanMoves[0] ?? l.uciMoves[0],
+        uci: l.uciMoves[0],
+        cp,
+        goodEnough: passesThreshold(priorCp, cp, cfg),
+      };
+    })
+    .sort((a, b) => b.cp - a.cp);
+}
+
+function CandidateRow({ m, played }: { m: Candidate; played: boolean }) {
+  return (
+    <Group justify="space-between" wrap="nowrap" w="100%">
+      <Text fz="xs" fw={played ? 700 : 400}>
+        {m.san}
+        {played ? " ←" : ""}
+      </Text>
+      <Group gap={4} wrap="nowrap">
+        <Text fz="xs" ff="monospace" c={m.goodEnough ? "teal" : "dimmed"}>
+          {fmtEval(m.cp)}
+        </Text>
+        {m.goodEnough && <IconCheck size={12} color="var(--mantine-color-teal-6)" />}
+      </Group>
+    </Group>
+  );
+}
+
+function CandidateList({
+  moves,
+  playedUci,
+  onSelect,
+}: {
+  moves: Candidate[];
+  playedUci?: string | null;
+  onSelect?: (uci: string) => void;
+}) {
+  return (
+    <Stack gap={onSelect ? 2 : 0}>
+      {moves.map((m) => {
+        const played = playedUci != null && m.uci === playedUci;
+        return onSelect ? (
+          <Button
+            key={m.uci}
+            variant="subtle"
+            color="gray"
+            size="compact-xs"
+            fullWidth
+            onClick={() => onSelect(m.uci)}
+          >
+            <CandidateRow m={m} played={played} />
+          </Button>
+        ) : (
+          <Box key={m.uci} px={6} py={2}>
+            <CandidateRow m={m} played={played} />
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
 
 function describeResult(pos: Position): string {
   const outcome = pos.outcome();
@@ -222,6 +298,46 @@ function BoardTraining() {
     return goodEnoughHints(lines, state.priorScore, userIsWhite, cfg);
   }, [state.phase, state.priorScore, resultFen, currentNode.fen, lines, userIsWhite, cfg]);
 
+  // The engine's candidate moves for the position it is your turn to move in —
+  // fed to the "best moves currently" panel (revealed only once a hint is on).
+  const currentCandidates = useMemo<Candidate[]>(() => {
+    if (
+      state.phase !== "waiting" ||
+      state.priorScore === undefined ||
+      resultFen !== currentNode.fen ||
+      currentNode.fen !== state.fen ||
+      lines.length === 0
+    ) {
+      return [];
+    }
+    return toCandidates(lines, state.priorScore, userIsWhite, cfg);
+  }, [
+    state.phase,
+    state.priorScore,
+    state.fen,
+    resultFen,
+    currentNode.fen,
+    lines,
+    userIsWhite,
+    cfg,
+  ]);
+
+  // The candidate list + path for the position the current turn is being played
+  // from, snapshotted while it is still your move so it survives into the next
+  // turn as "best moves last turn".
+  const lastWaitingRef = useRef<{ path: number[]; prior: number; candidates: Candidate[] } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (currentCandidates.length > 0 && state.priorScore !== undefined) {
+      lastWaitingRef.current = {
+        path: state.path ?? [],
+        prior: state.priorScore,
+        candidates: currentCandidates,
+      };
+    }
+  }, [currentCandidates, state.path, state.priorScore]);
+
   function loadFen() {
     const parsed = parseFen(fenInput.trim());
     if (parsed.isErr) {
@@ -288,6 +404,37 @@ function BoardTraining() {
     setHint((h) => ({ stage: h.stage === 0 ? 1 : h.stage === 1 ? 2 : 1 }));
   }
   useHotkeys("h", cycleHint, { enabled: state.phase === "waiting" });
+
+  // Jump back to the position last turn was played from, drop the line that
+  // followed, and play `uci` instead — then continue with a fresh opponent
+  // reply. Offered from the "best moves last turn" panel.
+  const redoLastTurn = useCallback(
+    (uci: string) => {
+      const lt = state.lastTurn;
+      if (!lt) return;
+      const move = parseUci(uci);
+      if (!move) return;
+      goToMove(lt.path);
+      const node = getNodeAtPath(store.getState().root, lt.path);
+      if (node.children.length > 0) deleteMove([...lt.path, 0]);
+      appendMove({ payload: move });
+      const newPath = store.getState().position;
+      const newNode = getNodeAtPath(store.getState().root, newPath);
+      const [newPos] = positionFromFen(newNode.fen);
+      setHint({ stage: 0 });
+      setState((s) => ({
+        ...s,
+        lastTurn: undefined,
+        priorScore: undefined,
+        checkParent: undefined,
+        checkChild: undefined,
+        ...(newPos?.isEnd()
+          ? { phase: "gameOver" as const, result: describeResult(newPos) }
+          : { phase: "opponentThinking" as const, fen: newNode.fen, path: newPath }),
+      }));
+    },
+    [state.lastTurn, goToMove, deleteMove, appendMove, store, setHint, setState],
+  );
 
   // Reset the hint stage whenever the position changes (a move was played, or
   // the machine advanced — Stop / New Game change the FEN too).
@@ -457,9 +604,15 @@ function BoardTraining() {
     const afterCp = scoreToCp(lines[0].score, userIsWhite);
     const prior = state.priorScore ?? 0;
 
+    const snap = lastWaitingRef.current;
+    const playedUci = currentNode.move ? makeUci(currentNode.move) : null;
+    const lastTurn = (rejected: boolean) =>
+      snap
+        ? { path: snap.path, prior: snap.prior, playedUci, rejected, candidates: snap.candidates }
+        : undefined;
+
     if (!passesThreshold(prior, afterCp, cfg)) {
       const parent = state.checkParent ?? [];
-      const rejectedSan = currentNode.san ?? null;
       deleteMove(childPath);
       goToMove(parent);
       setStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
@@ -469,7 +622,7 @@ function BoardTraining() {
         fen: getNodeAtPath(store.getState().root, parent).fen,
         path: parent,
         // priorScore for the parent is unchanged — keep it.
-        lastRejected: { san: rejectedSan, cp: afterCp, prior },
+        lastTurn: lastTurn(true),
       }));
       return;
     }
@@ -481,7 +634,7 @@ function BoardTraining() {
       fen: currentNode.fen,
       path: childPath,
       priorScore: undefined,
-      lastRejected: undefined,
+      lastTurn: lastTurn(false),
     }));
   }, [
     state.phase,
@@ -491,7 +644,7 @@ function BoardTraining() {
     resultFen,
     lines,
     currentNode.fen,
-    currentNode.san,
+    currentNode.move,
     position,
     cfg,
     userIsWhite,
@@ -564,7 +717,6 @@ function BoardTraining() {
           fen: newNode.fen,
           path: newPath,
           priorScore: undefined,
-          lastRejected: undefined,
         }));
       }
     })();
@@ -589,16 +741,18 @@ function BoardTraining() {
     }
   }, [state.engineOpponentActive, activeTab]);
 
-  // Reset everything when the tab unmounts (leaving Training).
+  // On unmount (tab closed, or switched away from) tear down the opponent
+  // engine and unpin navigation. Do NOT reset the training atoms here: they are
+  // `tabValue` atoms keyed on the *current* tab, which on a tab switch is
+  // already the new tab (writing there is wrong) and on closing the last tab is
+  // null (which throws "No tab selected"). Leaving the per-tab state intact also
+  // lets a switched-away session resume when the tab is reopened.
   useEffect(() => {
     return () => {
       const oppId = opponentEngineIdRef.current;
       if (oppId) {
         commands.killEngine(`${oppId}-training-opponent`, activeTabRef.current).catch(() => {});
       }
-      setState({ phase: "setup", engineOpponentActive: false });
-      setHint({ stage: 0 });
-      setInvisible(false);
       setPracticePath(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -798,154 +952,197 @@ function BoardTraining() {
               </Stack>
             </ScrollArea>
           ) : (
-            <Stack gap="md">
-              <SimpleGrid cols={2} spacing="xs">
-                <Paper p="xs" withBorder radius="sm">
-                  <Text fz={10} tt="uppercase" c="dimmed" fw={600}>
-                    {t("Board.Training.MovesPlayed", "Moves played")}
-                  </Text>
-                  <Text fz="lg" fw={700} c="green">
-                    {stats.movesPlayed}
-                  </Text>
-                </Paper>
-                <Paper p="xs" withBorder radius="sm">
-                  <Text fz={10} tt="uppercase" c="dimmed" fw={600}>
-                    {t("Board.Training.Mistakes", "Mistakes")}
-                  </Text>
-                  <Text fz="lg" fw={700} c="red">
-                    {stats.mistakes}
-                  </Text>
-                </Paper>
-              </SimpleGrid>
+            <ScrollArea h="100%" offsetScrollbars>
+              <Stack gap="md">
+                <SimpleGrid cols={2} spacing="xs">
+                  <Paper p="xs" withBorder radius="sm">
+                    <Text fz={10} tt="uppercase" c="dimmed" fw={600}>
+                      {t("Board.Training.MovesPlayed", "Moves played")}
+                    </Text>
+                    <Text fz="lg" fw={700} c="green">
+                      {stats.movesPlayed}
+                    </Text>
+                  </Paper>
+                  <Paper p="xs" withBorder radius="sm">
+                    <Text fz={10} tt="uppercase" c="dimmed" fw={600}>
+                      {t("Board.Training.Mistakes", "Mistakes")}
+                    </Text>
+                    <Text fz="lg" fw={700} c="red">
+                      {stats.mistakes}
+                    </Text>
+                  </Paper>
+                </SimpleGrid>
 
-              {state.phase === "waiting" && (
-                <Paper p="sm" withBorder>
-                  <Stack gap="xs" align="center">
-                    {state.lastRejected && (
-                      <Text fz="xs" c="red" ta="center">
+                {state.phase === "waiting" && (
+                  <Paper p="sm" withBorder>
+                    <Stack gap="xs" align="center">
+                      {state.priorScore === undefined ? (
+                        <Group gap="xs">
+                          <Loader size="xs" />
+                          <Text fz="sm" c="dimmed">
+                            {t("Board.Training.Evaluating", "Evaluating…")}
+                          </Text>
+                        </Group>
+                      ) : (
+                        <>
+                          <Text fz="sm" c="dimmed">
+                            {t("Board.Training.YourMove", "Your move")}
+                          </Text>
+                          <Button variant="light" size="sm" fullWidth onClick={cycleHint}>
+                            {hint.stage === 1
+                              ? t("Board.Training.ShowArrows", "Show arrows")
+                              : t("Board.Training.Hint", "Hint")}
+                          </Button>
+                        </>
+                      )}
+                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                        {t("Common.Stop")}
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
+
+                {state.phase === "waiting" && state.priorScore !== undefined && (
+                  <Paper p="sm" withBorder>
+                    <Text fz="xs" fw={600} tt="uppercase" c="dimmed" mb={4}>
+                      {t("Board.Training.BestNow", "Best moves now")}
+                    </Text>
+                    {hint.stage === 0 ? (
+                      <Text fz="xs" c="dimmed">
                         {t(
-                          "Board.Training.MoveUndone",
-                          "{{san}} was undone — it drops you to {{after}} (from {{prior}})",
-                          {
-                            san: state.lastRejected.san ?? "?",
-                            after: fmtEval(state.lastRejected.cp),
-                            prior: fmtEval(state.lastRejected.prior),
-                          },
+                          "Board.Training.BestNowHidden",
+                          "Press Hint to reveal the candidate moves.",
                         )}
                       </Text>
-                    )}
-                    {state.priorScore === undefined ? (
+                    ) : currentCandidates.length > 0 ? (
+                      <CandidateList moves={currentCandidates} />
+                    ) : (
                       <Group gap="xs">
                         <Loader size="xs" />
-                        <Text fz="sm" c="dimmed">
+                        <Text fz="xs" c="dimmed">
                           {t("Board.Training.Evaluating", "Evaluating…")}
                         </Text>
                       </Group>
-                    ) : (
-                      <>
+                    )}
+                  </Paper>
+                )}
+
+                {state.phase === "checking" && (
+                  <Paper p="sm" withBorder>
+                    <Stack gap="xs" align="center">
+                      <Group gap="xs" justify="center">
+                        <Loader size="xs" />
                         <Text fz="sm" c="dimmed">
-                          {t("Board.Training.YourMove", "Your move")}
+                          {t("Board.Training.CheckingMove", "Checking your move…")}
                         </Text>
-                        <Button variant="light" size="sm" fullWidth onClick={cycleHint}>
-                          {hint.stage === 1
-                            ? t("Board.Training.ShowArrows", "Show arrows")
-                            : t("Board.Training.Hint", "Hint")}
-                        </Button>
-                      </>
-                    )}
-                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                      {t("Common.Stop")}
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
-
-              {state.phase === "checking" && (
-                <Paper p="sm" withBorder>
-                  <Stack gap="xs" align="center">
-                    <Group gap="xs" justify="center">
-                      <Loader size="xs" />
-                      <Text fz="sm" c="dimmed">
-                        {t("Board.Training.CheckingMove", "Checking your move…")}
-                      </Text>
-                    </Group>
-                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                      {t("Common.Stop")}
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
-
-              {state.phase === "opponentThinking" && (
-                <Paper p="sm" withBorder>
-                  <Stack gap="xs" align="center">
-                    <Group gap="xs">
-                      <Loader size="xs" />
-                      <Text fz="sm" c="dimmed">
-                        {t("Board.Training.OpponentThinking", "Opponent is thinking…")}
-                      </Text>
-                    </Group>
-                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                      {t("Common.Stop")}
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
-
-              {state.phase === "outOfBook" && (
-                <Paper p="sm" withBorder>
-                  <Stack gap="xs" align="center">
-                    <Text fz="sm" c="dimmed" ta="center">
-                      {t("Board.Training.OutOfBook", "Out of book.")}
-                    </Text>
-                    {opponentEngine && (
-                      <Button
-                        variant="light"
-                        size="sm"
-                        fullWidth
-                        onClick={() =>
-                          setState((s) => ({
-                            ...s,
-                            phase: "opponentThinking",
-                            engineOpponentActive: true,
-                          }))
-                        }
-                      >
-                        {t("Board.Training.PlayOnVsEngine", "Play on vs {{engine}}", {
-                          engine: opponentEngine.name,
-                        })}
+                      </Group>
+                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                        {t("Common.Stop")}
                       </Button>
-                    )}
-                    <Button variant="light" size="sm" fullWidth onClick={newGame}>
-                      {t("Board.Training.NewGame", "New game")}
-                    </Button>
-                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                      {t("Common.Stop")}
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
+                    </Stack>
+                  </Paper>
+                )}
 
-              {state.phase === "gameOver" && (
-                <Paper p="sm" withBorder>
-                  <Stack gap="xs" align="center">
-                    <Text fw={500}>
-                      {t("Board.Training.GameOver", "Game over")} {state.result}
-                    </Text>
-                    <Button variant="light" size="sm" fullWidth onClick={newGame}>
-                      {t("Board.Training.NewGame", "New game")}
-                    </Button>
-                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
-                      {t("Common.Stop")}
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
+                {state.phase === "opponentThinking" && (
+                  <Paper p="sm" withBorder>
+                    <Stack gap="xs" align="center">
+                      <Group gap="xs">
+                        <Loader size="xs" />
+                        <Text fz="sm" c="dimmed">
+                          {t("Board.Training.OpponentThinking", "Opponent is thinking…")}
+                        </Text>
+                      </Group>
+                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                        {t("Common.Stop")}
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
 
-              <Badge variant="light" color="gray" style={{ alignSelf: "flex-start" }}>
-                {color === "white" ? t("Fen.White") : t("Fen.Black")}
-              </Badge>
-            </Stack>
+                {state.phase === "outOfBook" && (
+                  <Paper p="sm" withBorder>
+                    <Stack gap="xs" align="center">
+                      <Text fz="sm" c="dimmed" ta="center">
+                        {t("Board.Training.OutOfBook", "Out of book.")}
+                      </Text>
+                      {opponentEngine && (
+                        <Button
+                          variant="light"
+                          size="sm"
+                          fullWidth
+                          onClick={() =>
+                            setState((s) => ({
+                              ...s,
+                              phase: "opponentThinking",
+                              engineOpponentActive: true,
+                            }))
+                          }
+                        >
+                          {t("Board.Training.PlayOnVsEngine", "Play on vs {{engine}}", {
+                            engine: opponentEngine.name,
+                          })}
+                        </Button>
+                      )}
+                      <Button variant="light" size="sm" fullWidth onClick={newGame}>
+                        {t("Board.Training.NewGame", "New game")}
+                      </Button>
+                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                        {t("Common.Stop")}
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
+
+                {state.phase === "gameOver" && (
+                  <Paper p="sm" withBorder>
+                    <Stack gap="xs" align="center">
+                      <Text fw={500}>
+                        {t("Board.Training.GameOver", "Game over")} {state.result}
+                      </Text>
+                      <Button variant="light" size="sm" fullWidth onClick={newGame}>
+                        {t("Board.Training.NewGame", "New game")}
+                      </Button>
+                      <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                        {t("Common.Stop")}
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
+
+                {state.lastTurn &&
+                  (state.phase === "waiting" ||
+                    state.phase === "outOfBook" ||
+                    state.phase === "gameOver") && (
+                    <Paper p="sm" withBorder>
+                      <Group justify="space-between" mb={4}>
+                        <Text fz="xs" fw={600} tt="uppercase" c="dimmed">
+                          {t("Board.Training.BestLastTurn", "Best moves last turn")}
+                        </Text>
+                        {state.lastTurn.rejected && (
+                          <Badge size="xs" color="red" variant="light">
+                            {t("Board.Training.Undone", "undone")}
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text fz="xs" c="dimmed" mb={4}>
+                        {t(
+                          "Board.Training.RedoHint",
+                          "Pick a move to jump back and play it instead.",
+                        )}
+                      </Text>
+                      <CandidateList
+                        moves={state.lastTurn.candidates}
+                        playedUci={state.lastTurn.playedUci}
+                        onSelect={redoLastTurn}
+                      />
+                    </Paper>
+                  )}
+
+                <Badge variant="light" color="gray" style={{ alignSelf: "flex-start" }}>
+                  {color === "white" ? t("Fen.White") : t("Fen.Black")}
+                </Badge>
+              </Stack>
+            </ScrollArea>
           )}
         </Paper>
       </Portal>
