@@ -727,6 +727,9 @@ export type TrainingState = {
     engineOpponentActive: boolean;
     /** Terminal result string for the gameOver panel. */
     result?: string;
+    /** The move just undone by the threshold gate, so the panel can show the
+     *  user what eval it would have given. Cleared on the next accepted move. */
+    lastRejected?: { san: string | null; cp: number; prior: number };
 };
 
 const trainingStateFamily = atomFamily((_tab: string) =>
@@ -752,13 +755,18 @@ export const trainingEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     { engineId: null, variantId: null },
 );
 export const trainingEvalMovetimeAtom = atomWithStorage<number>("training-eval-movetime-ms", 500);
-export const trainingOpponentEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+
+/** Opponent (out-of-book) engine choice plus per-session overrides of the
+ *  variant's "important" UCI options — the same editable set the New Game
+ *  opponent form exposes (`ImportantEngineSettings`). */
+export type TrainingOpponentConfig = {
+    engineId: string | null;
+    variantId: string | null;
+    settingOverrides?: EngineSettings;
+};
+export const trainingOpponentEngineConfigAtom = atomWithStorage<TrainingOpponentConfig>(
     "training-opponent-engine-config",
-    { engineId: null, variantId: null },
-);
-export const trainingOpponentSkillAtom = atomWithStorage<number | null>(
-    "training-opponent-skill",
-    null,
+    { engineId: null, variantId: null, settingOverrides: [] },
 );
 export const trainingMaxLossPawnsAtom = atomWithStorage<number>("training-max-loss-pawns", 0.05);
 export const trainingMaxLossPctAtom = atomWithStorage<number>("training-max-loss-pct", 40);

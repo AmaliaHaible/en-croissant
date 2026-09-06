@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { EnginesSelect } from "@/components/boards/EnginesSelect";
 import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
+import { ImportantEngineSettings } from "@/components/common/ImportantEngineSettings";
 import { useTrainingEngine } from "@/hooks/useTrainingEngine";
 import { commands, events, type GoMode } from "@/bindings";
 import {
@@ -44,7 +45,6 @@ import {
   trainingMaxLossPctAtom,
   trainingMinBookGamesAtom,
   trainingOpponentEngineConfigAtom,
-  trainingOpponentSkillAtom,
   trainingSessionStatsAtom,
   trainingStateAtom,
 } from "@/state/atoms";
@@ -52,7 +52,7 @@ import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
 import { withMultiPvFloor } from "@/utils/coach";
 import { searchExplorerMoves } from "@/utils/db";
-import { type LocalEngine, resolveConfiguredEngine } from "@/utils/engines";
+import { applySettingOverrides, type LocalEngine, resolveConfiguredEngine } from "@/utils/engines";
 import {
   goodEnoughHints,
   passesThreshold,
@@ -66,8 +66,12 @@ import GameNotation from "../common/GameNotation";
 import MoveControls from "../common/MoveControls";
 import { TreeStateContext } from "../common/TreeStateContext";
 import Board from "./Board";
+import BoardControls from "./BoardControls";
 
 const OPPONENT_DELAY_MS = 400;
+
+const otherColor = (c: "white" | "black") => (c === "white" ? "black" : "white");
+const fmtEval = (cp: number) => `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(2)}`;
 
 function describeResult(pos: Position): string {
   const outcome = pos.outcome();
@@ -77,11 +81,7 @@ function describeResult(pos: Position): string {
   return "½-½";
 }
 
-function EngineConfigRow({
-  configAtom,
-}: {
-  configAtom: typeof trainingEvalEngineConfigAtom | typeof trainingOpponentEngineConfigAtom;
-}) {
+function EngineConfigRow({ configAtom }: { configAtom: typeof trainingEvalEngineConfigAtom }) {
   const [config, setConfig] = useAtom(configAtom);
   const allEngines = useAtomValue(enginesAtom);
   const selected = resolveConfiguredEngine(config.engineId, allEngines);
@@ -99,6 +99,46 @@ function EngineConfigRow({
           engine={selected}
           variantId={config.variantId}
           setVariantId={(variantId: string) => setConfig((p) => ({ ...p, variantId }))}
+        />
+      )}
+    </Stack>
+  );
+}
+
+/** Opponent-engine picker: engine + variant + the variant's "important" UCI
+ *  options, exactly like the New Game opponent form. */
+function OpponentConfigRow() {
+  const [config, setConfig] = useAtom(trainingOpponentEngineConfigAtom);
+  const allEngines = useAtomValue(enginesAtom);
+  const selected = resolveConfiguredEngine(config.engineId, allEngines);
+  return (
+    <Stack gap="xs">
+      <EnginesSelect
+        engine={selected}
+        setEngine={(e: LocalEngine | null) =>
+          setConfig({
+            engineId: e?.id ?? null,
+            variantId: e?.variants[0]?.id ?? null,
+            settingOverrides: [],
+          })
+        }
+        filter={(e) => !!e.loaded}
+      />
+      {selected && (
+        <EngineVariantSelect
+          engine={selected}
+          variantId={config.variantId}
+          setVariantId={(variantId: string) =>
+            setConfig((p) => ({ ...p, variantId, settingOverrides: [] }))
+          }
+        />
+      )}
+      {selected && (
+        <ImportantEngineSettings
+          engine={selected}
+          variantId={config.variantId}
+          overrides={config.settingOverrides ?? []}
+          setOverrides={(next) => setConfig((p) => ({ ...p, settingOverrides: next }))}
         />
       )}
     </Stack>
@@ -129,7 +169,6 @@ function BoardTraining() {
   const activeTab = useAtomValue(activeTabAtom);
 
   const [movetime, setMovetime] = useAtom(trainingEvalMovetimeAtom);
-  const [skill, setSkill] = useAtom(trainingOpponentSkillAtom);
   const [source, setSource] = useAtom(trainingBookSourceAtom);
   const [minBookGames, setMinBookGames] = useAtom(trainingMinBookGamesAtom);
   const [maxLossPawns, setMaxLossPawns] = useAtom(trainingMaxLossPawnsAtom);
@@ -191,16 +230,19 @@ function BoardTraining() {
     }
     setFenError(null);
     setFen(normalizeFen(fenInput.trim()));
-    setColor(parsed.unwrap().turn);
+    // The side to move in a training position is the opponent (they reply
+    // first); you play the side that just moved.
+    setColor(otherColor(parsed.unwrap().turn));
   }
 
   function startSession() {
     const startFen = normalizeFen(currentNode.fen);
     startFenRef.current = startFen;
     const [pos] = positionFromFen(startFen);
-    // `color` already tracks the start position's side to move (the setup effect
-    // keeps it in sync) unless the user overrode it with the "Swap sides"
-    // toggle — honour whatever it holds now.
+    // `color` already tracks "the side that just moved" (the setup effect keeps
+    // it in sync) unless the user overrode it with "Swap sides" — honour
+    // whatever it holds now. Normally the opponent is on move, so the session
+    // opens in `opponentThinking`.
     setFen(startFen);
     setHeaders({ ...headers, fen: startFen, orientation: color });
     setHint({ stage: 0 });
@@ -259,13 +301,14 @@ function BoardTraining() {
       const variant =
         opponentEngine.variants.find((v) => v.id === opponentConfig.variantId) ??
         opponentEngine.variants[0];
-      // Merge the MultiPV floor into the variant's own settings rather than
-      // appending a second `MultiPV` entry — a duplicate desyncs the backend's
-      // `real_multipv` and the search can then yield nothing.
-      const extraOptions = [
-        ...withMultiPvFloor(variant?.settings ?? [], 3),
-        ...(skill !== null ? [{ name: "Skill Level", value: String(skill) }] : []),
-      ];
+      // The variant's saved settings with the user's per-session "important"
+      // overrides applied (same set the New Game opponent form edits), then the
+      // MultiPV floor merged in — a duplicate `MultiPV` entry desyncs the
+      // backend's `real_multipv` and the search can yield nothing.
+      const extraOptions = withMultiPvFloor(
+        applySettingOverrides(variant?.settings ?? [], opponentConfig.settingOverrides ?? []),
+        3,
+      );
       // `getBestMoves` replays `moves` on top of `fen`, so the pair must be
       // root-fen + full-line-from-root (every other call site does this). Passing
       // the leaf fen here makes the first replayed move illegal → command error
@@ -340,17 +383,17 @@ function BoardTraining() {
           .catch(() => {});
       });
     },
-    [opponentEngine, opponentConfig.variantId, skill, activeTab, store],
+    [opponentEngine, opponentConfig, activeTab, store],
   );
 
-  // While still setting up, keep the training color following the start
-  // position's side to move. The "Swap sides" toggle writes `color` directly;
-  // the user then hits Start before the position changes again, so their
-  // override sticks for that session.
+  // While still setting up: the last move played is yours, so you play the side
+  // that is NOT to move, and the opponent replies first. The "Swap sides"
+  // toggle writes `color` directly; the user then hits Start before the
+  // position changes again, so their override sticks for that session.
   useEffect(() => {
     if (state.phase !== "setup") return;
     const [pos] = positionFromFen(currentNode.fen);
-    if (pos) setColor(pos.turn);
+    if (pos) setColor(otherColor(pos.turn));
   }, [state.phase, currentNode.fen, setColor]);
 
   // Pin forward/back navigation to the played line.
@@ -416,6 +459,7 @@ function BoardTraining() {
 
     if (!passesThreshold(prior, afterCp, cfg)) {
       const parent = state.checkParent ?? [];
+      const rejectedSan = currentNode.san ?? null;
       deleteMove(childPath);
       goToMove(parent);
       setStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
@@ -425,6 +469,7 @@ function BoardTraining() {
         fen: getNodeAtPath(store.getState().root, parent).fen,
         path: parent,
         // priorScore for the parent is unchanged — keep it.
+        lastRejected: { san: rejectedSan, cp: afterCp, prior },
       }));
       return;
     }
@@ -436,6 +481,7 @@ function BoardTraining() {
       fen: currentNode.fen,
       path: childPath,
       priorScore: undefined,
+      lastRejected: undefined,
     }));
   }, [
     state.phase,
@@ -445,6 +491,7 @@ function BoardTraining() {
     resultFen,
     lines,
     currentNode.fen,
+    currentNode.san,
     position,
     cfg,
     userIsWhite,
@@ -517,6 +564,7 @@ function BoardTraining() {
           fen: newNode.fen,
           path: newPath,
           priorScore: undefined,
+          lastRejected: undefined,
         }));
       }
     })();
@@ -583,7 +631,7 @@ function BoardTraining() {
                     <Text fz="xs" c="dimmed">
                       {t(
                         "Board.Training.Setup.StartPositionHint",
-                        "Play moves on the board, or paste a FEN. Training starts from the position shown.",
+                        "Play your line on the board, or paste a FEN. Your last move is where training starts — the opponent replies first. Use Swap sides if the guessed side is wrong.",
                       )}
                     </Text>
                     <Group gap="xs" wrap="nowrap">
@@ -648,21 +696,14 @@ function BoardTraining() {
                     <Text fz="sm" fw={500}>
                       {t("Board.Training.Setup.OpponentEngine", "Opponent engine (out of book)")}
                     </Text>
+                    <Text fz="xs" c="dimmed">
+                      {t(
+                        "Board.Training.Setup.OpponentEngineHint",
+                        "Used only when you choose “Play on” after the opening book runs out. Set its strength with the variant's engine options (e.g. Skill Level / UCI_Elo).",
+                      )}
+                    </Text>
                     {hasLoadedEngine ? (
-                      <>
-                        <EngineConfigRow configAtom={trainingOpponentEngineConfigAtom} />
-                        <NumberInput
-                          size="xs"
-                          label={t(
-                            "Board.Training.Setup.OpponentSkill",
-                            "Strength (Skill Level 0–20, blank = full)",
-                          )}
-                          min={0}
-                          max={20}
-                          value={skill ?? ""}
-                          onChange={(v) => setSkill(typeof v === "number" ? v : null)}
-                        />
-                      </>
+                      <OpponentConfigRow />
                     ) : (
                       <Alert icon={<IconInfoCircle />} color="yellow">
                         {t("Board.Training.Setup.NoEngine", "Add and load a local engine first.")}{" "}
@@ -780,6 +821,19 @@ function BoardTraining() {
               {state.phase === "waiting" && (
                 <Paper p="sm" withBorder>
                   <Stack gap="xs" align="center">
+                    {state.lastRejected && (
+                      <Text fz="xs" c="red" ta="center">
+                        {t(
+                          "Board.Training.MoveUndone",
+                          "{{san}} was undone — it drops you to {{after}} (from {{prior}})",
+                          {
+                            san: state.lastRejected.san ?? "?",
+                            after: fmtEval(state.lastRejected.cp),
+                            prior: fmtEval(state.lastRejected.prior),
+                          },
+                        )}
+                      </Text>
+                    )}
                     {state.priorScore === undefined ? (
                       <Group gap="xs">
                         <Loader size="xs" />
@@ -897,7 +951,17 @@ function BoardTraining() {
       </Portal>
       <Portal target="#bottomRight" style={{ height: "100%" }}>
         <Stack h="100%" gap="xs">
-          <GameNotation />
+          <GameNotation
+            topBar
+            controls={
+              <BoardControls
+                editingMode={false}
+                toggleEditingMode={() => {}}
+                dirty={false}
+                disableVariations
+              />
+            }
+          />
           <MoveControls readOnly={!inSetup} />
         </Stack>
       </Portal>
