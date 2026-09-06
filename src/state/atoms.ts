@@ -733,6 +733,10 @@ export type TrainingState = {
      *  jump back to redo the turn. Kept until the next turn is played. */
     lastTurn?: {
         path: number[];
+        /** Fen of `path`. The "best moves last turn" panel hides while the board
+         *  is still on this position (e.g. right after an auto-undo) — there it
+         *  would just duplicate "best moves now". */
+        fen: string;
         prior: number;
         playedUci: string | null;
         rejected: boolean;

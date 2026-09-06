@@ -325,18 +325,22 @@ function BoardTraining() {
   // The candidate list + path for the position the current turn is being played
   // from, snapshotted while it is still your move so it survives into the next
   // turn as "best moves last turn".
-  const lastWaitingRef = useRef<{ path: number[]; prior: number; candidates: Candidate[] } | null>(
-    null,
-  );
+  const lastWaitingRef = useRef<{
+    path: number[];
+    fen: string;
+    prior: number;
+    candidates: Candidate[];
+  } | null>(null);
   useEffect(() => {
     if (currentCandidates.length > 0 && state.priorScore !== undefined) {
       lastWaitingRef.current = {
         path: state.path ?? [],
+        fen: currentNode.fen,
         prior: state.priorScore,
         candidates: currentCandidates,
       };
     }
-  }, [currentCandidates, state.path, state.priorScore]);
+  }, [currentCandidates, state.path, state.priorScore, currentNode.fen]);
 
   function loadFen() {
     const parsed = parseFen(fenInput.trim());
@@ -602,7 +606,14 @@ function BoardTraining() {
     const playedUci = currentNode.move ? makeUci(currentNode.move) : null;
     const lastTurn = (rejected: boolean) =>
       snap
-        ? { path: snap.path, prior: snap.prior, playedUci, rejected, candidates: snap.candidates }
+        ? {
+            path: snap.path,
+            fen: snap.fen,
+            prior: snap.prior,
+            playedUci,
+            rejected,
+            candidates: snap.candidates,
+          }
         : undefined;
 
     if (!passesThreshold(prior, afterCp, cfg)) {
@@ -757,6 +768,9 @@ function BoardTraining() {
   const showBestNow = state.phase === "waiting" && state.priorScore !== undefined;
   const lastTurnPanel =
     state.lastTurn &&
+    // Hide while the board is still on that position — right after an auto-undo
+    // it would just repeat "best moves now". Shown once play has moved on.
+    currentNode.fen !== state.lastTurn.fen &&
     (state.phase === "waiting" || state.phase === "outOfBook" || state.phase === "gameOver")
       ? state.lastTurn
       : null;
