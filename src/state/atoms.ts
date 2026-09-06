@@ -720,6 +720,9 @@ export type TrainingState = {
     priorScore?: number;
     /** Path to navigate back to when a move is rejected in `checking`. */
     checkParent?: number[];
+    /** Fen of the child node under evaluation in `checking` (the move the user
+     *  just played). The `checking` effect only acts while the board sits here. */
+    checkChild?: string;
     /** The user chose to keep playing out of book against the opponent engine. */
     engineOpponentActive: boolean;
     /** Terminal result string for the gameOver panel. */

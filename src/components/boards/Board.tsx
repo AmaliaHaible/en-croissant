@@ -289,12 +289,16 @@ function Board({
       // Provisionally accept: commit the move and hand off to BoardTraining's
       // `checking` effect, which evaluates the resulting node and either keeps
       // it or deletes it back off.
+      const child = pos.clone();
+      child.play(move);
+      const childFen = makeFen(child.toSetup());
       storeMakeMove({ payload: move });
       setPendingMove(null);
       setTrainingState((s) => ({
         ...s,
         phase: "checking",
         checkParent: s.path ?? [],
+        checkChild: childFen,
       }));
       return;
     }

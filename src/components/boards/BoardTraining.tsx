@@ -18,8 +18,9 @@ import {
 import { IconArrowsExchange, IconInfoCircle } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 import type { Position } from "chessops";
-import { parseFen } from "chessops/fen";
+import { makeFen, parseFen } from "chessops/fen";
 import { parseSan } from "chessops/san";
+import equal from "fast-deep-equal";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -28,7 +29,7 @@ import { useStore } from "zustand";
 import { EnginesSelect } from "@/components/boards/EnginesSelect";
 import { EngineVariantSelect } from "@/components/common/EngineVariantSelect";
 import { useTrainingEngine } from "@/hooks/useTrainingEngine";
-import { commands, type GoMode } from "@/bindings";
+import { commands, events, type GoMode } from "@/bindings";
 import {
   activeTabAtom,
   currentInvisibleAtom,
@@ -49,6 +50,7 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
+import { withMultiPvFloor } from "@/utils/coach";
 import { searchExplorerMoves } from "@/utils/db";
 import { type LocalEngine, resolveConfiguredEngine } from "@/utils/engines";
 import {
@@ -153,6 +155,21 @@ function BoardTraining() {
   const startFenRef = useRef<string>(currentNode.fen);
   const currentFenRef = useRef(currentNode.fen);
   currentFenRef.current = currentNode.fen;
+  // The eval hook keys off `makeFen(pos.toSetup())` (fully normalized, 6 fields).
+  // A pasted or derived 4-field FEN would never match at the root, so the prior
+  // score is never captured and the session hangs on "Evaluating…". Canonicalise
+  // at every entry point.
+  const normalizeFen = (f: string): string => {
+    const [p] = positionFromFen(f);
+    return p ? makeFen(p.toSetup()) : f;
+  };
+
+  // Opponent engine id, kept fresh for the teardown paths (unmount / opponent
+  // deactivation) which run outside render.
+  const opponentEngineIdRef = useRef<string | null>(null);
+  opponentEngineIdRef.current = opponentEngine?.id ?? null;
+  const activeTabRef = useRef<string>("");
+  activeTabRef.current = activeTab ?? "";
 
   const hintMoves = useMemo(() => {
     if (
@@ -173,12 +190,12 @@ function BoardTraining() {
       return;
     }
     setFenError(null);
-    setFen(fenInput.trim());
+    setFen(normalizeFen(fenInput.trim()));
     setColor(parsed.unwrap().turn);
   }
 
   function startSession() {
-    const startFen = currentNode.fen;
+    const startFen = normalizeFen(currentNode.fen);
     startFenRef.current = startFen;
     const [pos] = positionFromFen(startFen);
     // `color` already tracks the start position's side to move (the setup effect
@@ -200,7 +217,7 @@ function BoardTraining() {
   }
 
   function newGame() {
-    const startFen = startFenRef.current;
+    const startFen = normalizeFen(startFenRef.current);
     const [pos] = positionFromFen(startFen);
     setFen(startFen);
     setHeaders({ ...headers, fen: startFen, orientation: color });
@@ -237,14 +254,16 @@ function BoardTraining() {
   }, [currentNode.fen, setHint]);
 
   const pickEngineOpponentMove = useCallback(
-    async (path: number[]): Promise<string | null> => {
-      if (!opponentEngine) return null;
+    (path: number[]): Promise<string | null> => {
+      if (!opponentEngine) return Promise.resolve(null);
       const variant =
         opponentEngine.variants.find((v) => v.id === opponentConfig.variantId) ??
         opponentEngine.variants[0];
+      // Merge the MultiPV floor into the variant's own settings rather than
+      // appending a second `MultiPV` entry — a duplicate desyncs the backend's
+      // `real_multipv` and the search can then yield nothing.
       const extraOptions = [
-        ...(variant?.settings ?? []).map((s) => ({ name: s.name, value: String(s.value ?? "") })),
-        { name: "MultiPV", value: "3" },
+        ...withMultiPvFloor(variant?.settings ?? [], 3),
         ...(skill !== null ? [{ name: "Skill Level", value: String(skill) }] : []),
       ];
       // `getBestMoves` replays `moves` on top of `fen`, so the pair must be
@@ -253,29 +272,73 @@ function BoardTraining() {
       // → empty result. Read the root fresh in case the tree moved on.
       const freshRoot = store.getState().root;
       const moves = getVariationLine(freshRoot, path);
+      const id = `${opponentEngine.id}-training-opponent`;
+      const tab = activeTab ?? "";
       const go: GoMode = { t: "Time", c: 300 };
-      const res = await commands.getBestMoves(
-        `${opponentEngine.id}-training-opponent`,
-        opponentEngine.path,
-        activeTab ?? "",
-        go,
-        { fen: freshRoot.fen, moves, extraOptions },
-      );
-      const data = res.status === "ok" ? res.data : null;
-      const bestLines = data?.[1] ?? [];
-      if (bestLines.length === 0) return null;
+      const enginePath = opponentEngine.path;
+
       // Favour the top move but allow the 2nd/3rd sometimes.
-      const weights = [0.6, 0.3, 0.1];
-      let r = Math.random();
-      let idx = 0;
-      for (let i = 0; i < Math.min(bestLines.length, 3); i++) {
-        if (r < weights[i]) {
-          idx = i;
-          break;
+      const pickFrom = (bestLines: { sanMoves: string[] }[]): string | null => {
+        if (bestLines.length === 0) return null;
+        const weights = [0.6, 0.3, 0.1];
+        let r = Math.random();
+        let idx = 0;
+        for (let i = 0; i < Math.min(bestLines.length, 3); i++) {
+          if (r < weights[i]) {
+            idx = i;
+            break;
+          }
+          r -= weights[i];
         }
-        r -= weights[i];
-      }
-      return bestLines[idx]?.sanMoves[0] ?? bestLines[0].sanMoves[0] ?? null;
+        return bestLines[idx]?.sanMoves[0] ?? bestLines[0]?.sanMoves[0] ?? null;
+      };
+
+      // A fresh `-training-opponent` process never resolves its `getBestMoves`
+      // future — the result arrives on `events.bestMovesPayload`. Mirror
+      // `useCoachHint`'s shape: listen for the completed search, and also honour
+      // the synchronous short-circuit return for an already-running match.
+      return new Promise<string | null>((resolve) => {
+        let settled = false;
+        let unlisten: (() => void) | null = null;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const finish = (san: string | null) => {
+          if (settled) return;
+          settled = true;
+          if (timer) clearTimeout(timer);
+          if (unlisten) unlisten();
+          resolve(san);
+        };
+
+        events.bestMovesPayload
+          .listen(({ payload }) => {
+            if (
+              payload.engine !== id ||
+              payload.tab !== tab ||
+              payload.fen !== freshRoot.fen ||
+              !equal(payload.moves, moves)
+            ) {
+              return;
+            }
+            if (payload.progress >= 100) finish(pickFrom(payload.bestLines));
+          })
+          .then((f) => {
+            unlisten = f;
+            if (settled) f();
+          });
+
+        timer = setTimeout(() => finish(null), 5000);
+
+        commands
+          .getBestMoves(id, enginePath, tab, go, { fen: freshRoot.fen, moves, extraOptions })
+          .then((res) => {
+            const data = res.status === "ok" ? res.data : null;
+            if (!data) return;
+            const [progress, lines] = data;
+            if (progress >= 100) finish(pickFrom(lines));
+          })
+          .catch(() => {});
+      });
     },
     [opponentEngine, opponentConfig.variantId, skill, activeTab, store],
   );
@@ -312,12 +375,29 @@ function BoardTraining() {
   useEffect(() => {
     if (state.phase !== "waiting" || state.priorScore !== undefined) return;
     if (resultFen !== currentNode.fen || lines.length === 0) return;
+    // The user may have scrolled the board off the machine's position (arrow
+    // keys / notation clicks aren't practicePath-aware). Don't capture a prior
+    // from a node we aren't actually waiting on.
+    if (currentNode.fen !== state.fen) return;
     setState((s) => ({ ...s, priorScore: scoreToCp(lines[0].score, userIsWhite) }));
-  }, [state.phase, state.priorScore, resultFen, lines, currentNode.fen, userIsWhite, setState]);
+  }, [
+    state.phase,
+    state.priorScore,
+    state.fen,
+    resultFen,
+    lines,
+    currentNode.fen,
+    userIsWhite,
+    setState,
+  ]);
 
   // checking: evaluate the move the user just played.
   useEffect(() => {
     if (state.phase !== "checking") return;
+    // The user can navigate away from the move under evaluation (arrow keys /
+    // notation clicks aren't practicePath-aware). While off the child node, do
+    // nothing — the effect resumes once the board returns to it.
+    if (state.checkChild !== undefined && currentNode.fen !== state.checkChild) return;
     const childPath = position;
     const [childPos] = positionFromFen(currentNode.fen);
 
@@ -361,6 +441,7 @@ function BoardTraining() {
     state.phase,
     state.priorScore,
     state.checkParent,
+    state.checkChild,
     resultFen,
     lines,
     currentNode.fen,
@@ -446,9 +527,27 @@ function BoardTraining() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.engineOpponentActive, currentNode.fen, source, token, minBookGames]);
 
+  // Tear the opponent-engine process down when the user turns "Play on vs
+  // engine" back off (Stop / New Game both clear `engineOpponentActive`).
+  const prevEngineOpponentActiveRef = useRef(state.engineOpponentActive);
+  useEffect(() => {
+    const wasActive = prevEngineOpponentActiveRef.current;
+    prevEngineOpponentActiveRef.current = state.engineOpponentActive;
+    if (wasActive && !state.engineOpponentActive) {
+      const oppId = opponentEngineIdRef.current;
+      if (oppId) {
+        commands.killEngine(`${oppId}-training-opponent`, activeTab ?? "").catch(() => {});
+      }
+    }
+  }, [state.engineOpponentActive, activeTab]);
+
   // Reset everything when the tab unmounts (leaving Training).
   useEffect(() => {
     return () => {
+      const oppId = opponentEngineIdRef.current;
+      if (oppId) {
+        commands.killEngine(`${oppId}-training-opponent`, activeTabRef.current).catch(() => {});
+      }
       setState({ phase: "setup", engineOpponentActive: false });
       setHint({ stage: 0 });
       setInvisible(false);
@@ -709,12 +808,17 @@ function BoardTraining() {
 
               {state.phase === "checking" && (
                 <Paper p="sm" withBorder>
-                  <Group gap="xs" justify="center">
-                    <Loader size="xs" />
-                    <Text fz="sm" c="dimmed">
-                      {t("Board.Training.CheckingMove", "Checking your move…")}
-                    </Text>
-                  </Group>
+                  <Stack gap="xs" align="center">
+                    <Group gap="xs" justify="center">
+                      <Loader size="xs" />
+                      <Text fz="sm" c="dimmed">
+                        {t("Board.Training.CheckingMove", "Checking your move…")}
+                      </Text>
+                    </Group>
+                    <Button variant="subtle" size="compact-xs" color="red" onClick={stopSession}>
+                      {t("Common.Stop")}
+                    </Button>
+                  </Stack>
                 </Paper>
               )}
 
