@@ -696,6 +696,75 @@ export const repertoirePlaySourceAtom = atomWithStorage<"lichess" | "masters">(
     "lichess",
 );
 
+// Training mode — ephemeral per-tab play state + persisted setup config.
+// Nothing here is persisted except the trainingEval*/trainingOpponent*/
+// trainingMax*/trainingBook*/trainingMinBookGames config atoms.
+
+export type TrainingPhase =
+    | "setup"
+    | "waiting"
+    | "checking"
+    | "opponentThinking"
+    | "outOfBook"
+    | "gameOver";
+
+export type TrainingState = {
+    phase: TrainingPhase;
+    /** Position the machine expects during waiting/checking/opponentThinking. */
+    fen?: string;
+    /** That position's tree path — feeds `practicePath` so forward/back stays
+     *  on the played line. */
+    path?: number[];
+    /** Best eval of `fen`, user POV, centipawns (mate clamped). Set once the
+     *  engine answers in `waiting`; read in `checking`. */
+    priorScore?: number;
+    /** Path to navigate back to when a move is rejected in `checking`. */
+    checkParent?: number[];
+    /** The user chose to keep playing out of book against the opponent engine. */
+    engineOpponentActive: boolean;
+    /** Terminal result string for the gameOver panel. */
+    result?: string;
+};
+
+const trainingStateFamily = atomFamily((_tab: string) =>
+    atom<TrainingState>({ phase: "setup", engineOpponentActive: false }),
+);
+export const trainingStateAtom = tabValue(trainingStateFamily);
+
+export type TrainingHint = { stage: 0 | 1 | 2 };
+const trainingHintFamily = atomFamily((_tab: string) => atom<TrainingHint>({ stage: 0 }));
+export const trainingHintAtom = tabValue(trainingHintFamily);
+
+export type TrainingSessionStats = { movesPlayed: number; mistakes: number };
+const trainingSessionStatsFamily = atomFamily((_tab: string) =>
+    atom<TrainingSessionStats>({ movesPlayed: 0, mistakes: 0 }),
+);
+export const trainingSessionStatsAtom = tabValue(trainingSessionStatsFamily);
+
+const trainingColorFamily = atomFamily((_tab: string) => atom<"white" | "black">("white"));
+export const trainingColorAtom = tabValue(trainingColorFamily);
+
+export const trainingEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "training-eval-engine-config",
+    { engineId: null, variantId: null },
+);
+export const trainingEvalMovetimeAtom = atomWithStorage<number>("training-eval-movetime-ms", 500);
+export const trainingOpponentEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "training-opponent-engine-config",
+    { engineId: null, variantId: null },
+);
+export const trainingOpponentSkillAtom = atomWithStorage<number | null>(
+    "training-opponent-skill",
+    null,
+);
+export const trainingMaxLossPawnsAtom = atomWithStorage<number>("training-max-loss-pawns", 0.05);
+export const trainingMaxLossPctAtom = atomWithStorage<number>("training-max-loss-pct", 40);
+export const trainingBookSourceAtom = atomWithStorage<"lichess" | "masters">(
+    "training-book-source",
+    "lichess",
+);
+export const trainingMinBookGamesAtom = atomWithStorage<number>("training-min-book-games", 10);
+
 export const engineMovesFamily = atomFamily(
     ({ tab: _tab, engine: _engine }: { tab: string; engine: string }) =>
         atom<Map<string, BestMoves[]>>(new Map()),
