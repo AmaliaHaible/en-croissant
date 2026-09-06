@@ -101,6 +101,10 @@ interface ChessboardProps {
   editingMode: boolean;
   viewOnly?: boolean;
   disableVariations?: boolean;
+  /** Training mode: the phase machine in `BoardTraining` drives move handling.
+   *  Wired up in Task 6 (Board makeMove branch); declared here so the training
+   *  panel can pass it. */
+  training?: boolean;
   movable?: "both" | "white" | "black" | "turn" | "none";
   boardRef: React.MutableRefObject<HTMLDivElement | null>;
   whiteTime?: number;
