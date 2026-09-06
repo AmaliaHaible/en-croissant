@@ -52,6 +52,7 @@ import { positionFromFen } from "@/utils/chessops";
 import { searchExplorerMoves } from "@/utils/db";
 import { type LocalEngine, resolveConfiguredEngine } from "@/utils/engines";
 import {
+  goodEnoughHints,
   passesThreshold,
   sampleBookMove,
   scoreToCp,
@@ -153,6 +154,18 @@ function BoardTraining() {
   const currentFenRef = useRef(currentNode.fen);
   currentFenRef.current = currentNode.fen;
 
+  const hintMoves = useMemo(() => {
+    if (
+      state.phase !== "waiting" ||
+      state.priorScore === undefined ||
+      resultFen !== currentNode.fen ||
+      lines.length === 0
+    ) {
+      return [];
+    }
+    return goodEnoughHints(lines, state.priorScore, userIsWhite, cfg);
+  }, [state.phase, state.priorScore, resultFen, currentNode.fen, lines, userIsWhite, cfg]);
+
   function loadFen() {
     const parsed = parseFen(fenInput.trim());
     if (parsed.isErr) {
@@ -216,6 +229,12 @@ function BoardTraining() {
     setHint((h) => ({ stage: h.stage === 0 ? 1 : h.stage === 1 ? 2 : 1 }));
   }
   useHotkeys("h", cycleHint, { enabled: state.phase === "waiting" });
+
+  // Reset the hint stage whenever the position changes (a move was played, or
+  // the machine advanced — Stop / New Game change the FEN too).
+  useEffect(() => {
+    setHint({ stage: 0 });
+  }, [currentNode.fen, setHint]);
 
   const pickEngineOpponentMove = useCallback(
     async (path: number[]): Promise<string | null> => {
@@ -447,6 +466,7 @@ function BoardTraining() {
           movable={inSetup ? "turn" : color}
           disableVariations
           training={!inSetup}
+          trainingHintMoves={hintMoves}
         />
       </Portal>
       <Portal target="#topRight" style={{ height: "100%" }}>
