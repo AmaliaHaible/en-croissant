@@ -114,7 +114,6 @@ function BoardTraining() {
   const deleteMove = useStore(store, (s) => s.deleteMove);
   const setPracticePath = useStore(store, (s) => s.setPracticePath);
   const position = useStore(store, (s) => s.position);
-  const root = useStore(store, (s) => s.root);
   const boardRef = useRef<HTMLDivElement | null>(null);
 
   const { lines, resultFen } = useTrainingEngine(); // mounts the eval session for this tab
@@ -169,16 +168,16 @@ function BoardTraining() {
     const startFen = currentNode.fen;
     startFenRef.current = startFen;
     const [pos] = positionFromFen(startFen);
-    // Design rule: your side is the side to move when you hit Start.
-    const startColor = pos?.turn ?? color;
-    setColor(startColor);
+    // `color` already tracks the start position's side to move (the setup effect
+    // keeps it in sync) unless the user overrode it with the "Swap sides"
+    // toggle — honour whatever it holds now.
     setFen(startFen);
-    setHeaders({ ...headers, fen: startFen, orientation: startColor });
+    setHeaders({ ...headers, fen: startFen, orientation: color });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
     setInvisible(true);
     setState({
-      phase: "waiting",
+      phase: pos?.turn === color ? "waiting" : "opponentThinking",
       fen: startFen,
       path: [],
       priorScore: undefined,
@@ -190,15 +189,13 @@ function BoardTraining() {
   function newGame() {
     const startFen = startFenRef.current;
     const [pos] = positionFromFen(startFen);
-    const startColor = pos?.turn ?? color;
-    setColor(startColor);
     setFen(startFen);
-    setHeaders({ ...headers, fen: startFen, orientation: startColor });
+    setHeaders({ ...headers, fen: startFen, orientation: color });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
     setInvisible(true);
     setState({
-      phase: "waiting",
+      phase: pos?.turn === color ? "waiting" : "opponentThinking",
       fen: startFen,
       path: [],
       priorScore: undefined,
@@ -221,7 +218,7 @@ function BoardTraining() {
   useHotkeys("h", cycleHint, { enabled: state.phase === "waiting" });
 
   const pickEngineOpponentMove = useCallback(
-    async (fen: string, path: number[]): Promise<string | null> => {
+    async (path: number[]): Promise<string | null> => {
       if (!opponentEngine) return null;
       const variant =
         opponentEngine.variants.find((v) => v.id === opponentConfig.variantId) ??
@@ -231,14 +228,19 @@ function BoardTraining() {
         { name: "MultiPV", value: "3" },
         ...(skill !== null ? [{ name: "Skill Level", value: String(skill) }] : []),
       ];
-      const moves = getVariationLine(root, path);
+      // `getBestMoves` replays `moves` on top of `fen`, so the pair must be
+      // root-fen + full-line-from-root (every other call site does this). Passing
+      // the leaf fen here makes the first replayed move illegal → command error
+      // → empty result. Read the root fresh in case the tree moved on.
+      const freshRoot = store.getState().root;
+      const moves = getVariationLine(freshRoot, path);
       const go: GoMode = { t: "Time", c: 300 };
       const res = await commands.getBestMoves(
         `${opponentEngine.id}-training-opponent`,
         opponentEngine.path,
         activeTab ?? "",
         go,
-        { fen, moves, extraOptions },
+        { fen: freshRoot.fen, moves, extraOptions },
       );
       const data = res.status === "ok" ? res.data : null;
       const bestLines = data?.[1] ?? [];
@@ -256,8 +258,18 @@ function BoardTraining() {
       }
       return bestLines[idx]?.sanMoves[0] ?? bestLines[0].sanMoves[0] ?? null;
     },
-    [opponentEngine, opponentConfig.variantId, skill, root, activeTab],
+    [opponentEngine, opponentConfig.variantId, skill, activeTab, store],
   );
+
+  // While still setting up, keep the training color following the start
+  // position's side to move. The "Swap sides" toggle writes `color` directly;
+  // the user then hits Start before the position changes again, so their
+  // override sticks for that session.
+  useEffect(() => {
+    if (state.phase !== "setup") return;
+    const [pos] = positionFromFen(currentNode.fen);
+    if (pos) setColor(pos.turn);
+  }, [state.phase, currentNode.fen, setColor]);
 
   // Pin forward/back navigation to the played line.
   useEffect(() => {
@@ -374,7 +386,7 @@ function BoardTraining() {
         }
         san = sampleBookMove(explorerStats);
       } else {
-        san = await pickEngineOpponentMove(fenAtStart, pathAtStart);
+        san = await pickEngineOpponentMove(pathAtStart);
         if (cancelled || currentFenRef.current !== fenAtStart) return;
       }
 
