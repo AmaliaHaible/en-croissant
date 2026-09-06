@@ -11,7 +11,7 @@ import {
   Text,
   ThemeIcon,
 } from "@mantine/core";
-import { IconCheck, IconInfoCircle } from "@tabler/icons-react";
+import { IconArrowBack, IconCheck, IconInfoCircle } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useContext, useEffect, useRef } from "react";
@@ -30,7 +30,7 @@ import {
 } from "@/state/atoms";
 import { searchExplorerMoves } from "@/utils/db";
 import { lineStatus, pickOpponentMove } from "@/utils/repertoirePlay";
-import { getNodeAtPath } from "@/utils/treeReducer";
+import { findFen, getNodeAtPath } from "@/utils/treeReducer";
 
 const OPPONENT_DELAY_MS = 400;
 const EMPTY_PATH: number[] = [];
@@ -61,6 +61,27 @@ export default function PracticePlay() {
   const positionKey = position.join(",");
   const currentFenRef = useRef(currentNode.fen);
   currentFenRef.current = currentNode.fen;
+
+  // `expectedFen` is the position the phase machine is tracking. The user stepped
+  // exactly one prepared ply forward from it (→ key, > button, or a notation
+  // click) when the pointer's parent is that position and it is now the
+  // opponent's move — intent identical to playing the move on the board.
+  const expectedFen = playState.fen;
+  const parentFen =
+    position.length > 0 ? getNodeAtPath(root, position.slice(0, -1)).fen : undefined;
+  const forwardOntoMove =
+    expectedFen !== undefined &&
+    parentFen === expectedFen &&
+    currentNode.fen !== expectedFen &&
+    currentNode.halfMoves % 2 !== userParity;
+  // Mid-game but the board is parked somewhere else (navigated back, or moved
+  // around in another tab). The one exception is the frame between a forward
+  // step onto your move and the effect picking it up.
+  const offGamePosition =
+    (phase === "waiting" || phase === "opponentThinking") &&
+    expectedFen !== undefined &&
+    currentNode.fen !== expectedFen &&
+    !(phase === "waiting" && forwardOntoMove);
 
   const finish = useCallback(
     (status: "complete" | "gap") => {
@@ -110,16 +131,16 @@ export default function PracticePlay() {
     setStats({ linesCompleted: 0, mistakes: 0 });
   }, [setPlayState, setHint, setInvisible, setStats]);
 
-  // The user just played a valid move (Board navigated the pointer). React to
-  // where the pointer landed.
+  // A prepared move was just played. Either Board advanced playState.fen to it
+  // (drag / click on the board), or the user stepped one prepared ply forward
+  // (→ key, > button, notation click). Plain looking-around during your turn is
+  // neither, and must not start an opponent turn.
   useEffect(() => {
     if (phase !== "waiting") return;
-    // Only react to the pointer landing exactly where the machine expects it
-    // (Board advances playState.fen when it accepts the user's move). Looking
-    // around the move list during your turn must not start an opponent turn.
-    if (playState.fen !== undefined && currentNode.fen !== playState.fen) return;
     const userToMove = currentNode.halfMoves % 2 === userParity;
-    if (userToMove) return; // still the user's turn — nothing happened yet
+    const playedOnBoard =
+      expectedFen !== undefined && currentNode.fen === expectedFen && !userToMove;
+    if (!playedOnBoard && !forwardOntoMove) return;
     setHint({ stage: 0 });
     const status = lineStatus(currentNode, userColor);
     if (status === "continue") {
@@ -131,7 +152,8 @@ export default function PracticePlay() {
     phase,
     positionKey,
     currentNode,
-    playState.fen,
+    expectedFen,
+    forwardOntoMove,
     userColor,
     userParity,
     setHint,
@@ -185,9 +207,14 @@ export default function PracticePlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, positionKey, source, token, root, userColor, goToMove, setHint, setPlayState, finish]);
 
-  // Keep the notation un-blurred whenever we are not mid-game.
+  // Blur the notation while a game is in progress (also on returning to the tab
+  // mid-game); un-blur once it is idle. `finish` handles lineComplete / gap.
   useEffect(() => {
-    if (phase === "idle") setInvisible(false);
+    if (phase === "waiting" || phase === "opponentThinking") {
+      setInvisible(true);
+    } else if (phase === "idle") {
+      setInvisible(false);
+    }
   }, [phase, setInvisible]);
 
   const cycleHint = useCallback(() => {
@@ -267,7 +294,28 @@ export default function PracticePlay() {
         </Button>
       )}
 
-      {phase === "opponentThinking" && (
+      {offGamePosition && (
+        <Paper p="sm" withBorder>
+          <Stack gap="xs" align="center">
+            <Text fz="sm" c="dimmed" ta="center">
+              {t("Board.Practice.NotOnPosition")}
+            </Text>
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconArrowBack size={14} />}
+              onClick={() => goToMove(findFen(expectedFen ?? "", root))}
+            >
+              {t("Board.Practice.GoBackToPosition")}
+            </Button>
+            <Button variant="subtle" size="compact-xs" color="red" onClick={stopGame}>
+              {t("Common.Stop")}
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
+      {phase === "opponentThinking" && !offGamePosition && (
         <Paper p="sm" withBorder>
           <Stack gap="xs" align="center">
             <Group gap="xs" justify="center">
@@ -283,7 +331,7 @@ export default function PracticePlay() {
         </Paper>
       )}
 
-      {phase === "waiting" && (
+      {phase === "waiting" && !offGamePosition && (
         <Paper p="sm" withBorder>
           <Stack gap="xs" align="center">
             <Text fz="sm" c="dimmed">

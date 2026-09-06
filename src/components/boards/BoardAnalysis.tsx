@@ -28,7 +28,6 @@ import {
   enginesAtom,
   evalPreviewEnabledAtom,
   playHintAtom,
-  playStateAtom,
   practiceStateAtom,
   referenceDbAtom,
   reportSettingsAtom,
@@ -197,18 +196,18 @@ function BoardAnalysis() {
     }
   }, [practicing, setPracticePath]);
 
-  const setPlayState = useSetAtom(playStateAtom);
   const setPlayHint = useSetAtom(playHintAtom);
   const setInvisible = useSetAtom(currentInvisibleAtom);
   useEffect(() => {
     if (!playing) {
-      setPlayState({ phase: "idle" });
+      // Leave the game itself intact (playStateAtom) so it resumes when the user
+      // comes back to the Play tab. Only drop the transient hint and, since the
+      // Play panel unmounts with keepMounted={false}, clear the notation blur
+      // here — unless Train still needs it.
       setPlayHint({ stage: 0 });
-      // The Play panel unmounts with keepMounted={false}, so its own idle-unblur
-      // effect never runs; clear the blur here unless Train still needs it.
       if (!practicing) setInvisible(false);
     }
-  }, [playing, practicing, setPlayState, setPlayHint, setInvisible]);
+  }, [playing, practicing, setPlayHint, setInvisible]);
 
   useHotkeys([[keyMap.SAVE_FILE.keys, () => userSaveFile()]]);
   useHotkeys([
