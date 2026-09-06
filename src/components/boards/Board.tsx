@@ -55,6 +55,9 @@ import {
   showDestsAtom,
   showVariationArrowsAtom,
   snapArrowsAtom,
+  trainingColorAtom,
+  trainingHintAtom,
+  trainingStateAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
 import classes from "@/styles/Chessboard.module.css";
@@ -68,6 +71,7 @@ import { getVariationLine } from "@/utils/chess";
 import { chessopsError, forceEnPassant, positionFromFen } from "@/utils/chessops";
 import { matchUserMove } from "@/utils/repertoirePlay";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
+import type { HintMove } from "@/utils/training";
 import { getNodeAtPath } from "@/utils/treeReducer";
 import ShowMaterial from "../common/ShowMaterial";
 import { TreeStateContext } from "../common/TreeStateContext";
@@ -105,6 +109,7 @@ interface ChessboardProps {
    *  Wired up in Task 6 (Board makeMove branch); declared here so the training
    *  panel can pass it. */
   training?: boolean;
+  trainingHintMoves?: HintMove[];
   movable?: "both" | "white" | "black" | "turn" | "none";
   boardRef: React.MutableRefObject<HTMLDivElement | null>;
   whiteTime?: number;
@@ -128,6 +133,8 @@ function Board({
   blackTime,
   practicing,
   playing,
+  training,
+  trainingHintMoves,
   selectedPiece,
   onMove,
   cgRef,
@@ -225,6 +232,9 @@ function Board({
   const setPlayState = useSetAtom(playStateAtom);
   const setPlaySessionStats = useSetAtom(playSessionStatsAtom);
   const playHint = useAtomValue(playHintAtom);
+  const [trainingState, setTrainingState] = useAtom(trainingStateAtom);
+  const trainingHint = useAtomValue(trainingHintAtom);
+  const trainingColor = useAtomValue(trainingColorAtom);
   // Bumped to force a re-render when a rejected play-mode move must be snapped
   // back: chessground has already moved the piece optimistically, and nothing
   // else in the reject path changes a prop Board is subscribed to.
@@ -262,6 +272,30 @@ function Board({
       }));
       // The phase transition is driven by the PracticePlay effect watching the
       // pointer position.
+      return;
+    }
+    if (training) {
+      const onExpectedPosition =
+        trainingState.fen === undefined || currentNode.fen === trainingState.fen;
+      if (
+        trainingState.phase !== "waiting" ||
+        trainingState.priorScore === undefined ||
+        !onExpectedPosition
+      ) {
+        setPendingMove(null);
+        snapBack();
+        return;
+      }
+      // Provisionally accept: commit the move and hand off to BoardTraining's
+      // `checking` effect, which evaluates the resulting node and either keeps
+      // it or deletes it back off.
+      storeMakeMove({ payload: move });
+      setPendingMove(null);
+      setTrainingState((s) => ({
+        ...s,
+        phase: "checking",
+        checkParent: s.path ?? [],
+      }));
       return;
     }
     if (practicing) {
@@ -442,6 +476,24 @@ function Board({
     }
   }
 
+  if (training && trainingHint.stage > 0 && trainingHintMoves && trainingHintMoves.length > 0) {
+    const seen = new Set<string>();
+    for (const h of trainingHintMoves) {
+      if (trainingHint.stage === 1) {
+        if (seen.has(h.from)) continue;
+        seen.add(h.from);
+        shapes.push({ orig: h.from as SquareName, brush: h.brush });
+      } else {
+        shapes.push({
+          orig: h.from as SquareName,
+          dest: h.to as SquareName,
+          brush: h.brush,
+          modifiers: { lineWidth: h.lineWidth },
+        });
+      }
+    }
+  }
+
   const hasClock =
     !!whiteTime ||
     !!blackTime ||
@@ -454,20 +506,25 @@ function Board({
     !!playing &&
     (playState.phase !== "waiting" ||
       (playState.fen !== undefined && currentNode.fen !== playState.fen));
+  const trainingLock =
+    !!training &&
+    (trainingState.phase !== "waiting" ||
+      trainingState.priorScore === undefined ||
+      (trainingState.fen !== undefined && currentNode.fen !== trainingState.fen));
 
   const movableColor: "white" | "black" | "both" | undefined = useMemo(() => {
-    return practiceLock || playLock
-      ? undefined
-      : editingMode
-        ? "both"
-        : match(movable)
-            .with("white", () => "white" as const)
-            .with("black", () => "black" as const)
-            .with("turn", () => turn)
-            .with("both", () => "both" as const)
-            .with("none", () => undefined)
-            .exhaustive();
-  }, [practiceLock, playLock, editingMode, movable, turn]);
+    if (practiceLock || playLock || trainingLock) return undefined;
+    if (training) return trainingColor; // only ever your own pieces
+    return editingMode
+      ? "both"
+      : match(movable)
+          .with("white", () => "white" as const)
+          .with("black", () => "black" as const)
+          .with("turn", () => turn)
+          .with("both", () => "both" as const)
+          .with("none", () => undefined)
+          .exhaustive();
+  }, [practiceLock, playLock, trainingLock, training, trainingColor, editingMode, movable, turn]);
 
   const theme = useMantineTheme();
   const visibleAnnotations = currentNode.annotations.filter((a) => !isBestMoveSuggestion(a));
