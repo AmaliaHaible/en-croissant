@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
@@ -15,7 +16,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconArrowsExchange, IconCheck, IconInfoCircle } from "@tabler/icons-react";
+import { IconArrowsExchange, IconInfoCircle } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 import { makeUci, parseUci, type Position } from "chessops";
 import { makeFen, parseFen } from "chessops/fen";
@@ -97,55 +98,93 @@ function toCandidates(
     .sort((a, b) => b.cp - a.cp);
 }
 
-function CandidateRow({ m, played }: { m: Candidate; played: boolean }) {
-  return (
-    <Group justify="space-between" wrap="nowrap" w="100%">
-      <Text fz="xs" fw={played ? 700 : 400}>
-        {m.san}
-        {played ? " ←" : ""}
+const CANDIDATE_SLOTS = 10;
+
+function CandidateSlot({
+  m,
+  n,
+  played,
+  onClick,
+}: {
+  m: Candidate | null;
+  n: number;
+  played: boolean;
+  onClick?: () => void;
+}) {
+  const body = m ? (
+    <Group gap={4} wrap="nowrap" w="100%">
+      <Text fz={10} c="dimmed" w={16} ta="right" style={{ flexShrink: 0 }}>
+        {n}
       </Text>
-      <Group gap={4} wrap="nowrap">
-        <Text fz="xs" ff="monospace" c={m.goodEnough ? "teal" : "dimmed"}>
-          {fmtEval(m.cp)}
-        </Text>
-        {m.goodEnough && <IconCheck size={12} color="var(--mantine-color-teal-6)" />}
-      </Group>
+      <Text fz={10} fw={played ? 700 : 400} truncate style={{ flex: 1, minWidth: 0 }}>
+        {m.san}
+      </Text>
+      <Text
+        fz={10}
+        ff="monospace"
+        ta="right"
+        c={m.goodEnough ? "teal" : "dimmed"}
+        w={40}
+        style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
+      >
+        {fmtEval(m.cp)}
+      </Text>
     </Group>
+  ) : null;
+  return (
+    <Box
+      component={m && onClick ? "button" : "div"}
+      onClick={m && onClick ? onClick : undefined}
+      px={4}
+      style={{
+        minHeight: 20,
+        display: "flex",
+        alignItems: "center",
+        border: "none",
+        background: "transparent",
+        borderRadius: "var(--mantine-radius-sm)",
+        cursor: m && onClick ? "pointer" : "default",
+        width: "100%",
+      }}
+    >
+      {body}
+    </Box>
   );
 }
 
-function CandidateList({
+/** Fixed 2×5 grid, column-major (1-5 left, 6-10 right), always CANDIDATE_SLOTS
+ *  tall so the box never resizes with the move count. */
+function CandidateGrid({
   moves,
   playedUci,
   onSelect,
 }: {
   moves: Candidate[];
   playedUci?: string | null;
-  /** When set, rows are clickable to jump back and play that move. Otherwise
-   *  they render with the same footprint but inert (keeps the layout static). */
   onSelect?: (uci: string) => void;
 }) {
-  const interactive = !!onSelect;
+  const slots: (Candidate | null)[] = [];
+  for (let i = 0; i < CANDIDATE_SLOTS; i++) slots.push(moves[i] ?? null);
+  const half = CANDIDATE_SLOTS / 2;
   return (
-    <Stack gap={2}>
-      {moves.map((m) => {
-        const played = playedUci != null && m.uci === playedUci;
-        return (
-          <Button
-            key={m.uci}
-            component={interactive ? "button" : "div"}
-            variant="subtle"
-            color="gray"
-            size="compact-xs"
-            fullWidth
-            onClick={interactive ? () => onSelect?.(m.uci) : undefined}
-            style={interactive ? undefined : { cursor: "default" }}
-          >
-            <CandidateRow m={m} played={played} />
-          </Button>
-        );
-      })}
-    </Stack>
+    <Group grow align="flex-start" gap="xs" wrap="nowrap">
+      {[slots.slice(0, half), slots.slice(half)].map((col, ci) => (
+        <Stack key={ci} gap={0} style={{ minWidth: 0 }}>
+          {col.map((m, ri) => {
+            const n = ci * half + ri + 1;
+            return (
+              <CandidateSlot
+                key={n}
+                m={m}
+                n={n}
+                played={!!m && playedUci != null && m.uci === playedUci}
+                onClick={onSelect && m ? () => onSelect(m.uci) : undefined}
+              />
+            );
+          })}
+        </Stack>
+      ))}
+    </Group>
   );
 }
 
@@ -295,7 +334,9 @@ function BoardTraining() {
     ) {
       return [];
     }
-    return goodEnoughHints(lines, state.priorScore, userIsWhite, cfg);
+    // Cap the on-board arrows/circles — with MultiPV 10 a quiet position can
+    // have most moves "good enough", and 8+ arrows is unreadable.
+    return goodEnoughHints(lines, state.priorScore, userIsWhite, cfg).slice(0, 6);
   }, [state.phase, state.priorScore, resultFen, currentNode.fen, lines, userIsWhite, cfg]);
 
   // The engine's candidate moves for the position it is your turn to move in —
@@ -604,17 +645,21 @@ function BoardTraining() {
 
     const snap = lastWaitingRef.current;
     const playedUci = currentNode.move ? makeUci(currentNode.move) : null;
-    const lastTurn = (rejected: boolean) =>
-      snap
-        ? {
-            path: snap.path,
-            fen: snap.fen,
-            prior: snap.prior,
-            playedUci,
-            rejected,
-            candidates: snap.candidates,
-          }
-        : undefined;
+    const playedSan = currentNode.san ?? playedUci;
+    const lastTurn = (rejected: boolean) => {
+      if (!snap) return undefined;
+      let candidates = snap.candidates;
+      // `afterCp` is the engine's exact eval of the move actually played. Make
+      // sure it's in the list even when the move ranked outside MultiPV — the
+      // whole point is to see what your move was worth.
+      if (playedUci && !candidates.some((c) => c.uci === playedUci)) {
+        candidates = [
+          ...candidates,
+          { san: playedSan ?? "?", uci: playedUci, cp: afterCp, goodEnough: !rejected },
+        ].sort((a, b) => b.cp - a.cp);
+      }
+      return { path: snap.path, fen: snap.fen, prior: snap.prior, playedUci, rejected, candidates };
+    };
 
     if (!passesThreshold(prior, afterCp, cfg)) {
       const parent = state.checkParent ?? [];
@@ -650,6 +695,7 @@ function BoardTraining() {
     lines,
     currentNode.fen,
     currentNode.move,
+    currentNode.san,
     position,
     cfg,
     userIsWhite,
@@ -1062,28 +1108,30 @@ function BoardTraining() {
                 )}
 
                 {(activePlay || state.lastTurn) && (
-                  <Group grow align="stretch" wrap="nowrap" gap="xs">
+                  <Group grow align="flex-start" wrap="nowrap" gap="xs">
                     {activePlay && (
-                      <Paper p="xs" withBorder mih={172} style={{ minWidth: 0 }}>
+                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
                         <Text fz="xs" fw={600} tt="uppercase" c="dimmed" mb={4}>
                           {t("Board.Training.BestNow", "Best moves now")}
                         </Text>
-                        {canHint && hint.stage > 0 && currentCandidates.length > 0 ? (
-                          <CandidateList moves={currentCandidates} />
+                        {canHint && hint.stage > 0 ? (
+                          <CandidateGrid moves={currentCandidates} />
                         ) : (
-                          <Text fz="xs" c="dimmed">
-                            {canHint
-                              ? t(
-                                  "Board.Training.BestNowHidden",
-                                  "Press Hint to reveal the candidate moves.",
-                                )
-                              : t("Board.Training.BestNowWait", "Revealed on your move.")}
-                          </Text>
+                          <Box mih={110}>
+                            <Text fz="xs" c="dimmed">
+                              {canHint
+                                ? t(
+                                    "Board.Training.BestNowHidden",
+                                    "Press Hint to reveal the candidate moves.",
+                                  )
+                                : t("Board.Training.BestNowWait", "Revealed on your move.")}
+                            </Text>
+                          </Box>
                         )}
                       </Paper>
                     )}
                     {state.lastTurn && (
-                      <Paper p="xs" withBorder mih={172} style={{ minWidth: 0 }}>
+                      <Paper p="xs" withBorder style={{ minWidth: 0 }}>
                         <Group justify="space-between" mb={4} wrap="nowrap">
                           <Text fz="xs" fw={600} tt="uppercase" c="dimmed">
                             {t("Board.Training.BestLastTurn", "Best moves last turn")}
@@ -1095,37 +1143,35 @@ function BoardTraining() {
                           )}
                         </Group>
                         {lastTurnIsCurrent ? (
-                          <Text fz="xs" c="dimmed">
-                            {t(
-                              "Board.Training.RetryingPosition",
-                              "You're back on this position — see “Best moves now”.",
-                            )}
-                          </Text>
+                          <Box mih={110}>
+                            <Text fz="xs" c="dimmed">
+                              {t(
+                                "Board.Training.RetryingPosition",
+                                "You're back on this position — see “Best moves now”.",
+                              )}
+                            </Text>
+                          </Box>
                         ) : (
                           <>
-                            {canRedo && (
-                              <Text fz="xs" c="dimmed" mb={4}>
-                                {t(
-                                  "Board.Training.RedoHint",
-                                  "Pick a move to jump back and play it instead.",
-                                )}
-                              </Text>
-                            )}
-                            <CandidateList
+                            <CandidateGrid
                               moves={state.lastTurn.candidates}
                               playedUci={state.lastTurn.playedUci}
                               onSelect={canRedo ? redoLastTurn : undefined}
                             />
+                            {canRedo && (
+                              <Text fz={10} c="dimmed" mt={2}>
+                                {t(
+                                  "Board.Training.RedoHint",
+                                  "Click a move to jump back and try it.",
+                                )}
+                              </Text>
+                            )}
                           </>
                         )}
                       </Paper>
                     )}
                   </Group>
                 )}
-
-                <Badge variant="light" color="gray" style={{ alignSelf: "flex-start" }}>
-                  {color === "white" ? t("Fen.White") : t("Fen.Black")}
-                </Badge>
               </Stack>
             </ScrollArea>
           )}

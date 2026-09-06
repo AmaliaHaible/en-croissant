@@ -263,7 +263,7 @@
     "Board.Training.Setup.ThresholdRule": "A move is undone if it loses more than {{pawns}} pawns and more than {{pct}}% of your current edge — whichever limit is larger.",
     "Board.Training.Setup.Thresholds": "Thresholds",
     "Board.Training.Setup.Title": "Training setup",
-    "Board.Training.RedoHint": "Pick a move to jump back and play it instead.",
+    "Board.Training.RedoHint": "Click a move to jump back and try it.",
     "Board.Training.RetryingPosition": "You're back on this position — see “Best moves now”.",
     "Board.Training.ShowArrows": "Show arrows",
     "Board.Training.Undone": "undone",

@@ -73,7 +73,8 @@ export function useTrainingEngine(): {
     // Merge the MultiPV floor into whatever is configured rather than only using
     // it when nothing is configured: any UI write of the engine's own UCI
     // defaults would otherwise silently pin MultiPV to 1. See `withMultiPvFloor`.
-    const extraOptions = useMemo(() => withMultiPvFloor(variant?.settings ?? [], 6), [variant]);
+    // 10 lines: the training panel shows a fixed 2×5 grid of candidate moves.
+    const extraOptions = useMemo(() => withMultiPvFloor(variant?.settings ?? [], 10), [variant]);
 
     const activeTab = useAtomValue(activeTabAtom);
     const store = useContext(TreeStateContext)!;
