@@ -29,6 +29,7 @@ import {
   sessionsAtom,
 } from "@/state/atoms";
 import { searchExplorerMoves } from "@/utils/db";
+import { isPrefix } from "@/utils/misc";
 import { lineStatus, pickOpponentMove } from "@/utils/repertoirePlay";
 import { findFen, getNodeAtPath } from "@/utils/treeReducer";
 
@@ -42,6 +43,7 @@ export default function PracticePlay() {
   const position = useStore(store, (s) => s.position);
   const headers = useStore(store, (s) => s.headers);
   const goToMove = useStore(store, (s) => s.goToMove);
+  const setPracticePath = useStore(store, (s) => s.setPracticePath);
   const currentNode = useStore(store, (s) => s.currentNode());
 
   const [playState, setPlayState] = useAtom(playStateAtom);
@@ -58,36 +60,38 @@ export default function PracticePlay() {
   const userParity = userColor === "white" ? 0 : 1;
 
   const phase = playState.phase;
+  const inGame = phase !== "idle";
+  const activeTurn = phase === "waiting" || phase === "opponentThinking";
   const positionKey = position.join(",");
   const currentFenRef = useRef(currentNode.fen);
   currentFenRef.current = currentNode.fen;
 
-  // `expectedFen` is the position the phase machine is tracking. The user stepped
-  // exactly one prepared ply forward from it (→ key, > button, or a notation
-  // click) when the pointer's parent is that position and it is now the
-  // opponent's move — intent identical to playing the move on the board.
+  // `expectedFen` / `gamePath` are the live game position. Scrubbing back and
+  // forth along the game line (`position` a prefix of `gamePath`) is fine;
+  // landing on a different branch (a move-list click) is "off the game".
   const expectedFen = playState.fen;
-  const parentFen =
-    position.length > 0 ? getNodeAtPath(root, position.slice(0, -1)).fen : undefined;
-  const forwardOntoMove =
-    expectedFen !== undefined &&
-    parentFen === expectedFen &&
-    currentNode.fen !== expectedFen &&
-    currentNode.halfMoves % 2 !== userParity;
-  // Mid-game but the board is parked somewhere else (navigated back, or moved
-  // around in another tab). The one exception is the frame between a forward
-  // step onto your move and the effect picking it up.
+  const gamePath = playState.path;
   const offGamePosition =
-    (phase === "waiting" || phase === "opponentThinking") &&
-    expectedFen !== undefined &&
+    activeTurn &&
+    gamePath !== undefined &&
     currentNode.fen !== expectedFen &&
-    !(phase === "waiting" && forwardOntoMove);
+    !isPrefix(position, gamePath);
+  // Scrubbing back along the game line during your/opponent's turn — on the line,
+  // just behind the live position.
+  const reviewing =
+    activeTurn && gamePath !== undefined && currentNode.fen !== expectedFen && !offGamePosition;
 
   const finish = useCallback(
-    (status: "complete" | "gap") => {
+    (status: "complete" | "gap", fen?: string, path?: number[]) => {
       setInvisible(false);
       setHint({ stage: 0 });
-      setPlayState({ phase: status === "gap" ? "gap" : "lineComplete" });
+      // Keep fen/path (the final position) so forward/back still scrubs the
+      // finished line without running off its end.
+      setPlayState((s) => ({
+        phase: status === "gap" ? "gap" : "lineComplete",
+        fen: fen ?? s.fen,
+        path: path ?? s.path,
+      }));
       if (status === "complete") {
         setStats((s) => ({ ...s, linesCompleted: s.linesCompleted + 1 }));
       }
@@ -111,6 +115,7 @@ export default function PracticePlay() {
     setPlayState({
       phase: userToMove ? "waiting" : "opponentThinking",
       fen: node.fen,
+      path: startPath,
     });
   }, [
     root,
@@ -131,20 +136,19 @@ export default function PracticePlay() {
     setStats({ linesCompleted: 0, mistakes: 0 });
   }, [setPlayState, setHint, setInvisible, setStats]);
 
-  // A prepared move was just played. Either Board advanced playState.fen to it
-  // (drag / click on the board), or the user stepped one prepared ply forward
-  // (→ key, > button, notation click). Plain looking-around during your turn is
-  // neither, and must not start an opponent turn.
+  // A prepared move was just played on the board (drag / click) — Board advanced
+  // playState.fen/path to it. Plain navigation during your turn is not a move and
+  // must not start an opponent turn.
   useEffect(() => {
     if (phase !== "waiting") return;
     const userToMove = currentNode.halfMoves % 2 === userParity;
     const playedOnBoard =
       expectedFen !== undefined && currentNode.fen === expectedFen && !userToMove;
-    if (!playedOnBoard && !forwardOntoMove) return;
+    if (!playedOnBoard) return;
     setHint({ stage: 0 });
     const status = lineStatus(currentNode, userColor);
     if (status === "continue") {
-      setPlayState({ phase: "opponentThinking", fen: currentNode.fen });
+      setPlayState((s) => ({ ...s, phase: "opponentThinking" }));
     } else {
       finish(status);
     }
@@ -153,7 +157,6 @@ export default function PracticePlay() {
     positionKey,
     currentNode,
     expectedFen,
-    forwardOntoMove,
     userColor,
     userParity,
     setHint,
@@ -195,9 +198,9 @@ export default function PracticePlay() {
       const nextNode = getNodeAtPath(root, pick.nextPath);
       const status = lineStatus(nextNode, userColor);
       if (status === "continue") {
-        setPlayState({ phase: "waiting", fen: nextNode.fen });
+        setPlayState({ phase: "waiting", fen: nextNode.fen, path: pick.nextPath });
       } else {
-        finish(status);
+        finish(status, nextNode.fen, pick.nextPath);
       }
     })();
 
@@ -216,6 +219,14 @@ export default function PracticePlay() {
       setInvisible(false);
     }
   }, [phase, setInvisible]);
+
+  // Pin forward/back navigation to the game line: the tree store's goToNext
+  // follows practicePath's child indices and stops once the pointer reaches its
+  // end, so `→` walks back to the live position and no further. BoardAnalysis
+  // clears it when the Play tab is left.
+  useEffect(() => {
+    setPracticePath(inGame ? (gamePath ?? null) : null);
+  }, [inGame, gamePath, setPracticePath]);
 
   const cycleHint = useCallback(() => {
     setHint((h) => ({ stage: h.stage === 0 ? 1 : h.stage === 1 ? 2 : 1 }));
@@ -304,7 +315,7 @@ export default function PracticePlay() {
               variant="light"
               size="xs"
               leftSection={<IconArrowBack size={14} />}
-              onClick={() => goToMove(findFen(expectedFen ?? "", root))}
+              onClick={() => goToMove(gamePath ?? findFen(expectedFen ?? "", root))}
             >
               {t("Board.Practice.GoBackToPosition")}
             </Button>
@@ -315,7 +326,25 @@ export default function PracticePlay() {
         </Paper>
       )}
 
-      {phase === "opponentThinking" && !offGamePosition && (
+      {reviewing && (
+        <Paper p="sm" withBorder>
+          <Stack gap="xs" align="center">
+            <Text fz="sm" c="dimmed" ta="center">
+              {t("Board.Practice.Play.Reviewing")}
+            </Text>
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconArrowBack size={14} />}
+              onClick={() => gamePath && goToMove(gamePath)}
+            >
+              {t("Board.Practice.Play.BackToGame")}
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
+      {phase === "opponentThinking" && !offGamePosition && !reviewing && (
         <Paper p="sm" withBorder>
           <Stack gap="xs" align="center">
             <Group gap="xs" justify="center">
@@ -331,7 +360,7 @@ export default function PracticePlay() {
         </Paper>
       )}
 
-      {phase === "waiting" && !offGamePosition && (
+      {phase === "waiting" && !offGamePosition && !reviewing && (
         <Paper p="sm" withBorder>
           <Stack gap="xs" align="center">
             <Text fz="sm" c="dimmed">

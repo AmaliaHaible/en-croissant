@@ -249,8 +249,13 @@ function Board({
       goToMove(res.nextPath);
       // Advance the position the machine expects so the PracticePlay effect
       // (which watches the pointer) recognises this as a real move rather than
-      // idle navigation, and so the lock re-arms against the new node.
-      setPlayState((s) => ({ ...s, fen: getNodeAtPath(root, res.nextPath).fen }));
+      // idle navigation, so the lock re-arms against the new node, and so
+      // forward/back navigation follows the game line up to here.
+      setPlayState((s) => ({
+        ...s,
+        fen: getNodeAtPath(root, res.nextPath).fen,
+        path: res.nextPath,
+      }));
       // The phase transition is driven by the PracticePlay effect watching the
       // pointer position.
       return;

@@ -671,8 +671,10 @@ export const practiceCardStartTimeAtom = tabValue(practiceCardStartTimeFamily);
 export type PlayPhase = "idle" | "opponentThinking" | "waiting" | "lineComplete" | "gap";
 // `fen` pins the position the machine expects during `opponentThinking`/`waiting`,
 // so navigating away during your turn neither starts a phantom opponent turn nor
-// lets a move from a different line count.
-export type PlayState = { phase: PlayPhase; fen?: string };
+// lets a move from a different line count. `path` is that same position's tree
+// path — it feeds `practicePath` so forward/back navigation stays on the game
+// line and stops at the live position.
+export type PlayState = { phase: PlayPhase; fen?: string; path?: number[] };
 
 const playStateFamily = atomFamily((_tab: string) => atom<PlayState>({ phase: "idle" }));
 export const playStateAtom = tabValue(playStateFamily);

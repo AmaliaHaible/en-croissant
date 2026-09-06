@@ -191,10 +191,12 @@ function BoardAnalysis() {
 
   const setPracticePath = useStore(store, (s) => s.setPracticePath);
   useEffect(() => {
-    if (!practicing) {
+    // Play mode also drives practicePath (to pin forward/back to the game line);
+    // only clear it once neither mode owns it.
+    if (!practicing && !playing) {
       setPracticePath(null);
     }
-  }, [practicing, setPracticePath]);
+  }, [practicing, playing, setPracticePath]);
 
   const setPlayHint = useSetAtom(playHintAtom);
   const setInvisible = useSetAtom(currentInvisibleAtom);
