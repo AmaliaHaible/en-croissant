@@ -15,6 +15,7 @@ import { createTab, genID, isPersistentGameOrigin, type Tab } from "@/utils/tabs
 import { unwrap } from "@/utils/unwrap";
 import BoardAnalysis from "../boards/BoardAnalysis";
 import BoardGame from "../boards/BoardGame";
+import BoardTraining from "../boards/BoardTraining";
 import { TreeStateProvider } from "../common/TreeStateContext";
 import Puzzles from "../puzzles/Puzzles";
 import { BoardTab } from "./BoardTab";
@@ -365,6 +366,12 @@ function TabSwitch({
             <>
               {mosaic}
               <Puzzles id={tab.value} />
+            </>
+          ))
+          .with("training", () => (
+            <>
+              {mosaic}
+              <BoardTraining id={tab.value} />
             </>
           ))
           .exhaustive()}

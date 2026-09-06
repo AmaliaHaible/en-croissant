@@ -356,10 +356,23 @@ export default function NewTabHome({ id }: { id: string }) {
     },
     {
       icon: <IconPuzzle size={60} />,
-      title: t("Home.Card.Puzzle.Title"),
-      description: t("Home.Card.Puzzle.Desc"),
-      label: t("Home.Card.Puzzle.Button"),
+      title: t("Home.Card.Training.Title", "Training"),
+      description: t(
+        "Home.Card.Training.Desc",
+        "Drill a position against a probability opponent with engine feedback",
+      ),
+      label: t("Home.Card.Training.Button", "Train"),
       onClick: () => {
+        setTabs((prev) => {
+          const tab = prev.find((t) => t.value === id);
+          if (!tab) return prev;
+          tab.name = t("Home.TrainingMode", "Training");
+          tab.type = "training";
+          return [...prev];
+        });
+      },
+      secondaryLabel: t("Home.Card.Training.PuzzlesButton", "Puzzles"),
+      onSecondaryClick: () => {
         setTabs((prev) => {
           const tab = prev.find((t) => t.value === id);
           if (!tab) return prev;
