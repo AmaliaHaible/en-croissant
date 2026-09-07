@@ -72,7 +72,12 @@ import BoardControls from "./BoardControls";
 const OPPONENT_DELAY_MS = 400;
 
 const otherColor = (c: "white" | "black") => (c === "white" ? "black" : "white");
-const fmtEval = (cp: number) => `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(2)}`;
+const fmtEval = (cp: number) => {
+  const p = cp / 100;
+  const a = Math.abs(p);
+  const digits = a >= 100 ? 0 : a >= 10 ? 1 : 2;
+  return `${p >= 0 ? "+" : "-"}${a.toFixed(digits)}`;
+};
 
 type Candidate = { san: string; uci: string; cp: number; goodEnough: boolean };
 
@@ -112,19 +117,20 @@ function CandidateSlot({
   onClick?: () => void;
 }) {
   const body = m ? (
-    <Group gap={4} wrap="nowrap" w="100%">
-      <Text fz={10} c="dimmed" w={16} ta="right" style={{ flexShrink: 0 }}>
+    <Group gap={6} wrap="nowrap" w="100%">
+      <Text fz="xs" c="dimmed" w={18} ta="right" style={{ flexShrink: 0 }}>
         {n}
       </Text>
-      <Text fz={10} fw={played ? 700 : 400} truncate style={{ flex: 1, minWidth: 0 }}>
+      <Text fz="xs" fw={played ? 700 : 400} truncate style={{ flex: 1, minWidth: 0 }}>
         {m.san}
       </Text>
       <Text
-        fz={10}
+        fz="xs"
         ff="monospace"
         ta="right"
+        fw={played ? 700 : 400}
         c={m.goodEnough ? "teal" : "dimmed"}
-        w={40}
+        w={46}
         style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
       >
         {fmtEval(m.cp)}
@@ -137,11 +143,11 @@ function CandidateSlot({
       onClick={m && onClick ? onClick : undefined}
       px={4}
       style={{
-        minHeight: 20,
+        minHeight: 24,
         display: "flex",
         alignItems: "center",
         border: "none",
-        background: "transparent",
+        background: played ? "var(--mantine-primary-color-light)" : "transparent",
         borderRadius: "var(--mantine-radius-sm)",
         cursor: m && onClick ? "pointer" : "default",
         width: "100%",
@@ -1117,7 +1123,7 @@ function BoardTraining() {
                         {canHint && hint.stage > 0 ? (
                           <CandidateGrid moves={currentCandidates} />
                         ) : (
-                          <Box mih={110}>
+                          <Box mih={122}>
                             <Text fz="xs" c="dimmed">
                               {canHint
                                 ? t(
@@ -1143,7 +1149,7 @@ function BoardTraining() {
                           )}
                         </Group>
                         {lastTurnIsCurrent ? (
-                          <Box mih={110}>
+                          <Box mih={122}>
                             <Text fz="xs" c="dimmed">
                               {t(
                                 "Board.Training.RetryingPosition",
@@ -1152,21 +1158,11 @@ function BoardTraining() {
                             </Text>
                           </Box>
                         ) : (
-                          <>
-                            <CandidateGrid
-                              moves={state.lastTurn.candidates}
-                              playedUci={state.lastTurn.playedUci}
-                              onSelect={canRedo ? redoLastTurn : undefined}
-                            />
-                            {canRedo && (
-                              <Text fz={10} c="dimmed" mt={2}>
-                                {t(
-                                  "Board.Training.RedoHint",
-                                  "Click a move to jump back and try it.",
-                                )}
-                              </Text>
-                            )}
-                          </>
+                          <CandidateGrid
+                            moves={state.lastTurn.candidates}
+                            playedUci={state.lastTurn.playedUci}
+                            onSelect={canRedo ? redoLastTurn : undefined}
+                          />
                         )}
                       </Paper>
                     )}

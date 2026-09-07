@@ -34,6 +34,18 @@ export function formatScore(score: ScoreValue, precision = 2): string {
     return scoreText;
 }
 
+/**
+ * Compact, fixed-width pawn eval (unsigned magnitude) for the eval bar:
+ * `X.XX` below 10, `XX.X` below 100, `XXX` at 100+, so it never spills.
+ * `M<n>` for mate.
+ */
+export function formatEvalBar(score: ScoreValue): string {
+    if (score.type !== "cp") return formatScore(score).replace(/^[+-]/, "");
+    const pawns = Math.abs(score.value / 100);
+    const digits = pawns >= 100 ? 0 : pawns >= 10 ? 1 : 2;
+    return pawns.toFixed(digits);
+}
+
 export function getWinChance(centipawns: number) {
     return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * centipawns)) - 1);
 }

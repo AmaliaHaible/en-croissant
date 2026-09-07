@@ -3,7 +3,7 @@ import { Box, Text, Tooltip, useMantineTheme } from "@mantine/core";
 import { useAtom } from "jotai";
 import type { Score } from "@/bindings";
 import { currentEvalBarDisplayAtom, currentEvalOpenAtom } from "@/state/atoms";
-import { formatScore, getWinChance } from "@/utils/score";
+import { formatEvalBar, formatScore, getWinChance } from "@/utils/score";
 
 function EvalBar({ score, orientation }: { score: Score | null; orientation: Color }) {
   const theme = useMantineTheme();
@@ -92,9 +92,10 @@ function EvalBar({ score, orientation }: { score: Score | null; orientation: Col
             c={theme.colors.gray[2]}
             ta="center"
             py={3}
+            style={{ whiteSpace: "nowrap" }}
             mt={orientation === "black" ? "auto" : undefined}
           >
-            {scoreValue.value <= 0 && formatScore(scoreValue, 1).replace(/\+|-/, "")}
+            {scoreValue.value <= 0 && formatEvalBar(scoreValue)}
           </Text>
         </Box>,
         <Box
@@ -112,9 +113,10 @@ function EvalBar({ score, orientation }: { score: Score | null; orientation: Col
             py={3}
             c={theme.colors.dark[8]}
             ta="center"
+            style={{ whiteSpace: "nowrap" }}
             mt={orientation === "white" ? "auto" : undefined}
           >
-            {scoreValue.value > 0 && formatScore(scoreValue, 1).slice(1)}
+            {scoreValue.value > 0 && formatEvalBar(scoreValue)}
           </Text>
         </Box>,
       ];
@@ -139,7 +141,7 @@ function EvalBar({ score, orientation }: { score: Score | null; orientation: Col
           e.preventDefault();
         }}
         style={{
-          width: 25,
+          width: 32,
           height: "100%",
           borderRadius: "var(--mantine-radius-xs)",
           overflow: "hidden",
