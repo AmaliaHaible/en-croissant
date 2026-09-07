@@ -119,15 +119,24 @@ export function useTrainingEngine(): {
         (resultFen: string, bestLines: BestMoves[], progress: number) => void
     >(() => {});
     useEffect(() => {
-        handleResultRef.current = (resultFen, bestLines, _progress) => {
+        handleResultRef.current = (resultFen, bestLines, progress) => {
             // Late answer for a position we already left.
             if (bestLines.length === 0 || resultFen !== finalFen) return;
-            // A `{ t: "Time" }` search reports progress===100 on completion, but
-            // intermediate lines are published too: the eval keeps improving
-            // while the user thinks, so there's no reason to withhold them.
+            // The eval bar can follow the search as it deepens.
+            setScore(bestLines[0].score);
+            // But `lines` / `resultFen` drive a binary keep-or-undo decision (the
+            // prior-score capture in `waiting`, the threshold test in `checking`),
+            // so they must only ever see a *completed* search. Intermediate lines
+            // are shallow and noisy, and the "good enough" threshold in an opening
+            // is only a few centipawns wide, so a mid-search eval flips the verdict
+            // on moves the finished search rates as fine — the move is undone and
+            // the real eval only shows up a split second later. `useLiveCoachEngine`
+            // / `useCoachHint` (which this hook mirrors) gate their decision output
+            // the same way. The go-mode here is always `{ t: "Time" }`, which
+            // reports progress===100 on completion.
+            if (progress < 100) return;
             setLines(bestLines);
             setResultFen(finalFen);
-            setScore(bestLines[0].score);
         };
     });
 

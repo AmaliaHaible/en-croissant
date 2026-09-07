@@ -439,6 +439,16 @@ pub async fn get_best_moves(
                 },
             },
             UciMessage::BestMove { .. } => {
+                // An engine may report fewer PV lines than the requested MultiPV
+                // — a tablebase/opening-book-backed engine (or a proxy in front
+                // of one) only returns the moves it actually knows. `best_moves`
+                // then never reaches `real_multipv`, so the `Info` arm above never
+                // promotes it to `last_best_moves`, and without this fallback the
+                // payload here carries `best_lines: []`, which every consumer
+                // discards — leaving the UI stuck on "evaluating" forever.
+                if proc.last_best_moves.is_empty() && !proc.best_moves.is_empty() {
+                    proc.last_best_moves = std::mem::take(&mut proc.best_moves);
+                }
                 BestMovesPayload {
                     best_lines: proc.last_best_moves.clone(),
                     engine: id.clone(),
