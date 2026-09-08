@@ -723,6 +723,9 @@ export type TrainingState = {
     /** Fen of the child node under evaluation in `checking` (the move the user
      *  just played). The `checking` effect only acts while the board sits here. */
     checkChild?: string;
+    /** The move under evaluation in `checking` was played with Ctrl held —
+     *  keep it even if it fails the threshold (still evaluate + rank it). */
+    checkForced?: boolean;
     /** The user chose to keep playing out of book against the opponent engine. */
     engineOpponentActive: boolean;
     /** Terminal result string for the gameOver panel. */
@@ -740,6 +743,8 @@ export type TrainingState = {
         prior: number;
         playedUci: string | null;
         rejected: boolean;
+        /** The played move failed the threshold but was forced through (Ctrl). */
+        forced?: boolean;
         candidates: { san: string; uci: string; cp: number; goodEnough: boolean }[];
     };
 };

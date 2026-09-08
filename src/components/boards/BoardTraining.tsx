@@ -479,7 +479,9 @@ function BoardTraining() {
       setHint({ stage: 0 });
       setState((s) => ({
         ...s,
-        lastTurn: s.lastTurn ? { ...s.lastTurn, playedUci: uci, rejected: false } : undefined,
+        lastTurn: s.lastTurn
+          ? { ...s.lastTurn, playedUci: uci, rejected: false, forced: false }
+          : undefined,
         priorScore: undefined,
         checkParent: undefined,
         checkChild: undefined,
@@ -656,7 +658,7 @@ function BoardTraining() {
     const snap = lastWaitingRef.current;
     const playedUci = currentNode.move ? makeUci(currentNode.move) : null;
     const playedSan = currentNode.san ?? playedUci;
-    const lastTurn = (rejected: boolean) => {
+    const lastTurn = (rejected: boolean, forced = false) => {
       if (!snap) return undefined;
       let candidates = snap.candidates;
       // `afterCp` is the engine's exact eval of the move actually played. Make
@@ -668,10 +670,18 @@ function BoardTraining() {
           { san: playedSan ?? "?", uci: playedUci, cp: afterCp, goodEnough: !rejected },
         ].sort((a, b) => b.cp - a.cp);
       }
-      return { path: snap.path, fen: snap.fen, prior: snap.prior, playedUci, rejected, candidates };
+      return {
+        path: snap.path,
+        fen: snap.fen,
+        prior: snap.prior,
+        playedUci,
+        rejected,
+        forced,
+        candidates,
+      };
     };
 
-    if (!passesThreshold(prior, afterCp, cfg)) {
+    if (!passesThreshold(prior, afterCp, cfg) && !state.checkForced) {
       const parent = state.checkParent ?? [];
       deleteMove(childPath);
       goToMove(parent);
@@ -681,12 +691,15 @@ function BoardTraining() {
         phase: "waiting",
         fen: getNodeAtPath(store.getState().root, parent).fen,
         path: parent,
+        checkForced: undefined,
         // priorScore for the parent is unchanged — keep it.
         lastTurn: lastTurn(true),
       }));
       return;
     }
 
+    // Either the move cleared the threshold, or it was forced through with Ctrl.
+    const forcedThrough = !passesThreshold(prior, afterCp, cfg);
     setStats((s) => ({ ...s, movesPlayed: s.movesPlayed + 1 }));
     setState((s) => ({
       ...s,
@@ -694,13 +707,15 @@ function BoardTraining() {
       fen: currentNode.fen,
       path: childPath,
       priorScore: undefined,
-      lastTurn: lastTurn(false),
+      checkForced: undefined,
+      lastTurn: lastTurn(false, forcedThrough),
     }));
   }, [
     state.phase,
     state.priorScore,
     state.checkParent,
     state.checkChild,
+    state.checkForced,
     resultFen,
     lines,
     currentNode.fen,
@@ -1149,6 +1164,11 @@ function BoardTraining() {
                           {state.lastTurn.rejected && (
                             <Badge size="xs" color="red" variant="light">
                               {t("Board.Training.Undone", "undone")}
+                            </Badge>
+                          )}
+                          {state.lastTurn.forced && (
+                            <Badge size="xs" color="yellow" variant="light">
+                              {t("Board.Training.Forced", "forced")}
                             </Badge>
                           )}
                         </Group>

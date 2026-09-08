@@ -236,6 +236,7 @@
     "Board.Training.BestNowWait": "Revealed on your move.",
     "Board.Training.CheckingMove": "Checking your move…",
     "Board.Training.Evaluating": "Evaluating…",
+    "Board.Training.Forced": "forced",
     "Board.Training.GameOver": "Game over",
     "Board.Training.Hint": "Hint",
     "Board.Training.Mistakes": "Mistakes",

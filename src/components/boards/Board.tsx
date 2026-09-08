@@ -240,7 +240,7 @@ function Board({
   // else in the reject path changes a prop Board is subscribed to.
   const [, snapBack] = useReducer((n: number) => n + 1, 0);
 
-  async function makeMove(move: NormalMove) {
+  async function makeMove(move: NormalMove, opts?: { force?: boolean }) {
     if (!pos) return;
     const san = makeSan(pos, move);
     if (playing) {
@@ -299,6 +299,8 @@ function Board({
         phase: "checking",
         checkParent: s.path ?? [],
         checkChild: childFen,
+        // Ctrl held while moving: keep the move even if it fails the threshold.
+        checkForced: opts?.force ?? false,
       }));
       return;
     }
@@ -777,10 +779,7 @@ function Board({
                               });
                             }
                           } else {
-                            makeMove({
-                              from,
-                              to,
-                            });
+                            makeMove({ from, to }, { force: metadata.ctrlKey });
                           }
                         }
                       }
