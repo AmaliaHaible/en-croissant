@@ -9,7 +9,7 @@ import {
 } from "@tabler/icons-react";
 import equal from "fast-deep-equal";
 import { useAtomValue } from "jotai";
-import { memo, useContext, useEffect, useRef, useState } from "react";
+import { memo, useContext, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -150,21 +150,12 @@ function CompleteMoveCell({
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
 
-  // Only listen for outside clicks while this cell's menu is actually open,
-  // instead of Mantine's useClickOutside (which would register a permanent
-  // document listener per cell — very expensive with thousands of moves).
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick, true);
-    return () => document.removeEventListener("mousedown", handleClick, true);
-  }, [open]);
+  // Closing on outside-click is handled by Mantine's <Menu> (closeOnClickOutside
+  // + onChange below). It only registers its document listener while the menu is
+  // mounted, and since <Menu> is rendered only for the open cell, there is no
+  // per-cell listener cost. A hand-rolled capture-phase listener here previously
+  // swallowed the menu items' own clicks (they portal outside `ref`), so every
+  // menu action silently did nothing.
 
   const onContextMenu = (e: React.MouseEvent) => {
     setOpen((v) => !v);
