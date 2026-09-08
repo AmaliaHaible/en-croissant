@@ -411,7 +411,10 @@ function BoardTraining() {
     // whatever it holds now. Normally the opponent is on move, so the session
     // opens in `opponentThinking`.
     setFen(startFen);
-    setHeaders({ ...headers, fen: startFen, orientation: color });
+    // Clear any terminal result carried over from a previous game — `makeMove`
+    // stamps `headers.result` on checkmate/stalemate and the notation panel
+    // shows "White wins" / "Black wins" for as long as it isn't "*".
+    setHeaders({ ...headers, fen: startFen, orientation: color, result: "*" });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
     setState({
@@ -428,7 +431,7 @@ function BoardTraining() {
     const startFen = normalizeFen(startFenRef.current);
     const [pos] = positionFromFen(startFen);
     setFen(startFen);
-    setHeaders({ ...headers, fen: startFen, orientation: color });
+    setHeaders({ ...headers, fen: startFen, orientation: color, result: "*" });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });
     setState({
@@ -443,6 +446,7 @@ function BoardTraining() {
 
   function stopSession() {
     goToMove([]);
+    setHeaders({ ...headers, result: "*" });
     setState({ phase: "setup", engineOpponentActive: false });
     setHint({ stage: 0 });
     setStats({ movesPlayed: 0, mistakes: 0 });

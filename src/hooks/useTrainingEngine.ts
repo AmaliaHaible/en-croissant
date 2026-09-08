@@ -168,15 +168,21 @@ export function useTrainingEngine(): {
             const id = trainingEvalId(engine.id);
 
             if (!active || isGameOver) {
-                if (searchingRef.current) {
+                // The training session is between games (setup / out of book /
+                // game over). Unlike the live-coach hook — which only toggles
+                // with a user setting and keeps its process warm — a training
+                // idle period has no bound, so fully tear the process down
+                // rather than leaving it `stop`ped-but-alive: `stop_engine`
+                // never removes it from the backend's process table, so it
+                // would linger until the tab is closed. A new game spawns a
+                // fresh one. Kill the process that's actually running, not `id`:
+                // if the configured engine changed since the search started,
+                // `id` (recomputed from the current `engine`) no longer matches.
+                const started = startedRef.current;
+                if (started) {
+                    startedRef.current = null;
                     searchingRef.current = false;
-                    // Stop the process that's actually running, not `id`: if the
-                    // configured engine changed since the search was started, `id`
-                    // (recomputed from the current `engine`) no longer matches it.
-                    const started = startedRef.current;
-                    if (started) {
-                        commands.stopEngine(started.id, started.tab).then((r) => unwrap(r));
-                    }
+                    commands.killEngine(started.id, started.tab).catch(() => {});
                 }
                 return;
             }
