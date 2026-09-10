@@ -9,6 +9,14 @@ const params = generatorParameters({ enable_fuzz: true });
 
 const f = fsrs(params);
 
+/**
+ * Upper bound on the per-deck review log. The log is only ever shown in the
+ * "Show logs" modal, but it grows by one entry on every single review and is
+ * otherwise never trimmed — left unbounded it is the second way a deck bloats
+ * its persisted storage (after the position count itself).
+ */
+export const MAX_REVIEW_LOGS = 1000;
+
 export const positionSchema = z.object({
     fen: z.string(),
     answer: z.string(),
@@ -106,10 +114,10 @@ export function updateCardPerformance(
 
     setPositions((data) => {
         data.positions[i].card = newCard;
-        data.logs.push({ ...log, fen: data.positions[i].fen });
+        const logs = [...data.logs, { ...log, fen: data.positions[i].fen }];
         return {
             positions: data.positions,
-            logs: data.logs,
+            logs: logs.length > MAX_REVIEW_LOGS ? logs.slice(-MAX_REVIEW_LOGS) : logs,
         };
     });
 }

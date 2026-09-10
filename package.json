@@ -76,6 +76,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "immer": "^11.1.17",
     "jotai": "^2.20.2",
+    "lz-string": "^1.5.0",
     "mantine-contextmenu": "^8.3.13",
     "mantine-datatable": "^8.3.13",
     "posthog-js": "^1.417.3",

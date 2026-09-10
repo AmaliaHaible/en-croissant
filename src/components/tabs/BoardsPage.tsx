@@ -16,6 +16,7 @@ import { unwrap } from "@/utils/unwrap";
 import BoardAnalysis from "../boards/BoardAnalysis";
 import BoardGame from "../boards/BoardGame";
 import BoardTraining from "../boards/BoardTraining";
+import { ErrorBoundary } from "../common/ErrorBoundary";
 import { TreeStateProvider } from "../common/TreeStateContext";
 import Puzzles from "../puzzles/Puzzles";
 import { BoardTab } from "./BoardTab";
@@ -343,38 +344,41 @@ function TabSwitch({
 
   return (
     <TreeStateProvider id={tab.value}>
-      {active &&
-        match(tab.type)
-          .with("play", () => (
-            <>
-              {mosaic}
-              <BoardGame />
-            </>
-          ))
-          .with("analysis", () => (
-            <>
-              {mosaic}
-              <BoardAnalysis />
-              <ConfirmChangesModal
-                opened={saveModalOpened}
-                toggle={toggleSaveModal}
-                closeTab={() => closeTab(activeTab, true)}
-              />
-            </>
-          ))
-          .with("puzzles", () => (
-            <>
-              {mosaic}
-              <Puzzles id={tab.value} />
-            </>
-          ))
-          .with("training", () => (
-            <>
-              {mosaic}
-              <BoardTraining />
-            </>
-          ))
-          .exhaustive()}
+      {active && (
+        <ErrorBoundary key={tab.value}>
+          {match(tab.type)
+            .with("play", () => (
+              <>
+                {mosaic}
+                <BoardGame />
+              </>
+            ))
+            .with("analysis", () => (
+              <>
+                {mosaic}
+                <BoardAnalysis />
+                <ConfirmChangesModal
+                  opened={saveModalOpened}
+                  toggle={toggleSaveModal}
+                  closeTab={() => closeTab(activeTab, true)}
+                />
+              </>
+            ))
+            .with("puzzles", () => (
+              <>
+                {mosaic}
+                <Puzzles id={tab.value} />
+              </>
+            ))
+            .with("training", () => (
+              <>
+                {mosaic}
+                <BoardTraining />
+              </>
+            ))
+            .exhaustive()}
+        </ErrorBoundary>
+      )}
     </TreeStateProvider>
   );
 }

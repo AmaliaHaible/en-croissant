@@ -1,6 +1,7 @@
 import { BaseDirectory, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import { warn } from "@tauri-apps/plugin-log";
 import equal from "fast-deep-equal";
+import { compressToUTF16, decompressFromUTF16 } from "lz-string";
 import type {
     AsyncStorage,
     AsyncStringStorage,
@@ -26,6 +27,44 @@ export const fileStorage: AsyncStringStorage = {
     },
 };
 
+// Prefix stamped on every value written through `compressedStringStorage`, so a
+// value stored before compression existed (plain JSON, no marker) is recognised
+// and returned untouched instead of being fed to the decompressor. JSON written
+// by `createZodStorage` always starts with `{`/`[`/`"`, never this prefix.
+const COMPRESSION_MARKER = "lz1:";
+
+/**
+ * Wraps a string storage so values are LZ-compressed going in and decompressed
+ * coming out. Repertoire practice decks — one FSRS card per repertoire position
+ * plus a review log — outgrow the ~5 MB `localStorage` quota on large
+ * repertoires and the failing `setItem` used to tear down the whole tab.
+ * Compression buys roughly a 10x headroom. Legacy uncompressed values are read
+ * back verbatim and re-compressed on the next write.
+ */
+export function compressedStringStorage(inner: SyncStringStorage): SyncStringStorage {
+    return {
+        getItem(key) {
+            const raw = inner.getItem(key);
+            if (raw === null) {
+                return null;
+            }
+            if (!raw.startsWith(COMPRESSION_MARKER)) {
+                return raw; // written before compression — plain JSON
+            }
+            // `decompressFromUTF16` returns null for a corrupt payload; treat
+            // that as a missing key so the atom falls back to its initial value.
+            return decompressFromUTF16(raw.slice(COMPRESSION_MARKER.length));
+        },
+        setItem(key, newValue) {
+            inner.setItem(key, COMPRESSION_MARKER + compressToUTF16(newValue));
+        },
+        removeItem(key) {
+            inner.removeItem(key);
+        },
+        subscribe: inner.subscribe?.bind(inner),
+    };
+}
+
 export function createZodStorage<Value>(
     schema: z.ZodType<Value>,
     storage: SyncStringStorage,
@@ -50,7 +89,15 @@ export function createZodStorage<Value>(
             }
         },
         setItem(key, value) {
-            storage.setItem(key, JSON.stringify(value));
+            try {
+                storage.setItem(key, JSON.stringify(value));
+            } catch (error) {
+                // A failed persist (most often `QuotaExceededError` from a full
+                // `localStorage`) is thrown synchronously out of a Jotai write.
+                // Swallow it and degrade to in-memory-only for this key rather
+                // than let it unwind through React's commit phase.
+                warn(`Failed to persist ${key}: ${error}`);
+            }
         },
         removeItem(key) {
             storage.removeItem(key);

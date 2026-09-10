@@ -31,7 +31,7 @@ import { getWinChance, normalizeScore } from "@/utils/score";
 import { genID, type Tab, tabSchema } from "@/utils/tabs";
 import { getEnginesDir } from "../utils/directories";
 import type { Session } from "../utils/session";
-import { createAsyncZodStorage, createZodStorage } from "./utils";
+import { compressedStringStorage, createAsyncZodStorage, createZodStorage } from "./utils";
 
 const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, z.ZodTypeDef, Input>) => {
     const catchValue = {} as never;
@@ -610,7 +610,13 @@ export const deckAtomFamily = atomFamily(
                 positions: [],
                 logs: [],
             },
-            createZodStorage(practiceDataSchema, localStorage) as any as SyncStorage<PracticeData>, // TODO: fix types
+            createZodStorage(
+                practiceDataSchema,
+                // Decks (an FSRS card per repertoire position + a review log)
+                // outgrow the raw `localStorage` quota on large repertoires;
+                // compression keeps them well under it.
+                compressedStringStorage(localStorage),
+            ) as any as SyncStorage<PracticeData>, // TODO: fix types
         ),
 
     (a, b) => a.file === b.file && a.game === b.game,
