@@ -4,7 +4,7 @@ import {
     searchExplorerMoves as realSearchExplorerMoves,
     searchPositionsBatch as realSearchPositionsBatch,
 } from "../db";
-import { computeTreeCoverage } from "../repertoire";
+import { computeTreeCoverage, findBiggestGap } from "../repertoire";
 import type { TreeNode } from "../treeReducer";
 
 vi.mock("../db");
@@ -143,5 +143,51 @@ describe("computeTreeCoverage", () => {
         expect(searchPositionsBatch).not.toHaveBeenCalled();
         expect(coverageMap.get("0")).toBeCloseTo(0.5);
         expect(missingGamesMap.get("0")).toBe(15);
+    });
+});
+
+describe("findBiggestGap", () => {
+    /**
+     * root --d4--> A(opponent choice) --Nf6(answered, 1M games)--> B(user's move)
+     *                    \--d5 (unanswered, 500K games, no tree node)
+     *
+     * A --Nf6--> B --c4--> C(opponent) --e6(answered, 10K games)--> D(user, leaf, unanswered)
+     *
+     * The unanswered "d5" reply at A represents 500K missing games and should
+     * outweigh the unanswered leaf at D, which only represents ~10K games.
+     */
+    function scenarioTree(): TreeNode {
+        const d = node("fen-d", "e6", 4, []);
+        const c = node("fen-c", "c4", 3, [d]);
+        const b = node("fen-b", "Nf6", 2, [c]);
+        const a = node("fen-a", "d4", 1, [b]);
+        return node("fen-root", null, 0, [a]);
+    }
+
+    test("prefers the shallow unanswered reply with far more games over a deep unanswered leaf", async () => {
+        searchPositionsBatch.mockImplementation(async (_db: string, fens: string[]) =>
+            fens.map((fen) => {
+                if (fen === "fen-root") return [stats("d4", 1_500_000)];
+                if (fen === "fen-a") return [stats("Nf6", 1_000_000), stats("d5", 500_000)];
+                if (fen === "fen-b") return [stats("c4", 10_500)];
+                if (fen === "fen-c") return [stats("e6", 10_000)];
+                if (fen === "fen-d") return [{ move: "*", white: 10_000, draw: 0, black: 0 }];
+                return [];
+            }),
+        );
+
+        const root = scenarioTree();
+        const { coverageMap, gamesMap, missingGamesMap } = await computeTreeCoverage(
+            root,
+            "white",
+            { kind: "local", path: "db.db3" },
+            10,
+        );
+
+        expect(missingGamesMap.get("0")).toBe(500_000);
+
+        const gap = findBiggestGap(root, "white", coverageMap, gamesMap, missingGamesMap, 10);
+
+        expect(gap).toEqual([0]);
     });
 });

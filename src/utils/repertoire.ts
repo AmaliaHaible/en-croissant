@@ -233,31 +233,27 @@ export function findBiggestGap(
     let maxMissing = -1;
     let bestPath: number[] | null = null;
 
-    function traverse(node: TreeNode, path: number[]): boolean {
+    function traverse(node: TreeNode, path: number[]): void {
         const pathKey = path.join(",");
         const coverage = coverageMap.get(pathKey) ?? 0;
         const games = gamesMap.get(pathKey) ?? 0;
         const missing = missingGamesMap.get(pathKey) ?? 0;
 
         if (coverage >= 1 || games < minGames) {
-            return false;
+            return;
         }
 
         const isUserTurn = node.halfMoves % 2 === userParity;
 
-        let childHasGap = false;
         for (let i = 0; i < node.children.length; i++) {
-            const hasGap = traverse(node.children[i], [...path, i]);
-            if (hasGap) {
-                childHasGap = true;
-            }
+            traverse(node.children[i], [...path, i]);
         }
 
         if (path.length > startPath.length) {
             let isGap = false;
             if (isUserTurn && node.children.length === 0) {
                 isGap = true;
-            } else if (!isUserTurn && !childHasGap) {
+            } else if (!isUserTurn && missing > 0) {
                 isGap = true;
             }
 
@@ -272,8 +268,6 @@ export function findBiggestGap(
                 }
             }
         }
-
-        return true;
     }
 
     traverse(startNode, startPath);
