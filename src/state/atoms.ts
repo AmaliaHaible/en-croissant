@@ -227,21 +227,37 @@ export type CoachEngineConfig = {
     variantId: string | null;
 };
 
+// `getOnInit: true` on all three: without it, `atomWithStorage` returns the
+// hardcoded default on every render until its `onMount` effect loads the real
+// persisted value. `CoachSettingsTab`'s `EnginesSelect`/`EngineVariantSelect`
+// self-heal effects are children of the section reading this atom, so React
+// fires them *before* that onMount effect (child effects run before parent
+// effects) whenever this is the first place in the session that subscribes to
+// it. Seeing the stale `{ engineId: null }` default, they'd treat it as
+// unconfigured and auto-pick+persist the first engine/variant, permanently
+// clobbering the real saved choice before it was ever read back. Loading
+// synchronously removes the race instead of relying on effect ordering.
 export const liveEvalEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     "live-eval-engine-config",
     { engineId: null, variantId: null },
+    undefined,
+    { getOnInit: true },
 );
 
-export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>("hint-engine-config", {
-    engineId: null,
-    variantId: null,
-});
+export const hintEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
+    "hint-engine-config",
+    { engineId: null, variantId: null },
+    undefined,
+    { getOnInit: true },
+);
 
 export const evalPreviewEnabledAtom = atomWithStorage<boolean>("eval-preview-enabled", false);
 
 export const evalPreviewEngineConfigAtom = atomWithStorage<CoachEngineConfig>(
     "eval-preview-engine-config",
     { engineId: null, variantId: null },
+    undefined,
+    { getOnInit: true },
 );
 
 export const MAX_BEST_MOVES_COUNT = 3;
