@@ -1,3 +1,4 @@
+import { warn } from "@tauri-apps/plugin-log";
 import { type PersistStorage, type StorageValue } from "zustand/middleware";
 
 const DEBOUNCE_MS = 300;
@@ -12,7 +13,15 @@ function flush() {
     }
 
     for (const [name, value] of pendingWrites) {
-        sessionStorage.setItem(name, JSON.stringify(value));
+        try {
+            sessionStorage.setItem(name, JSON.stringify(value));
+        } catch (error) {
+            // A failed persist (most often `QuotaExceededError` from a full
+            // `sessionStorage`) is thrown synchronously. Swallow it — and
+            // still drop the entry below — so one failing tab's write doesn't
+            // permanently wedge the flush loop for every other open tab.
+            warn(`Failed to persist ${name}: ${error}`);
+        }
     }
 
     pendingWrites.clear();
@@ -60,7 +69,15 @@ export function createDebouncedSessionStorage<S>(delay = DEBOUNCE_MS): PersistSt
             }
 
             const stored = sessionStorage.getItem(name);
-            return stored ? (JSON.parse(stored) as StorageValue<S>) : null;
+            if (!stored) {
+                return null;
+            }
+            try {
+                return JSON.parse(stored) as StorageValue<S>;
+            } catch (error) {
+                warn(`Invalid value for ${name}: ${error}`);
+                return null;
+            }
         },
         setItem: (name, value) => {
             pendingWrites.set(name, value as StorageValue<unknown>);

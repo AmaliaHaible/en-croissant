@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Mosaic, type MosaicNode } from "react-mosaic-component";
 import { match } from "ts-pattern";
 import { commands } from "@/bindings";
-import { activeTabAtom, tabsAtom } from "@/state/atoms";
+import { activeTabAtom, removeTabAtoms, tabsAtom } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
 import { reportsInProgressAtom } from "@/state/reportProgress";
 import { createTab, genID, isPersistentGameOrigin, type Tab } from "@/utils/tabs";
@@ -70,6 +70,12 @@ export default function BoardsPage() {
           }
         }
         setTabs((prev) => prev.filter((tab) => tab.value !== value));
+        // The tree store persists under its tab id (`persist(..., { name: id })`
+        // in `src/state/store/tree.ts`) and every per-tab jotai atomFamily
+        // entry outlives the tab otherwise — both would leak for the rest of
+        // the session.
+        sessionStorage.removeItem(value);
+        removeTabAtoms(value);
         unwrap(await commands.killEngines(value));
         await commands.abortGame(`${value}-game`);
         // A report analysis runs its own engine process; cancel it so closing

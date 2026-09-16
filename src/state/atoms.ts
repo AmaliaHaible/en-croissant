@@ -934,6 +934,74 @@ export const tabEngineSettingsFamily = atomFamily(
     (a, b) => a.tab === b.tab && a.engineId === b.engineId,
 );
 
+// Every atomFamily keyed by tab value (or by `{ tab, ... }`) alone — kept in
+// one place so `removeTabAtoms` below can't drift out of sync as families are
+// added. Typed structurally to just the `remove` method: the families here
+// hold different `AtomType`s, and `AtomFamily<string, X>` isn't assignable
+// across different `X` (variance), but every one of them exposes
+// `remove(param: string): void` regardless.
+const tabKeyedFamilies: { remove: (tab: string) => void }[] = [
+    puzzleTimerFamily,
+    threatFamily,
+    evalOpenFamily,
+    evalBarDisplayFamily,
+    invisibleFamily,
+    showCommentsFamily,
+    showVariationsFamily,
+    tabFamily,
+    reportModalOpenFamily,
+    localOptionsFamily,
+    dbTypeFamily,
+    dbTabFamily,
+    analysisTabFamily,
+    practiceTabFamily,
+    expandedEnginesFamily,
+    pgnOptionsFamily,
+    currentPuzzleFamily,
+    gameStateFamily,
+    playersFamily,
+    gameIdFamily,
+    practiceStateFamily,
+    practiceSessionStatsFamily,
+    practiceCardStartTimeFamily,
+    playStateFamily,
+    playHintFamily,
+    playSessionStatsFamily,
+    trainingStateFamily,
+    trainingHintFamily,
+    trainingSessionStatsFamily,
+    trainingColorFamily,
+];
+
+/**
+ * Releases every per-tab atomFamily entry for a closed tab. Without this,
+ * closing a tab leaves its atoms (some holding full engine-analysis maps or
+ * in-progress practice/training session state) referenced by their families
+ * for the rest of the app session — `atomFamily` never garbage-collects on
+ * its own. Call this from `BoardsPage`'s `closeTab`.
+ */
+export function removeTabAtoms(tab: string) {
+    for (const family of tabKeyedFamilies) {
+        family.remove(tab);
+    }
+
+    // `engineMovesFamily`/`engineProgressFamily`/`tabEngineSettingsFamily` are
+    // keyed by a composite `{ tab, engine }` (or `{ tab, engineId, ... }`)
+    // param, so there's no single key to pass to `.remove()`. `setShouldRemove`
+    // runs its predicate against every existing entry immediately (and would
+    // keep running it for entries created afterwards), so reset it to `null`
+    // right away — otherwise a new tab that reuses this tab's id, or an engine
+    // opened later, could be swept too.
+    engineMovesFamily.setShouldRemove((_createdAt, param) => param.tab === tab);
+    engineMovesFamily.setShouldRemove(null);
+
+    engineProgressFamily.setShouldRemove((_createdAt, param) => param.tab === tab);
+    engineProgressFamily.setShouldRemove(null);
+
+    tabEngineSettingsFamily.setShouldRemove((_createdAt, param) => param.tab === tab);
+    tabEngineSettingsFamily.setShouldRemove(null);
+}
+
 export const allEnabledAtom = atom((get) => {
     const engines = get(enginesAtom);
     if (!engines) return false;

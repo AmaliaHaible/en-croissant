@@ -1,8 +1,25 @@
+import { warn } from "@tauri-apps/plugin-log";
 import { type Draft, produce } from "immer";
 import { createStore, useStore } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { GameQuery, PlayerQuery, TournamentQuery } from "@/bindings";
 import type { SuccessDatabaseInfo } from "@/utils/db";
+
+// A failed `sessionStorage.setItem` (most often `QuotaExceededError`) is
+// thrown synchronously out of whatever click handler triggered the persist
+// (e.g. `setGamesQuery`). Swallow it and degrade to in-memory-only rather
+// than let it unwind through zustand's `set`.
+const guardedSessionStorage: StateStorage = {
+    getItem: (name) => sessionStorage.getItem(name),
+    setItem: (name, value) => {
+        try {
+            sessionStorage.setItem(name, value);
+        } catch (error) {
+            warn(`Failed to persist ${name}: ${error}`);
+        }
+    },
+    removeItem: (name) => sessionStorage.removeItem(name),
+};
 
 export interface DatabaseViewStore {
     database?: SuccessDatabaseInfo;
@@ -194,7 +211,7 @@ export const activeDatabaseViewStore = createStore<DatabaseViewStore>()(
         }),
         {
             name: "database-view",
-            storage: createJSONStorage(() => sessionStorage),
+            storage: createJSONStorage(() => guardedSessionStorage),
         },
     ),
 );
