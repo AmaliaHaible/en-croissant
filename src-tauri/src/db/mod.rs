@@ -65,6 +65,14 @@ pub use self::search::{
     PositionQueryJs, PositionStats,
 };
 
+/// Converts a path to a UTF-8 string slice, returning a proper `Error`
+/// instead of panicking when the path isn't valid UTF-8 (possible on Windows
+/// with unusual filenames).
+pub(crate) fn path_to_str(path: &Path) -> Result<&str, Error> {
+    path.to_str()
+        .ok_or_else(|| Error::InvalidPath(path.to_string_lossy().into_owned()))
+}
+
 const DATABASE_VERSION: &str = "1.0.0";
 
 const INDEXES_SQL: &str = include_str!("indexes.sql");
@@ -673,7 +681,7 @@ pub fn generate_search_index(
 ) -> Result<(), Error> {
     let db = &mut get_db_or_create(
         state,
-        db_path.to_str().unwrap(),
+        path_to_str(db_path)?,
         ConnectionOptions::default(),
     )?;
     let index_path = get_index_path(db_path);
@@ -834,7 +842,7 @@ pub async fn get_db_info(
 
     let path = file;
 
-    let db = &mut get_db_or_create(&state, path.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&path)?, ConnectionOptions::default())?;
 
     let info_records: Vec<Info> = info::table.load(db)?;
 
@@ -876,7 +884,7 @@ pub async fn get_db_info(
 #[tauri::command]
 #[specta::specta]
 pub async fn create_indexes(file: PathBuf, state: tauri::State<'_, AppState>) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     db.batch_execute(INDEXES_SQL)?;
 
@@ -886,7 +894,7 @@ pub async fn create_indexes(file: PathBuf, state: tauri::State<'_, AppState>) ->
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_indexes(file: PathBuf, state: tauri::State<'_, AppState>) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     db.batch_execute(DELETE_INDEXES_SQL)?;
 
@@ -901,7 +909,7 @@ pub async fn edit_db_info(
     description: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     if let Some(title) = title {
         diesel::insert_into(info::table)
@@ -1011,7 +1019,7 @@ pub async fn get_games(
     query: GameQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<QueryResponse<Vec<NormalizedGame>>, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     let mut count: Option<i64> = None;
     let query_options = query.options.unwrap_or_default();
@@ -1212,7 +1220,7 @@ fn normalize_games(games: Vec<(Game, Player, Player, Event, Site)>) -> Vec<Norma
         .map(|(game, white, black, event, site)| {
             let fen: Fen = game
                 .fen
-                .map(|f| Fen::from_ascii(f.as_bytes()).unwrap())
+                .and_then(|f| Fen::from_ascii(f.as_bytes()).ok())
                 .unwrap_or_default();
             let game_result = game.result.clone().unwrap_or_default();
             let result_token = if game_result.is_empty() {
@@ -1280,7 +1288,7 @@ pub async fn get_player(
     id: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<Player>, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     let player = players::table
         .filter(players::id.eq(id))
         .first::<Player>(db)
@@ -1295,7 +1303,7 @@ pub async fn get_players(
     query: PlayerQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<QueryResponse<Vec<Player>>, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     let mut count: Option<i64> = None;
 
     let mut sql_query = players::table.into_boxed();
@@ -1369,7 +1377,7 @@ pub async fn get_tournaments(
     query: TournamentQuery,
     state: tauri::State<'_, AppState>,
 ) -> Result<QueryResponse<Vec<Event>>, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     let mut count: Option<i64> = None;
 
     let mut sql_query = events::table.into_boxed();
@@ -1477,7 +1485,7 @@ pub async fn get_players_game_info(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<PlayerGameInfo, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     let timer = Instant::now();
 
     let sql_query = games::table
@@ -1627,7 +1635,7 @@ pub async fn delete_database(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
     let pool = &state.connection_pool;
-    let path_str = file.to_str().unwrap();
+    let path_str = path_to_str(&file)?;
     pool.remove(path_str);
 
     // delete file
@@ -1669,7 +1677,7 @@ pub async fn delete_duplicated_games(
     file: PathBuf,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     db.batch_execute(
         "
@@ -1699,7 +1707,7 @@ pub async fn delete_empty_games(
     file: PathBuf,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     diesel::delete(games::table.filter(games::ply_count.eq(0))).execute(db)?;
 
@@ -1807,7 +1815,7 @@ pub async fn export_to_pgn(
     dest_file: PathBuf,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     let file = OpenOptions::new()
         .create(true)
@@ -1866,7 +1874,7 @@ pub async fn delete_db_game(
     game_id: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     diesel::delete(games::table.filter(games::id.eq(game_id))).execute(db)?;
 
@@ -1885,7 +1893,7 @@ pub async fn write_db_game(
     pgn: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     let mut importer = Importer::new(None);
     let mut parsed = BufferedReader::new(pgn.as_bytes())
@@ -1958,7 +1966,7 @@ pub async fn get_game_analysis_label(
     game_id: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     get_game_analysis_label_query(db, game_id)
 }
 
@@ -1970,7 +1978,7 @@ pub async fn set_game_analysis_label(
     label: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     set_game_analysis_label_query(db, game_id, label.as_deref())
 }
 
@@ -1982,7 +1990,7 @@ pub async fn merge_players(
     player2: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
 
     // Check if the players never played against each other
     let count: i64 = games::table

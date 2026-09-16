@@ -230,7 +230,18 @@ impl MmapSearchIndex {
         let mmap = Arc::new(mmap);
 
         let archived_bytes = &mmap[HEADER_SIZE..];
-        let archived = unsafe { rkyv::access_unchecked::<ArchivedSearchIndex>(archived_bytes) };
+        // `access` (unlike `access_unchecked`) validates every internal
+        // offset/length before handing back a reference, so a truncated or
+        // otherwise corrupted index (e.g. left behind by a killed process or
+        // a full disk during `generate_search_index`) is rejected here with
+        // an error instead of causing undefined behavior later.
+        let archived = rkyv::access::<ArchivedSearchIndex, rkyv::rancor::Error>(archived_bytes)
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Corrupted search index: {}", e),
+                )
+            })?;
 
         let archived: &'static ArchivedSearchIndex = unsafe { std::mem::transmute(archived) };
 

@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use diesel::prelude::*;
-use log::info;
+use log::{info, warn};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use shakmaty::{
@@ -9,11 +9,11 @@ use shakmaty::{
 use specta::Type;
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
+    collections::{BTreeMap, BinaryHeap, HashMap},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Instant,
 };
@@ -24,7 +24,7 @@ use crate::{
         encoding::{decode_move, iter_mainline_move_bytes},
         get_db_or_create, get_material_count, get_pawn_home,
         models::*,
-        normalize_games,
+        normalize_games, path_to_str,
         schema::*,
         search_index::{get_index_path, GameResult, MmapSearchIndex, SearchGameEntryRef},
         ConnectionOptions, MaterialCount,
@@ -55,8 +55,20 @@ pub type BatchCacheKey = (PathBuf, std::time::SystemTime, String);
 /// touches hundreds of distinct positions — kept re-paying the full search cost
 /// on every re-run. Now the single least-recently-used entry is evicted to make
 /// room instead.
+///
+/// Eviction used to find that entry by scanning every entry in `map` for the
+/// smallest timestamp on every insert, which is O(n) per insert and O(n²) for
+/// a run that inserts many new keys into an already-full cache — exactly what
+/// happens on a repertoire coverage recompute against a full
+/// `MAX_BATCH_POSITION_CACHE_ENTRIES`-sized cache. `order` mirrors `map`'s
+/// per-entry timestamps as a `timestamp -> key` index, so the
+/// least-recently-used entry is always `order`'s first (smallest-key) entry —
+/// an O(log n) lookup instead of an O(n) scan. `order` is kept in sync with
+/// `map` on every access: whenever an entry's timestamp changes, its old
+/// timestamp is removed from `order` and the new one inserted.
 pub struct LruCache<K: Eq + std::hash::Hash + Clone, V: Clone> {
     map: DashMap<K, (V, AtomicU64)>,
+    order: Mutex<BTreeMap<u64, K>>,
     clock: AtomicU64,
     capacity: usize,
 }
@@ -65,6 +77,7 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> Default for LruCache<K, V> {
     fn default() -> Self {
         Self {
             map: DashMap::new(),
+            order: Mutex::new(BTreeMap::new()),
             clock: AtomicU64::new(0),
             capacity: MAX_LINE_CACHE_ENTRIES,
         }
@@ -75,6 +88,7 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruCache<K, V> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: DashMap::new(),
+            order: Mutex::new(BTreeMap::new()),
             clock: AtomicU64::new(0),
             capacity,
         }
@@ -85,30 +99,54 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruCache<K, V> {
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
+        // Locking `order` first (both here and in `insert`) keeps the two
+        // structures from drifting apart under concurrent access.
+        let new_ts = self.tick();
+        let mut order = self.order.lock().unwrap();
         let entry = self.map.get(key)?;
-        entry.1.store(self.tick(), Ordering::Relaxed);
-        Some(entry.0.clone())
+        let old_ts = entry.1.swap(new_ts, Ordering::Relaxed);
+        let value = entry.0.clone();
+        drop(entry);
+        order.remove(&old_ts);
+        order.insert(new_ts, key.clone());
+        Some(value)
     }
 
     pub fn insert(&self, key: K, value: V) {
-        while self.map.len() >= self.capacity && !self.map.contains_key(&key) {
-            let victim = self
-                .map
-                .iter()
-                .min_by_key(|e| e.value().1.load(Ordering::Relaxed))
-                .map(|e| e.key().clone());
-            match victim {
-                Some(victim) => {
-                    self.map.remove(&victim);
-                }
-                None => break,
-            }
+        let new_ts = self.tick();
+        let mut order = self.order.lock().unwrap();
+
+        if let Some(entry) = self.map.get(&key) {
+            // Key already present: refresh its timestamp instead of evicting
+            // to make room for it.
+            let old_ts = entry.1.load(Ordering::Relaxed);
+            drop(entry);
+            order.remove(&old_ts);
+            order.insert(new_ts, key.clone());
+            drop(order);
+            self.map.insert(key, (value, AtomicU64::new(new_ts)));
+            return;
         }
-        self.map.insert(key, (value, AtomicU64::new(self.tick())));
+
+        // Evict least-recently-used entries (the smallest timestamps in
+        // `order`) until there is room for the new one.
+        while self.map.len() >= self.capacity {
+            let Some((&oldest_ts, oldest_key)) = order.first_key_value() else {
+                break;
+            };
+            let oldest_key = oldest_key.clone();
+            order.remove(&oldest_ts);
+            self.map.remove(&oldest_key);
+        }
+
+        order.insert(new_ts, key.clone());
+        drop(order);
+        self.map.insert(key, (value, AtomicU64::new(new_ts)));
     }
 
     pub fn clear(&self) {
         self.map.clear();
+        self.order.lock().unwrap().clear();
     }
 }
 
@@ -166,19 +204,36 @@ fn load_index(
         }
 
         info!("Loading games from mmap binary search index");
-        match MmapSearchIndex::open(&index_path) {
-            Ok(index) => {
-                info!(
-                    "Opened mmap index with {} games: {:?}",
-                    index.len(),
-                    start.elapsed()
-                );
-                *cache = Some((file.to_path_buf(), index));
-            }
+        let index = match MmapSearchIndex::open(&index_path) {
+            Ok(index) => index,
             Err(e) => {
-                return Err(Error::from(e));
+                // The index passed the shallow header/mtime check in
+                // `is_up_to_date`, but `open` performs deeper archive
+                // validation and rejected it - e.g. a truncated file left
+                // behind by a killed process or a full disk during
+                // `generate_search_index`. Treat it as stale, regenerate it
+                // once, and retry instead of failing the whole search.
+                warn!(
+                    "Search index at {:?} failed validation ({}); regenerating",
+                    index_path, e
+                );
+                drop(cache);
+                if let Err(gen_err) = super::generate_search_index(file, state) {
+                    return Err(Error::from(std::io::Error::other(format!(
+                        "Failed to regenerate corrupted search index: {}",
+                        gen_err
+                    ))));
+                }
+                cache = state.db_cache.lock().unwrap();
+                MmapSearchIndex::open(&index_path)?
             }
-        }
+        };
+        info!(
+            "Opened mmap index with {} games: {:?}",
+            index.len(),
+            start.elapsed()
+        );
+        *cache = Some((file.to_path_buf(), index));
     }
     Ok(cache.as_ref().unwrap().1.clone())
 }
@@ -425,7 +480,7 @@ pub async fn search_position(
     tab_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(Vec<PositionStats>, Vec<NormalizedGame>), Error> {
-    let db = &mut get_db_or_create(&state, file.to_str().unwrap(), ConnectionOptions::default())?;
+    let db = &mut get_db_or_create(&state, path_to_str(&file)?, ConnectionOptions::default())?;
     let cache_key = (
         query.clone(),
         file.clone(),
@@ -920,19 +975,27 @@ mod tests {
     fn get_move_after_exact_match_test() {
         let game = vec![12, 12]; // 1. e4 e5
 
-        let query =
-            PositionQuery::exact_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR").unwrap();
+        // Starting position, White to move.
+        let query = PositionQuery::exact_from_fen(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        )
+        .unwrap();
         let result = get_move_after_match(&game, &None, &query).unwrap();
         assert_eq!(result, Some("e4".to_string()));
 
-        let query =
-            PositionQuery::exact_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR").unwrap();
+        // After 1. e4, Black to move.
+        let query = PositionQuery::exact_from_fen(
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+        )
+        .unwrap();
         let result = get_move_after_match(&game, &None, &query).unwrap();
         assert_eq!(result, Some("e5".to_string()));
 
-        let query =
-            PositionQuery::exact_from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR")
-                .unwrap();
+        // After 1. e4 e5, White to move.
+        let query = PositionQuery::exact_from_fen(
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+        )
+        .unwrap();
         let result = get_move_after_match(&game, &None, &query).unwrap();
         assert_eq!(result, Some("*".to_string()));
     }
