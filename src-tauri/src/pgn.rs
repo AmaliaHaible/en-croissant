@@ -2,6 +2,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::PathBuf,
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -206,6 +207,10 @@ pub async fn read_games(
     end: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<String>, Error> {
+    if start < 0 {
+        return Err(Error::NegativeIndex(start));
+    }
+
     let file_r = File::open(&file)?;
 
     let mut parser = PgnParser::new(file_r.try_clone()?);
@@ -232,6 +237,19 @@ pub async fn delete_game(
     n: i32,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
+    if n < 0 {
+        return Err(Error::NegativeIndex(n));
+    }
+
+    let file_lock = {
+        let entry = state
+            .pgn_file_locks
+            .entry(file.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())));
+        entry.value().clone()
+    };
+    let _guard = file_lock.lock().await;
+
     let file_r = File::open(&file)?;
 
     let mut parser = PgnParser::new(file_r.try_clone()?);
@@ -269,7 +287,21 @@ pub async fn write_game(
     pgn: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
+    if n < 0 {
+        return Err(Error::NegativeIndex(n));
+    }
+
     let file = PathBuf::from(file_path);
+
+    let file_lock = {
+        let entry = state
+            .pgn_file_locks
+            .entry(file.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())));
+        entry.value().clone()
+    };
+    let _guard = file_lock.lock().await;
+
     if !file.exists() {
         File::create(&file)?;
     }
