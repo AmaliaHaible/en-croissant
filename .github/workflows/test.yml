@@ -39,6 +39,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Build frontend
+        run: pnpm build
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
