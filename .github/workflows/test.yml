@@ -40,7 +40,7 @@ jobs:
         run: pnpm test
 
       - name: Build frontend
-        run: pnpm build
+        run: pnpm build-vite
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
