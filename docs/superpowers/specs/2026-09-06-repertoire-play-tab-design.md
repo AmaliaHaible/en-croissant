@@ -50,7 +50,7 @@ repertoire tree is never mutated. Play is pure navigation over the existing tree
   red notification, records a lapse, and moves on. `practicing` is
   `currentTabSelected === "practice" && practiceTabSelected === "train"`.
 - **Build** (`RepertoireInfo.tsx`): uses `searchExplorerMoves("lichess" |
-  "masters", fens, token)` for per-move stats; needs a Lichess OAuth token
+"masters", fens, token)` for per-move stats; needs a Lichess OAuth token
   (`sessions.find(s => s.lichess?.accessToken)`), otherwise shows an auth alert
   linking to `/accounts`.
 - Tree store (`src/state/store/tree.ts`, one Zustand instance per board tab via
@@ -99,9 +99,7 @@ export function normalizeFen(fen: string): string;
  *  Prefers the shallowest such node; returns `candidatePath` unchanged if none. */
 export function resolvePointer(root: TreeNode, candidatePath: number[], fen: string): number[];
 
-export type UserMoveResult =
-  | { ok: true; nextPath: number[] }
-  | { ok: false };
+export type UserMoveResult = { ok: true; nextPath: number[] } | { ok: false };
 
 /** Is `san` a prepared continuation from the node at `currentPath`?
  *   1. direct child whose `.san === san` → resolvePointer to it;
@@ -123,7 +121,7 @@ export function pickOpponentMove(
   currentPath: number[],
   lichessStats: { move: string; white: number; draw: number; black: number }[],
   rng?: () => number,
-): OpponentPick | null;   // null only if node has no children
+): OpponentPick | null; // null only if node has no children
 
 export type LineStatus = "continue" | "complete" | "gap";
 
@@ -160,11 +158,14 @@ export const playHintAtom = tabValue(playHintFamily);
 
 export type PlaySessionStats = { linesCompleted: number; mistakes: number };
 const playSessionStatsFamily = atomFamily((_tab: string) =>
-  atom<PlaySessionStats>({ linesCompleted: 0, mistakes: 0 }));
+  atom<PlaySessionStats>({ linesCompleted: 0, mistakes: 0 }),
+);
 export const playSessionStatsAtom = tabValue(playSessionStatsFamily);
 
 export const repertoirePlaySourceAtom = atomWithStorage<"lichess" | "masters">(
-  "repertoire-play-source", "lichess");
+  "repertoire-play-source",
+  "lichess",
+);
 ```
 
 ### 4. Flow — orchestrated in `PracticePlay.tsx`
@@ -224,7 +225,10 @@ only intercepts the user's move.
 
   ```ts
   if (playing) {
-    if (playState.phase !== "waiting") { setPendingMove(null); return; }
+    if (playState.phase !== "waiting") {
+      setPendingMove(null);
+      return;
+    }
     const san = makeSan(pos, move);
     const res = matchUserMove(root, position, san);
     if (!res.ok) {
@@ -240,6 +244,7 @@ only intercepts the user's move.
   ```
 
   (`position` and `goToMove` are already available from the store in `Board`.)
+
 - `playLock`: extend the `movableColor` memo —
   `const playLock = !!playing && playState.phase !== "waiting";` and return
   `undefined` when `playLock` (same as `practiceLock`).
@@ -281,7 +286,7 @@ Layout mirrors the Train panel's `Stack p="sm" gap="md"`.
   - `waiting` → a `Paper` with:
     - "Your move" text.
     - **Hint** `Button`: label is `stage === 0 ? "Hint" : stage === 1 ? "Show
-      arrow" : "Hint"`. Click: `stage 0 → 1`, `1 → 2`, `2 → 1` (arrow stays
+arrow" : "Hint"`. Click: `stage 0 → 1`, `1 → 2`, `2 → 1` (arrow stays
       available; it resets to 0 on the next move via the panel/board flow).
     - **Stop** `Button` (`variant="subtle" color="red"`).
   - `lineComplete` → `Paper`, green check, "Line complete" + **New Game**
@@ -333,20 +338,20 @@ against real SANs.
 
 ## Files touched
 
-| File | Change |
-| --- | --- |
-| `src/utils/repertoirePlay.ts` | new — pure opponent/transposition engine |
-| `src/utils/tests/repertoirePlay.test.ts` | new — unit tests |
-| `src/components/panels/practice/PracticePlay.tsx` | new — Play panel UI + flow effect |
-| `src/components/panels/practice/PracticePanel.tsx` | add `play` tab + panel |
-| `src/components/boards/Board.tsx` | `playing` prop, `makeMove` branch, `playLock`, hint shapes |
-| `src/components/boards/BoardAnalysis.tsx` | derive + pass `playing`, extend cleanup effect |
-| `src/state/atoms.ts` | `playStateAtom`, `playHintAtom`, `playSessionStatsAtom`, `repertoirePlaySourceAtom` |
-| `src/translation/en-US.json` | new `Board.Practice.Play.*` keys |
+| File                                               | Change                                                                              |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/utils/repertoirePlay.ts`                      | new — pure opponent/transposition engine                                            |
+| `src/utils/tests/repertoirePlay.test.ts`           | new — unit tests                                                                    |
+| `src/components/panels/practice/PracticePlay.tsx`  | new — Play panel UI + flow effect                                                   |
+| `src/components/panels/practice/PracticePanel.tsx` | add `play` tab + panel                                                              |
+| `src/components/boards/Board.tsx`                  | `playing` prop, `makeMove` branch, `playLock`, hint shapes                          |
+| `src/components/boards/BoardAnalysis.tsx`          | derive + pass `playing`, extend cleanup effect                                      |
+| `src/state/atoms.ts`                               | `playStateAtom`, `playHintAtom`, `playSessionStatsAtom`, `repertoirePlaySourceAtom` |
+| `src/translation/en-US.json`                       | new `Board.Practice.Play.*` keys                                                    |
 
 ## Open questions / deferred
 
-- Opponent transpositions *out of* `node.children` (a legal move that is not a
+- Opponent transpositions _out of_ `node.children` (a legal move that is not a
   prepared child but transposes into another prepared subtree) are **not**
   considered — the opponent only plays direct children. Following transpositions
   applies to where the pointer lands, not to expanding the candidate set. Can be

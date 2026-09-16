@@ -30,10 +30,12 @@
 ## Task 1: Transposition & line-status helpers in `repertoirePlay.ts`
 
 **Files:**
+
 - Create: `src/utils/repertoirePlay.ts`
 - Test: `src/utils/tests/repertoirePlay.test.ts`
 
 **Interfaces:**
+
 - Consumes: `getNodeAtPath`, `treeIterator`, `TreeNode` from `src/utils/treeReducer.ts`.
 - Produces:
   - `normalizeFen(fen: string): string`
@@ -273,10 +275,12 @@ EOF
 ## Task 2: User-move validation & opponent-move picker in `repertoirePlay.ts`
 
 **Files:**
+
 - Modify: `src/utils/repertoirePlay.ts`
 - Test: `src/utils/tests/repertoirePlay.test.ts` (append)
 
 **Interfaces:**
+
 - Consumes: `resolvePointer`, `findNode` (Task 1); `positionFromFen` from `src/utils/chessops.ts`; `parseSan` from `chessops/san`; `makeFen` from `chessops/fen`.
 - Produces:
   - `EPSILON: number` (exported const)
@@ -404,11 +408,7 @@ function fenAfterSan(fen: string, san: string): string | null {
  *      node with a continuation, then any node — follow that transposition;
  *   3. else it is a mistake.
  */
-export function matchUserMove(
-  root: TreeNode,
-  currentPath: number[],
-  san: string,
-): UserMoveResult {
+export function matchUserMove(root: TreeNode, currentPath: number[], san: string): UserMoveResult {
   const node = getNodeAtPath(root, currentPath);
   const idx = node.children.findIndex((c) => c.san === san);
   if (idx !== -1) {
@@ -416,8 +416,7 @@ export function matchUserMove(
   }
   const fen = fenAfterSan(node.fen, san);
   if (fen) {
-    const transposed =
-      findNode(root, fen, { requireChildren: true }) ?? findNode(root, fen);
+    const transposed = findNode(root, fen, { requireChildren: true }) ?? findNode(root, fen);
     if (transposed) return { ok: true, nextPath: transposed };
   }
   return { ok: false };
@@ -445,9 +444,7 @@ export function pickOpponentMove(
       .filter((s) => s.move !== "*")
       .map((s) => [s.move, s.white + s.draw + s.black] as const),
   );
-  const weights = node.children.map((c) =>
-    Math.max(gamesBySan.get(c.san ?? "") ?? 0, EPSILON),
-  );
+  const weights = node.children.map((c) => Math.max(gamesBySan.get(c.san ?? "") ?? 0, EPSILON));
   const total = weights.reduce((a, b) => a + b, 0);
 
   let r = rng() * total;
@@ -492,9 +489,11 @@ EOF
 ## Task 3: Play-mode atoms in `src/state/atoms.ts`
 
 **Files:**
+
 - Modify: `src/state/atoms.ts` (add after the practice atoms block, which ends near the `practiceCardStartTimeFamily` / `practiceCardStartTimeAtom` lines ~665-666)
 
 **Interfaces:**
+
 - Consumes: `atomFamily`, `atom`, `atomWithStorage`, `tabValue` — all already imported/defined in the file (see `practiceStateFamily` immediately above for the exact pattern).
 - Produces:
   - `type PlayPhase = "idle" | "opponentThinking" | "waiting" | "lineComplete" | "gap"`
@@ -528,13 +527,13 @@ export const playHintAtom = tabValue(playHintFamily);
 export type PlaySessionStats = { linesCompleted: number; mistakes: number };
 
 const playSessionStatsFamily = atomFamily((_tab: string) =>
-    atom<PlaySessionStats>({ linesCompleted: 0, mistakes: 0 }),
+  atom<PlaySessionStats>({ linesCompleted: 0, mistakes: 0 }),
 );
 export const playSessionStatsAtom = tabValue(playSessionStatsFamily);
 
 export const repertoirePlaySourceAtom = atomWithStorage<"lichess" | "masters">(
-    "repertoire-play-source",
-    "lichess",
+  "repertoire-play-source",
+  "lichess",
 );
 ```
 
@@ -562,10 +561,12 @@ EOF
 ## Task 4: Wire `playing` through `Board.tsx` and `BoardAnalysis.tsx`
 
 **Files:**
+
 - Modify: `src/components/boards/Board.tsx`
 - Modify: `src/components/boards/BoardAnalysis.tsx`
 
 **Interfaces:**
+
 - Consumes: `matchUserMove` from `src/utils/repertoirePlay.ts`; `playStateAtom`, `playHintAtom`, `playSessionStatsAtom` from `src/state/atoms.ts`.
 - Produces: `<Board>` accepts a `playing?: boolean` prop. While `playing`, a valid user move navigates the tree (`goToMove`) and an invalid one is silently discarded and bumps `playSessionStatsAtom.mistakes`; the board is locked whenever `playStateAtom.phase !== "waiting"`; a green square-marker (hint stage 1) or arrow (hint stage ≥ 2) is drawn for the first prepared child.
 
@@ -586,16 +587,16 @@ In the `function Board({ ... })` destructure (near line 111), add `playing,` aft
 After the existing store selectors (near line 152, after `const setFen = useStore(store, (s) => s.setFen);`), add:
 
 ```ts
-  const position = useStore(store, (s) => s.position);
-  const goToMove = useStore(store, (s) => s.goToMove);
+const position = useStore(store, (s) => s.position);
+const goToMove = useStore(store, (s) => s.goToMove);
 ```
 
 After the practice atom hooks (near line 210, after `const cardStartTime = useAtomValue(practiceCardStartTimeAtom);`), add:
 
 ```ts
-  const playState = useAtomValue(playStateAtom);
-  const setPlaySessionStats = useSetAtom(playSessionStatsAtom);
-  const playHint = useAtomValue(playHintAtom);
+const playState = useAtomValue(playStateAtom);
+const setPlaySessionStats = useSetAtom(playSessionStatsAtom);
+const playHint = useAtomValue(playHintAtom);
 ```
 
 Add the imports: in the `@/state/atoms` import block add `playStateAtom`, `playHintAtom`, `playSessionStatsAtom`; add `import { matchUserMove } from "@/utils/repertoirePlay";` alongside the other `@/utils/*` imports. Ensure `useAtomValue` and `useSetAtom` are in the `jotai` import (they are already used in this file).
@@ -605,25 +606,25 @@ Add the imports: in the `@/state/atoms` import block add `playStateAtom`, `playH
 In `async function makeMove(move: NormalMove)` (near line 212), immediately after `const san = makeSan(pos, move);` and **before** `if (practicing) {`, insert:
 
 ```ts
-    if (playing) {
-      if (playState.phase !== "waiting") {
-        setPendingMove(null);
-        return;
-      }
-      const res = matchUserMove(root, position, san);
-      if (!res.ok) {
-        // Silent undo: never commit the move, just let the board re-render from
-        // the unchanged FEN. The hint is the only feedback offered.
-        setPendingMove(null);
-        setPlaySessionStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
-        return;
-      }
-      setPendingMove(null);
-      goToMove(res.nextPath);
-      // The phase transition is driven by the PracticePlay effect watching the
-      // pointer position.
-      return;
-    }
+if (playing) {
+  if (playState.phase !== "waiting") {
+    setPendingMove(null);
+    return;
+  }
+  const res = matchUserMove(root, position, san);
+  if (!res.ok) {
+    // Silent undo: never commit the move, just let the board re-render from
+    // the unchanged FEN. The hint is the only feedback offered.
+    setPendingMove(null);
+    setPlaySessionStats((s) => ({ ...s, mistakes: s.mistakes + 1 }));
+    return;
+  }
+  setPendingMove(null);
+  goToMove(res.nextPath);
+  // The phase transition is driven by the PracticePlay effect watching the
+  // pointer position.
+  return;
+}
 ```
 
 - [ ] **Step 4: `Board.tsx` — lock the board off-turn**
@@ -631,7 +632,7 @@ In `async function makeMove(move: NormalMove)` (near line 212), immediately afte
 Find `const practiceLock = !!practicing && !deck.positions.find((c) => c.fen === currentNode.fen);` (near line 388). Directly after it add:
 
 ```ts
-  const playLock = !!playing && playState.phase !== "waiting";
+const playLock = !!playing && playState.phase !== "waiting";
 ```
 
 In the `movableColor` `useMemo` immediately below, change `return practiceLock` to `return practiceLock || playLock`, and add `playLock` to the dependency array.
@@ -641,25 +642,25 @@ In the `movableColor` `useMemo` immediately below, change `return practiceLock` 
 Find the block (near line 377):
 
 ```ts
-  if (currentNode.shapes.length > 0) {
-    shapes = shapes.concat(currentNode.shapes);
-  }
+if (currentNode.shapes.length > 0) {
+  shapes = shapes.concat(currentNode.shapes);
+}
 ```
 
 Directly after it add:
 
 ```ts
-  if (playing && playHint.stage > 0 && currentNode.children[0]?.move) {
-    const hm = currentNode.children[0].move as NormalMove;
-    const from = makeSquare(hm.from);
-    const to = makeSquare(hm.to);
-    if (from && playHint.stage === 1) {
-      shapes.push({ orig: from, brush: "green" });
-    }
-    if (from && to && playHint.stage >= 2) {
-      shapes.push({ orig: from, dest: to, brush: "green" });
-    }
+if (playing && playHint.stage > 0 && currentNode.children[0]?.move) {
+  const hm = currentNode.children[0].move as NormalMove;
+  const from = makeSquare(hm.from);
+  const to = makeSquare(hm.to);
+  if (from && playHint.stage === 1) {
+    shapes.push({ orig: from, brush: "green" });
   }
+  if (from && to && playHint.stage >= 2) {
+    shapes.push({ orig: from, dest: to, brush: "green" });
+  }
+}
 ```
 
 (`makeSquare` and `NormalMove` are already imported and used in this file — see the variation-arrow block just above.)
@@ -669,13 +670,13 @@ Directly after it add:
 Find `const practicing = currentTabSelected === "practice" && practiceTabSelected === "train";` (near line 185). After it add:
 
 ```ts
-  const playing = currentTabSelected === "practice" && practiceTabSelected === "play";
+const playing = currentTabSelected === "practice" && practiceTabSelected === "play";
 ```
 
 Find `<Board` (near line 236) and add the prop next to `practicing={practicing}`:
 
 ```ts
-          playing={playing}
+playing = { playing };
 ```
 
 - [ ] **Step 7: `BoardAnalysis.tsx` — reset play state on leaving the mode**
@@ -683,25 +684,25 @@ Find `<Board` (near line 236) and add the prop next to `practicing={practicing}`
 Add to the `@/state/atoms` import: `playStateAtom`, `playHintAtom`. Near the existing effect:
 
 ```ts
-  const setPracticePath = useStore(store, (s) => s.setPracticePath);
-  useEffect(() => {
-    if (!practicing) {
-      setPracticePath(null);
-    }
-  }, [practicing, setPracticePath]);
+const setPracticePath = useStore(store, (s) => s.setPracticePath);
+useEffect(() => {
+  if (!practicing) {
+    setPracticePath(null);
+  }
+}, [practicing, setPracticePath]);
 ```
 
 add, directly below it:
 
 ```ts
-  const setPlayState = useSetAtom(playStateAtom);
-  const setPlayHint = useSetAtom(playHintAtom);
-  useEffect(() => {
-    if (!playing) {
-      setPlayState({ phase: "idle" });
-      setPlayHint({ stage: 0 });
-    }
-  }, [playing, setPlayState, setPlayHint]);
+const setPlayState = useSetAtom(playStateAtom);
+const setPlayHint = useSetAtom(playHintAtom);
+useEffect(() => {
+  if (!playing) {
+    setPlayState({ phase: "idle" });
+    setPlayHint({ stage: 0 });
+  }
+}, [playing, setPlayState, setPlayHint]);
 ```
 
 Ensure `useSetAtom` is in the `jotai` import in this file (add it if missing).
@@ -729,10 +730,12 @@ EOF
 ## Task 5: `PracticePlay.tsx` panel and phase machine + i18n keys
 
 **Files:**
+
 - Create: `src/components/panels/practice/PracticePlay.tsx`
 - Modify: `src/translation/en-US.json`
 
 **Interfaces:**
+
 - Consumes: `playStateAtom`, `playHintAtom`, `playSessionStatsAtom`, `repertoirePlaySourceAtom`, `currentInvisibleAtom`, `currentPracticeTabAtom`, `sessionsAtom`, `currentTabAtom` from `src/state/atoms.ts`; `lineStatus`, `pickOpponentMove` from `src/utils/repertoirePlay.ts`; `searchExplorerMoves` from `src/utils/db.ts`; `getNodeAtPath` from `src/utils/treeReducer.ts`; `TreeStateContext` from `src/components/common/TreeStateContext`.
 - Produces: `export default function PracticePlay()` — rendered by Task 6 in the new `play` tab panel.
 
@@ -762,7 +765,19 @@ In `src/translation/en-US.json`, add these keys inside the `Board.Practice.` gro
 Create `src/components/panels/practice/PracticePlay.tsx`:
 
 ```tsx
-import { Alert, Badge, Button, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Paper,
+  SegmentedControl,
+  SimpleGrid,
+  Stack,
+  Text,
+  ThemeIcon,
+} from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import { IconCheck, IconInfoCircle } from "@tabler/icons-react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -837,7 +852,17 @@ export default function PracticePlay() {
     }
     const userToMove = node.halfMoves % 2 === userParity;
     setPlayState({ phase: userToMove ? "waiting" : "opponentThinking" });
-  }, [root, startPath, userColor, userParity, setHint, setInvisible, goToMove, setPlayState, finish]);
+  }, [
+    root,
+    startPath,
+    userColor,
+    userParity,
+    setHint,
+    setInvisible,
+    goToMove,
+    setPlayState,
+    finish,
+  ]);
 
   const stopGame = useCallback(() => {
     setPlayState({ phase: "idle" });
@@ -876,7 +901,9 @@ export default function PracticePlay() {
       if (cancelled || currentFenRef.current !== fenAtStart) return;
 
       if (!pick) {
-        finish(lineStatus(getNodeAtPath(root, pathAtStart), userColor) === "gap" ? "gap" : "complete");
+        finish(
+          lineStatus(getNodeAtPath(root, pathAtStart), userColor) === "gap" ? "gap" : "complete",
+        );
         return;
       }
       goToMove(pick.nextPath);
@@ -892,7 +919,20 @@ export default function PracticePlay() {
     return () => {
       cancelled = true;
     };
-  }, [phase, positionKey, source, token, root, position, currentNode.fen, userColor, goToMove, setHint, setPlayState, finish]);
+  }, [
+    phase,
+    positionKey,
+    source,
+    token,
+    root,
+    position,
+    currentNode.fen,
+    userColor,
+    goToMove,
+    setHint,
+    setPlayState,
+    finish,
+  ]);
 
   // Keep the notation un-blurred whenever we are not mid-game.
   useEffect(() => {
@@ -1025,11 +1065,7 @@ export default function PracticePlay() {
             <Text fz="sm" c="dimmed" ta="center">
               {t("Board.Practice.Play.OutOfBook")}
             </Text>
-            <Button
-              variant="subtle"
-              size="xs"
-              onClick={() => setTab("build")}
-            >
+            <Button variant="subtle" size="xs" onClick={() => setTab("build")}>
               {t("Board.Practice.Play.GoToBuild")}
             </Button>
             <Button variant="light" size="sm" fullWidth onClick={startGame}>
@@ -1048,6 +1084,7 @@ export default function PracticePlay() {
 ```
 
 Notes for the implementer:
+
 - If any `t("...")` key referenced above for reuse (`Board.Database.ExplorerAuthRequired*`, `Board.Practice.Build.SourceLichess`, `Board.Practice.Build.SourceLichessMasters`, `Board.Practice.GoToBuild`, `Common.Stop`, `Chess.White`, `Chess.Black`) is absent from `en-US.json`, grep for the closest existing key and use that instead — do not invent new ones beyond Step 1's list. `Board.Database.ExplorerAuthRequired1/2/.Accounts` and `Board.Practice.Build.SourceLichess*` are used verbatim by `RepertoireInfo.tsx`, so they exist.
 - `sessionsAtom` is the same atom `RepertoireInfo.tsx` reads for `explorerToken`; match that access pattern exactly.
 
@@ -1074,9 +1111,11 @@ EOF
 ## Task 6: Add the `play` tab to `PracticePanel.tsx` + end-to-end verification
 
 **Files:**
+
 - Modify: `src/components/panels/practice/PracticePanel.tsx`
 
 **Interfaces:**
+
 - Consumes: `PracticePlay` default export from Task 5.
 - Produces: the third vertical tab in the repertoire practice panel.
 
@@ -1093,15 +1132,15 @@ import PracticePlay from "./PracticePlay";
 In the `<Tabs.List>` (near line 317), after the `build` tab:
 
 ```tsx
-        <Tabs.Tab value="play">{t("Board.Practice.Play")}</Tabs.Tab>
+<Tabs.Tab value="play">{t("Board.Practice.Play")}</Tabs.Tab>
 ```
 
 After the `build` `<Tabs.Panel>` (near line 628-630):
 
 ```tsx
-        <Tabs.Panel value="play" style={{ overflow: "hidden" }}>
-          <PracticePlay />
-        </Tabs.Panel>
+<Tabs.Panel value="play" style={{ overflow: "hidden" }}>
+  <PracticePlay />
+</Tabs.Panel>
 ```
 
 - [ ] **Step 2: Typecheck / lint / full test run**
@@ -1149,19 +1188,19 @@ EOF
 
 **1. Spec coverage**
 
-| Spec section | Task |
-| --- | --- |
-| 1. Placement & gating | Task 4 (BoardAnalysis), Task 6 (PracticePanel tab) |
-| 2. `repertoirePlay.ts` — `normalizeFen`, `resolvePointer`, `lineStatus` | Task 1 |
-| 2. `repertoirePlay.ts` — `matchUserMove`, `pickOpponentMove`, `EPSILON` | Task 2 |
-| 2. `findNode` (spec: "some node in the tree has that normalised FEN") | Task 1 (helper) + Task 2 (used by `matchUserMove`) |
-| 3. atoms (`playStateAtom`, `playHintAtom`, `playSessionStatsAtom`, `repertoirePlaySourceAtom`) | Task 3 |
-| 4. Flow — New Game / opponentThinking / waiting / lineComplete / gap / Stop | Task 5 (`startGame`, `stopGame`, `finish`, the two effects) |
-| 4. `setInvisible(true)` on start, `false` on finish/idle | Task 5 |
-| 5. Board — `playing` prop, `makeMove` branch, `playLock`, hint shapes | Task 4 |
-| 6. Panel UI — auth gate, empty gate, source control, stats, per-phase blocks, `h` hotkey | Task 5 |
-| 7. i18n `Board.Practice.Play.*` by hand | Task 5 Step 1 |
-| 8. tests | Task 1 Step 1, Task 2 Step 1 |
+| Spec section                                                                                           | Task                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Placement & gating                                                                                  | Task 4 (BoardAnalysis), Task 6 (PracticePanel tab)                                                                                  |
+| 2. `repertoirePlay.ts` — `normalizeFen`, `resolvePointer`, `lineStatus`                                | Task 1                                                                                                                              |
+| 2. `repertoirePlay.ts` — `matchUserMove`, `pickOpponentMove`, `EPSILON`                                | Task 2                                                                                                                              |
+| 2. `findNode` (spec: "some node in the tree has that normalised FEN")                                  | Task 1 (helper) + Task 2 (used by `matchUserMove`)                                                                                  |
+| 3. atoms (`playStateAtom`, `playHintAtom`, `playSessionStatsAtom`, `repertoirePlaySourceAtom`)         | Task 3                                                                                                                              |
+| 4. Flow — New Game / opponentThinking / waiting / lineComplete / gap / Stop                            | Task 5 (`startGame`, `stopGame`, `finish`, the two effects)                                                                         |
+| 4. `setInvisible(true)` on start, `false` on finish/idle                                               | Task 5                                                                                                                              |
+| 5. Board — `playing` prop, `makeMove` branch, `playLock`, hint shapes                                  | Task 4                                                                                                                              |
+| 6. Panel UI — auth gate, empty gate, source control, stats, per-phase blocks, `h` hotkey               | Task 5                                                                                                                              |
+| 7. i18n `Board.Practice.Play.*` by hand                                                                | Task 5 Step 1                                                                                                                       |
+| 8. tests                                                                                               | Task 1 Step 1, Task 2 Step 1                                                                                                        |
 | Deferred: opponent limited to direct children; `EPSILON`/`OPPONENT_DELAY_MS` constants; no review step | Honoured — `pickOpponentMove` iterates `node.children` only; both constants are module-level; `finish` just sets the terminal phase |
 
 **2. Placeholder scan** — no TBD/TODO; every code step has full code. The one conditional instruction (Task 5 Step 2 note about missing reuse-keys) names the exact fallback (grep the nearest existing key) rather than leaving it open.

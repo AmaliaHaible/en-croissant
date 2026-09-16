@@ -106,8 +106,7 @@ function RepertoireInfo() {
   const sessions = useAtomValue(sessionsAtom);
 
   // The Lichess opening explorer requires a Lichess OAuth token (any valid one).
-  const explorerToken =
-    sessions.find((s) => s.lichess?.accessToken)?.lichess?.accessToken ?? null;
+  const explorerToken = sessions.find((s) => s.lichess?.accessToken)?.lichess?.accessToken ?? null;
   const isExplorerSource = referenceSource === "lichess" || referenceSource === "masters";
   const needsLichessAuth = isExplorerSource && !explorerToken;
 

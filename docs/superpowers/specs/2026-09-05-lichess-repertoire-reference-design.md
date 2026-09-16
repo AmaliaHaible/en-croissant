@@ -18,7 +18,7 @@ Two obstacles:
    `utils/repertoire.ts` call `searchPosition` / `searchPositionsBatch`
    (Rust `search_position` / `search_positions_batch`) with a file path and
    nothing else.
-2. **Volume.** `computeTreeCoverage` resolves *every unique position* in the
+2. **Volume.** `computeTreeCoverage` resolves _every unique position_ in the
    sub-repertoire in a single batch. Against Lichess that is potentially
    hundreds of HTTP requests per recompute, and a recompute fires (debounced)
    whenever the tree changes. A persistent cache and request rate-limiting are
@@ -31,12 +31,12 @@ position. Any Lichess-backed provider must produce that shape.
 
 ## Decisions (from brainstorming)
 
-| Question | Decision |
-| --- | --- |
-| Where is Lichess selectable as a reference? | Repertoire builder only. Game-report novelty detection keeps requiring a real local DB. |
-| How does it appear in the Databases tab? | It does not. The source is chosen inside the repertoire Build panel. |
-| Query parameters | Fixed sensible defaults. Lichess-all: `variant=standard`, all ratings, all speeds, no date filter. Masters: no date filter. One cache entry per position. |
-| Cache freshness | Permanent. Manual "Clear cache" only, no TTL. |
+| Question                                    | Decision                                                                                                                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Where is Lichess selectable as a reference? | Repertoire builder only. Game-report novelty detection keeps requiring a real local DB.                                                                   |
+| How does it appear in the Databases tab?    | It does not. The source is chosen inside the repertoire Build panel.                                                                                      |
+| Query parameters                            | Fixed sensible defaults. Lichess-all: `variant=standard`, all ratings, all speeds, no date filter. Masters: no date filter. One cache entry per position. |
+| Cache freshness                             | Permanent. Manual "Clear cache" only, no TTL.                                                                                                             |
 
 ## Approach
 
@@ -71,9 +71,7 @@ keep seeing `referenceDbAtom` unchanged.
 
 ```ts
 export type RepertoireReference =
-  | { kind: "local"; path: string }
-  | { kind: "lichess" }
-  | { kind: "masters" };
+  { kind: "local"; path: string } | { kind: "lichess" } | { kind: "masters" };
 ```
 
 Resolution in `RepertoireInfo.tsx`:
@@ -101,8 +99,10 @@ the current node's FEN. It becomes:
 
 ```ts
 reference.kind === "local"
-  ? searchPosition({ path, type: "exact", fen, color: "white", player: null, result: "any" }, "build-tab")
-      .then(([openings]) => openings)
+  ? searchPosition(
+      { path, type: "exact", fen, color: "white", player: null, result: "any" },
+      "build-tab",
+    ).then(([openings]) => openings)
   : getExplorerMoves(reference.kind, [fen]).then((r) => r[0] ?? []);
 ```
 
@@ -166,7 +166,7 @@ pub struct ExplorerCacheStats { pub entries: i64, pub bytes: i64 }
 
 1. Return `Ok(vec![])` if `fens` is empty.
 2. Normalize every FEN to 4 fields. De-duplicate for the lookup; remember the
-   mapping so the return vec stays index-aligned with the *input*.
+   mapping so the return vec stays index-aligned with the _input_.
 3. One `SELECT source, fen, response FROM position_cache WHERE source = ? AND fen IN (…)`;
    deserialize hits.
 4. For misses, sequentially (bounded concurrency 1 keeps it simplest and is
@@ -193,11 +193,11 @@ and a `moves[]` array, each with `white`, `draws`, `black`.
   per entry in `moves[]`.
 - One synthesized summary row:
   `PositionStats {
-     move_: "*",
-     white: top.white - Σ moves.white,
-     draw:  top.draws - Σ moves.draws,
-     black: top.black - Σ moves.black,
-   }`
+ move_: "*",
+ white: top.white - Σ moves.white,
+ draw:  top.draws - Σ moves.draws,
+ black: top.black - Σ moves.black,
+ }`
   clamped at 0 per field (guard against any off-by-one in explorer data).
 
 This makes `computeTreeCoverage`'s `gamesEndingHere + gamesContinuing`
@@ -218,7 +218,7 @@ cache file for `bytes` (0 if absent).
 - Lichess: `https://explorer.lichess.org/lichess?variant=standard&fen=<normalized>&moves=50&topGames=0&recentGames=0`
 - Masters: `https://explorer.lichess.org/masters?fen=<normalized>&moves=50&topGames=0`
 
-**Correction (post-merge, 2026-09-05):** the explorer endpoints *do* require
+**Correction (post-merge, 2026-09-05):** the explorer endpoints _do_ require
 authentication — an unauthenticated request gets a bare `401` (the app's
 `missingExplorerToken` gate on the analysis panel already reflects this). Every
 request must send a `User-Agent` and, threaded from the active session, an
@@ -341,10 +341,12 @@ Settings → Clear cache empties it (`explorer_cache_stats` returns 0).
 ## Files touched
 
 **New**
+
 - `src-tauri/src/explorer.rs`
 - (maybe) `src/utils/repertoire/reference.ts` — or keep the type in `repertoire.ts`
 
 **Modified**
+
 - `src-tauri/src/main.rs` — module decl, `AppState` field, `collect_commands!`
 - `src-tauri/Cargo.toml` — no new deps expected (`reqwest`, `governor`,
   `diesel`+`r2d2`, `serde_json` already present); confirm during implementation

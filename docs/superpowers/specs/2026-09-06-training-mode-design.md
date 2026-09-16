@@ -26,7 +26,7 @@ the next session).
   weighting).
 - Give a low-pressure correction loop: a move that throws away too much eval is
   undone, with no answer revealed — only a hint on demand.
-- Judge "good enough" by how much eval the move *loses*, not by matching the top
+- Judge "good enough" by how much eval the move _loses_, not by matching the top
   engine move, using a rule that behaves sensibly for near-equal openings
   (evals hovering around 0.00 / -0.05).
 - Allow the drill to continue past the opening book against a weak engine when
@@ -50,7 +50,7 @@ the next session).
   `type: z.enum(["new", "play", "analysis", "puzzles"])`. `BoardsPage.tsx`
   `TabSwitch` renders one component per type into three hardcoded
   `react-mosaic` Portal hosts (`#left`, `#topRight`, `#bottomRight`); only one
-  board tab mounts its UI at a time (repo memory: *board-tab-portal-ids*).
+  board tab mounts its UI at a time (repo memory: _board-tab-portal-ids_).
   `BoardTab.tsx` `TabIcon` maps type → icon. `NewTabHome.tsx` renders the
   launch cards; the Puzzle card currently sets `tab.type = "puzzles"`.
 - **Repertoire Play** (`src/components/panels/practice/PracticePlay.tsx` +
@@ -59,11 +59,11 @@ the next session).
   frequency-weighted opponent (`pickOpponentMove`), silent undo of wrong moves,
   a two-stage hint riding the non-persisted `autoShapes` array, notation blur
   via `currentInvisibleAtom`, and `searchExplorerMoves(source, [fen], token)`
-  for Lichess stats. It lives *inside* `BoardAnalysis` because a repertoire is
+  for Lichess stats. It lives _inside_ `BoardAnalysis` because a repertoire is
   an analysis tab; Training is a standalone tab instead.
 - **Engine eval hooks.** `src/hooks/useLiveCoachEngine.ts` is the template: a
   continuous `commands.getBestMoves(id, path, tab, goMode, { fen, moves,
-  extraOptions })` loop driven by `useThrottledEffect`, a `bestMovesPayload`
+extraOptions })` loop driven by `useThrottledEffect`, a `bestMovesPayload`
   event listener, a synchronous short-circuit consumption of the command's
   return value (`[progress, bestLines]`), `setScore` onto the tree node, and
   full process teardown (`killEngine`) on unmount. `withMultiPvFloor`
@@ -90,10 +90,10 @@ the next session).
   `{ orig, dest, brush, modifiers: { lineWidth } }`.
 - **i18n.** `src/translation/en-US.json` is source of truth; `pnpm i18n:extract`
   rewrites every catalog, so single keys are added by hand (repo memory:
-  *i18n-extract-rewrites-all-catalogs*).
+  _i18n-extract-rewrites-all-catalogs_).
 - **Lichess token.** Explorer calls need a Lichess OAuth token
   (`sessions.find(s => s.lichess?.accessToken)`), otherwise the same auth alert
-  repertoire Play/Build show (repo memory: *rust-http-client-no-user-agent*).
+  repertoire Play/Build show (repo memory: _rust-http-client-no-user-agent_).
 
 ## Approach
 
@@ -102,7 +102,7 @@ the next session).
 New `training` tab type with a dedicated `BoardTraining.tsx` that owns the three
 Portals (mirrors `BoardGame` / `Puzzles`).
 
-*Rejected:* a panel inside `BoardAnalysis` (how repertoire Play works). Training
+_Rejected:_ a panel inside `BoardAnalysis` (how repertoire Play works). Training
 is launched fresh from the new-tab home and is not tied to a file, so there is no
 analysis tab to attach to.
 
@@ -117,7 +117,7 @@ The panel drives all opponent moves and appends them to the tree itself:
   {engine}** — from then on opponent moves come from `commands.getBestMoves`
   against that engine, choosing among its near-top moves.
 
-*Rejected:* the Rust live-game engine (`startGame` / `makeGameMove`). It owns its
+_Rejected:_ the Rust live-game engine (`startGame` / `makeGameMove`). It owns its
 own game state, tree and clocks; splicing it in only for the post-book phase is a
 messy handoff, and Training needs neither clocks nor a saved game.
 
@@ -135,7 +135,7 @@ a bespoke one-shot query:
   `afterScore = negate(C.score)` (user POV). Threshold test decides
   keep/undo.
 
-*Rejected:* a one-shot `getBestMoves` on a locally-derived FEN without
+_Rejected:_ a one-shot `getBestMoves` on a locally-derived FEN without
 navigating — duplicates the hook's listener/short-circuit/teardown plumbing for
 no benefit.
 
@@ -150,7 +150,7 @@ The `IconPuzzle` card becomes **Training**:
   `name = t("Home.TrainingMode")` (new key), same `setTabs` shape as the other
   cards.
 - Secondary button **Puzzles** (`secondaryLabel` / `onSecondaryClick`, exactly
-  the two-button pattern the Import card uses) → runs the *current* Puzzle
+  the two-button pattern the Import card uses) → runs the _current_ Puzzle
   onClick verbatim: `tab.name = t("Home.PuzzleTraining"); tab.type = "puzzles"`.
 - Keep `icon: <IconPuzzle size={60} />` (Training is puzzle-adjacent; no new
   icon needed here — but the tab icon is `IconTargetArrow`, see §2).
@@ -160,13 +160,13 @@ No change to the 5-column grid; the card count stays the same.
 ### 2. Tab wiring
 
 - **`src/utils/tabs.ts`**: `type: z.enum(["new", "play", "analysis", "puzzles",
-  "training"])`.
+"training"])`.
 - **`src/components/tabs/BoardsPage.tsx`** `TabSwitch`: add
   `.with("training", () => <BoardTraining id={tab.value} />)` alongside the
   existing `.with("puzzles", …)`, inside the same mounted-board Portal host
   wrapper. Import `BoardTraining` next to `Puzzles`.
 - **`src/components/tabs/BoardTab.tsx`** `TabIcon`: `if (tabType === "training")
-  return <IconTargetArrow size="0.875rem" />;` (import from `@tabler/icons-react`).
+return <IconTargetArrow size="0.875rem" />;` (import from `@tabler/icons-react`).
 - No `gameOrigin` involvement — Training tabs are always `{ kind: "none" }`.
 
 ### 3. State — `src/state/atoms.ts`
@@ -176,12 +176,7 @@ persisted), plus persisted config atoms.
 
 ```ts
 export type TrainingPhase =
-  | "setup"
-  | "waiting"
-  | "checking"
-  | "opponentThinking"
-  | "outOfBook"
-  | "gameOver";
+  "setup" | "waiting" | "checking" | "opponentThinking" | "outOfBook" | "gameOver";
 
 export type TrainingState = {
   phase: TrainingPhase;
@@ -199,7 +194,8 @@ export type TrainingState = {
   result?: string;
 };
 const trainingStateFamily = atomFamily((_tab: string) =>
-  atom<TrainingState>({ phase: "setup", engineOpponentActive: false }));
+  atom<TrainingState>({ phase: "setup", engineOpponentActive: false }),
+);
 export const trainingStateAtom = tabValue(trainingStateFamily);
 
 export type TrainingHint = { stage: 0 | 1 | 2 };
@@ -208,7 +204,8 @@ export const trainingHintAtom = tabValue(trainingHintFamily);
 
 export type TrainingSessionStats = { movesPlayed: number; mistakes: number };
 const trainingSessionStatsFamily = atomFamily((_tab: string) =>
-  atom<TrainingSessionStats>({ movesPlayed: 0, mistakes: 0 }));
+  atom<TrainingSessionStats>({ movesPlayed: 0, mistakes: 0 }),
+);
 export const trainingSessionStatsAtom = tabValue(trainingSessionStatsFamily);
 
 // The user's chosen orientation for the session (which side they play).
@@ -217,22 +214,26 @@ export const trainingColorAtom = tabValue(trainingColorFamily);
 
 // --- persisted config (atomWithStorage, remembered as next-session defaults) ---
 export type TrainingEngineConfig = { engineId: string | null; variantId: string | null };
-export const trainingEvalEngineConfigAtom =
-  atomWithStorage<TrainingEngineConfig>("training-eval-engine", { engineId: null, variantId: null });
-export const trainingEvalMovetimeAtom =
-  atomWithStorage<number>("training-eval-movetime-ms", 500);
-export const trainingOpponentEngineConfigAtom =
-  atomWithStorage<TrainingEngineConfig>("training-opponent-engine", { engineId: null, variantId: null });
-export const trainingOpponentSkillAtom =
-  atomWithStorage<number | null>("training-opponent-skill", null); // Stockfish "Skill Level" 0-20, null = full
-export const trainingMaxLossPawnsAtom =
-  atomWithStorage<number>("training-max-loss-pawns", 0.05);
-export const trainingMaxLossPctAtom =
-  atomWithStorage<number>("training-max-loss-pct", 40);
-export const trainingBookSourceAtom =
-  atomWithStorage<"lichess" | "masters">("training-book-source", "lichess");
-export const trainingMinBookGamesAtom =
-  atomWithStorage<number>("training-min-book-games", 10);
+export const trainingEvalEngineConfigAtom = atomWithStorage<TrainingEngineConfig>(
+  "training-eval-engine",
+  { engineId: null, variantId: null },
+);
+export const trainingEvalMovetimeAtom = atomWithStorage<number>("training-eval-movetime-ms", 500);
+export const trainingOpponentEngineConfigAtom = atomWithStorage<TrainingEngineConfig>(
+  "training-opponent-engine",
+  { engineId: null, variantId: null },
+);
+export const trainingOpponentSkillAtom = atomWithStorage<number | null>(
+  "training-opponent-skill",
+  null,
+); // Stockfish "Skill Level" 0-20, null = full
+export const trainingMaxLossPawnsAtom = atomWithStorage<number>("training-max-loss-pawns", 0.05);
+export const trainingMaxLossPctAtom = atomWithStorage<number>("training-max-loss-pct", 40);
+export const trainingBookSourceAtom = atomWithStorage<"lichess" | "masters">(
+  "training-book-source",
+  "lichess",
+);
+export const trainingMinBookGamesAtom = atomWithStorage<number>("training-min-book-games", 10);
 ```
 
 `atomFamily` / `atomWithStorage` / `tabValue` are already used throughout
@@ -271,10 +272,10 @@ export function totalBookGames(stats: ExplorerMoveStat[]): number;
 
 export type HintMove = {
   uci: string;
-  from: string;      // origin square (chessops makeSquare)
+  from: string; // origin square (chessops makeSquare)
   to: string;
-  cp: number;        // afterScore, user POV
-  rank: number;      // 1-based, by cp descending
+  cp: number; // afterScore, user POV
+  rank: number; // 1-based, by cp descending
   brush: "green" | "blue" | "yellow";
   lineWidth: number; // chessground modifiers.lineWidth, thicker = better
 };
@@ -343,11 +344,11 @@ Derived: `userColor = trainingColorAtom`, `userIsWhite = userColor === "white"`,
 #### `#left` — `<Board>`
 
 - `phase === "setup"`: `<Board editingMode viewOnly={false} movable="turn"
-  onMove={handleSetupMove} disableVariations />` — the user plays moves from the
+onMove={handleSetupMove} disableVariations />` — the user plays moves from the
   start position; each `onMove` `appendMove`s so `root` walks forward. A "reset
   to start" control clears back to the setup FEN.
 - otherwise: `<Board training movable={userColor} viewOnly={false}
-  disableVariations boardRef=… />`. `training` is a new boolean prop (see §7).
+disableVariations boardRef=… />`. `training` is a new boolean prop (see §7).
 
 #### `#topRight` — panel
 
@@ -377,9 +378,9 @@ Derived: `userColor = trainingColorAtom`, `userIsWhite = userColor === "white"`,
   `Board.Database.ExplorerAuthRequired*` alert + **Start** disabled.
 - **Thresholds** `Paper`: "Max eval loss (pawns)" `NumberInput` step 0.01
   (`trainingMaxLossPawnsAtom`); "Max eval loss (%)" `NumberInput` step 5
-  (`trainingMaxLossPctAtom`). One dim line restating the rule: *"A move is
+  (`trainingMaxLossPctAtom`). One dim line restating the rule: _"A move is
   undone if it loses more than 0.05 pawns AND more than 40% of your current
-  edge — whichever limit is larger."*
+  edge — whichever limit is larger."_
 - **Start** `Button` → `startSession()`.
 
 **Play panels** (mirror `PracticePlay`'s `Stack p="sm" gap="md"`):
@@ -387,7 +388,7 @@ Derived: `userColor = trainingColorAtom`, `userIsWhite = userColor === "white"`,
 - Session stats: two-cell `SimpleGrid` — Moves played, Mistakes.
 - `waiting`: `Paper` — "Your move", **Hint** button (label
   `stage === 1 ? "Show arrows" : "Hint"`), **Stop** (`variant="subtle"
-  color="red"`). While the eval for the current position hasn't landed yet, a
+color="red"`). While the eval for the current position hasn't landed yet, a
   small `Loader` + "Evaluating…" and the Hint button disabled.
 - `checking`: `Paper` — `Loader` + "Checking your move…".
 - `opponentThinking`: `Paper` — `Loader` + "Opponent is thinking…" + Stop.
@@ -408,7 +409,7 @@ scroll the finished game in `gameOver`).
 - **`startSession()`**:
   - Capture the current `root.fen` as `startFen`; `goToMove([])`.
   - `setInvisible(true)`, `setHint({ stage: 0 })`, stats `{ movesPlayed: 0,
-    mistakes: 0 }`.
+mistakes: 0 }`.
   - Whose turn at `startFen`? If it's the user's → `phase: "waiting"`, else
     `phase: "opponentThinking"`. `engineOpponentActive: false`.
   - `trainingStateAtom.fen = root.fen`, `path = []`.
@@ -424,26 +425,26 @@ scroll the finished game in `gameOver`).
   navigates to child **C**, panel effect sees `phase === "waiting"` &&
   `currentNode` advanced past `trainingState.path` on the user's parity →
   `setHint({ stage: 0 })`, `phase: "checking"`, remember `checkParent =
-  trainingState.path`, `checkChildFen = C.fen`.
+trainingState.path`, `checkChildFen = C.fen`.
 
 - **`checking`** (effect keyed on `phase === "checking"`, `resultFen`, `lines`):
   - Wait until `resultFen === checkChildFen` && `lines.length > 0` (the eval
     hook is now evaluating C).
   - `afterCp = -scoreToCp(lines[0].score, userIsWhite)` — `lines[0].score` is
     from the side-to-move-at-C POV already normalised to White; `scoreToCp`
-    gives White/…; negation flips to the *user's* POV since it's the opponent
+    gives White/…; negation flips to the _user's_ POV since it's the opponent
     to move at C. (Implement precisely: `scoreToCp` takes `userIsWhite`; at C
     the mover is the opponent, so pass `!userIsWhite` and do not negate —
     settle the exact form in code with a unit test using a known Score.)
   - `passesThreshold(priorScore, afterCp, cfg)`:
     - **false** → `deleteMove(childPath)`, `goToMove(checkParent)`,
       `stats.mistakes++`, `trainingState` back to `{ phase: "waiting", fen:
-      parentFen, path: checkParent, priorScore }` (keep the already-known prior
+parentFen, path: checkParent, priorScore }` (keep the already-known prior
       score — the position is unchanged). No notification, no answer.
     - **true** → `stats.movesPlayed++`; if `getNodeAtPath(root,
-      childPath)` is terminal (`positionFromFen(fen)` → `pos.isEnd()`) →
+childPath)` is terminal (`positionFromFen(fen)` → `pos.isEnd()`) →
       `phase: "gameOver"`, `result` from the position; else `phase:
-      "opponentThinking"`, `fen: C.fen`, `path: childPath`,
+"opponentThinking"`, `fen: C.fen`, `path: childPath`,
       `priorScore: undefined`.
 
 - **`opponentThinking`** (effect keyed on `phase`, `currentNode.fen`; race-guard
@@ -452,7 +453,7 @@ scroll the finished game in `gameOver`).
   - Terminal position → `phase: "gameOver"`.
   - `engineOpponentActive === false`:
     - `stats = await searchExplorerMoves(source, [fenAtStart], token)
-      .then(r => r[0] ?? []).catch(() => [])`.
+.then(r => r[0] ?? []).catch(() => [])`.
     - `total = totalBookGames(stats)`. If `stats` empty or `total < minBookGames`
       → `phase: "outOfBook"`, return.
     - `san = sampleBookMove(stats)`; parse to a move from `fenAtStart`
@@ -460,8 +461,8 @@ scroll the finished game in `gameOver`).
       re-check the race guard; `appendMove({ payload: move })`.
   - `engineOpponentActive === true`:
     - one-shot `commands.getBestMoves("-training-opponent" id, path, tab,
-      { t: "Time", c: 300 }, { fen: rootFen, moves, extraOptions:
-      withSkill(...) })`; from the returned `bestLines` pick index
+{ t: "Time", c: 300 }, { fen: rootFen, moves, extraOptions:
+withSkill(...) })`; from the returned `bestLines` pick index
       `min(bestLines.length - 1, weightedRandom([0,1,2]))` (favour the top),
       `appendMove` its first move. Fallback to a random legal move if the
       engine returns nothing.
@@ -470,7 +471,7 @@ scroll the finished game in `gameOver`).
 
 - **`outOfBook`**:
   - **Play on vs {engine}** → `engineOpponentActive: true`, `phase:
-    "opponentThinking"` (re-enters the effect, now on the engine branch).
+"opponentThinking"` (re-enters the effect, now on the engine branch).
   - **New Game** → `startSession()` from `startFen` (re-sample from scratch;
     stats reset).
 
@@ -484,7 +485,7 @@ scroll the finished game in `gameOver`).
 - **`cycleHint`**: `setHint(h => ({ stage: h.stage === 0 ? 1 : h.stage === 1 ? 2 : 1 }))`.
 
 - **Forward/back pinning**: `setPracticePath(phase !== "setup" ? (path ?? null)
-  : null)` in an effect, so `→`/`←` walk the played line and stop at the live
+: null)` in an effect, so `→`/`←` walk the played line and stop at the live
   position (same as `PracticePlay`). Cleared on unmount.
 
 - **Cleanup effect** (unmount): reset `trainingStateAtom` to
@@ -495,8 +496,8 @@ scroll the finished game in `gameOver`).
 
 - Add `training?: boolean` to `ChessboardProps` and the destructure.
 - New atom reads (only meaningful when `training`): `const [trainingState,
-  setTrainingState] = useAtom(trainingStateAtom)`, `const trainingHint =
-  useAtomValue(trainingHintAtom)`, plus `trainingColorAtom` and the eval
+setTrainingState] = useAtom(trainingStateAtom)`, `const trainingHint =
+useAtomValue(trainingHintAtom)`, plus `trainingColorAtom` and the eval
   hook's `lines` — **or** pass `lines` / `hintMoves` down as props from
   `BoardTraining` to avoid mounting the hook's state in `Board`. **Preferred:**
   `BoardTraining` computes `hintMoves: HintMove[]` (via `goodEnoughHints`) and
@@ -506,7 +507,10 @@ scroll the finished game in `gameOver`).
 
   ```ts
   if (training) {
-    if (trainingState.phase !== "waiting") { setPendingMove(null); return; }
+    if (trainingState.phase !== "waiting") {
+      setPendingMove(null);
+      return;
+    }
     // Provisionally accept: append and let the panel's `checking` effect
     // evaluate it and possibly delete it back off.
     setPendingMove(null);
@@ -518,6 +522,7 @@ scroll the finished game in `gameOver`).
   i.e. don't `return` — let the existing append happen. The panel effect keys
   off the position change. (If the normal path shows a promotion dialog etc.,
   that is fine and matches play mode.)
+
 - `trainingLock`: extend the `movableColor` memo —
   `const trainingLock = !!training && trainingState.phase !== "waiting";`
   return `undefined` when `trainingLock` (same as `practiceLock` / `playLock`).
@@ -534,7 +539,9 @@ scroll the finished game in `gameOver`).
         shapes.push({ orig: h.from, brush: h.brush });
       } else {
         shapes.push({
-          orig: h.from, dest: h.to, brush: h.brush,
+          orig: h.from,
+          dest: h.to,
+          brush: h.brush,
           modifiers: { lineWidth: h.lineWidth },
         });
       }
@@ -610,20 +617,20 @@ No Rust tests (no backend change).
 
 ## Files touched
 
-| File | Change |
-| --- | --- |
-| `src/utils/training.ts` | new — threshold math, book sampling, hint ranking (pure) |
-| `src/utils/tests/training.test.ts` | new — unit tests |
-| `src/hooks/useTrainingEngine.ts` | new — continuous eval-engine session (score + MultiPV) |
-| `src/components/boards/BoardTraining.tsx` | new — setup screen + phase machine + Portals |
-| `src/components/boards/Board.tsx` | `training` prop, `makeMove` branch, `trainingLock`, hint shapes |
-| `src/state/atoms.ts` | training state/hint/stats/color families + persisted config atoms |
-| `src/utils/tabs.ts` | add `"training"` to the tab type enum |
-| `src/components/tabs/BoardsPage.tsx` | `TabSwitch` `.with("training", …)` + import |
-| `src/components/tabs/BoardTab.tsx` | `IconTargetArrow` for `training` |
-| `src/components/tabs/NewTabHome.tsx` | Training card: primary Train button + secondary Puzzles button |
-| `src/translation/en-US.json` | new `Board.Training.*` + `Home.Card.Training.*` keys (by hand) |
-| `src/utils/coach.ts` | (only if needed) make `withMultiPvFloor`'s floor a parameter |
+| File                                      | Change                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `src/utils/training.ts`                   | new — threshold math, book sampling, hint ranking (pure)          |
+| `src/utils/tests/training.test.ts`        | new — unit tests                                                  |
+| `src/hooks/useTrainingEngine.ts`          | new — continuous eval-engine session (score + MultiPV)            |
+| `src/components/boards/BoardTraining.tsx` | new — setup screen + phase machine + Portals                      |
+| `src/components/boards/Board.tsx`         | `training` prop, `makeMove` branch, `trainingLock`, hint shapes   |
+| `src/state/atoms.ts`                      | training state/hint/stats/color families + persisted config atoms |
+| `src/utils/tabs.ts`                       | add `"training"` to the tab type enum                             |
+| `src/components/tabs/BoardsPage.tsx`      | `TabSwitch` `.with("training", …)` + import                       |
+| `src/components/tabs/BoardTab.tsx`        | `IconTargetArrow` for `training`                                  |
+| `src/components/tabs/NewTabHome.tsx`      | Training card: primary Train button + secondary Puzzles button    |
+| `src/translation/en-US.json`              | new `Board.Training.*` + `Home.Card.Training.*` keys (by hand)    |
+| `src/utils/coach.ts`                      | (only if needed) make `withMultiPvFloor`'s floor a parameter      |
 
 ## Open questions / deferred
 

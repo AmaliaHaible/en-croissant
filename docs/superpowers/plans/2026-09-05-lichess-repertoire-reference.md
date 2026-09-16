@@ -32,10 +32,12 @@
 ## File Structure
 
 **New files**
+
 - `src-tauri/src/explorer.rs` — the entire backend: `ExplorerSource`, `ExplorerCache`, FEN normalization, explorer JSON types, response→`PositionStats` mapping, the three commands.
 - `src/components/settings/ExplorerCacheSetting.tsx` — Settings row: shows cache stats, "Clear cache" button + confirm.
 
 **Modified files**
+
 - `src-tauri/src/error.rs` — add `From<serde_json::Error>` for `Error`.
 - `src-tauri/src/main.rs` — `mod explorer;`, `AppState.explorer_cache` field, register 3 commands.
 - `src-tauri/Cargo.toml` — confirm `serde_json` is a direct dep (it is); no new deps expected.
@@ -53,11 +55,13 @@
 ## Task 1: Rust — pure helpers (FEN normalization, response mapping)
 
 **Files:**
+
 - Create: `src-tauri/src/explorer.rs`
 - Modify: `src-tauri/src/main.rs:` (add `mod explorer;` near the other `mod` lines, e.g. after `mod error;`)
 - Test: inline `#[cfg(test)]` module in `src-tauri/src/explorer.rs`
 
 **Interfaces:**
+
 - Consumes: `crate::db::search::PositionStats` (`{ move_: String, white: i32, draw: i32, black: i32 }`, `#[serde(rename = "move")]` on `move_`).
 - Produces:
   - `pub enum ExplorerSource { Lichess, Masters }` — `#[serde(rename_all = "lowercase")]`, `Type`, `Copy`.
@@ -230,11 +234,13 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 ## Task 2: Rust — the SQLite cache store
 
 **Files:**
+
 - Modify: `src-tauri/src/explorer.rs`
 - Modify: `src-tauri/src/error.rs:194` (add one `From` impl after the `SystemTimeError` impl)
 - Test: inline `#[cfg(test)]` in `src-tauri/src/explorer.rs`
 
 **Interfaces:**
+
 - Consumes: `crate::error::Error`; `diesel::r2d2::{Pool, ConnectionManager}`, `diesel::SqliteConnection`, `diesel::connection::SimpleConnection`, `diesel::sql_types::{Text, BigInt}`.
 - Produces:
   - `type SqlitePool = Pool<ConnectionManager<SqliteConnection>>`
@@ -493,11 +499,13 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 ## Task 3: Rust — the three commands (HTTP + throttle + wiring)
 
 **Files:**
+
 - Modify: `src-tauri/src/explorer.rs`
 - Modify: `src-tauri/src/main.rs` — `AppState.explorer_cache` field; register `get_explorer_moves`, `clear_explorer_cache`, `explorer_cache_stats` in `collect_commands!`
 - Test: inline `#[cfg(test)]` (cache-hit path only — no network in tests)
 
 **Interfaces:**
+
 - Consumes: `AppState.http_client: reqwest::Client` (exists, `main.rs:103`); `AppState` is `#[derive(Derivative)] #[derivative(Default)]` (`main.rs:81`).
 - Produces (all `#[tauri::command] #[specta::specta]`):
   - `pub async fn get_explorer_moves(source: ExplorerSource, fens: Vec<String>, app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Vec<Vec<PositionStats>>, Error>`
@@ -740,12 +748,15 @@ use crate::AppState;
 Wire `main.rs`:
 
 1. In `pub struct AppState { ... }` (around `main.rs:83`), add a field:
+
    ```rust
        explorer_cache: explorer::ExplorerCache,
    ```
+
    `ExplorerCache` derives `Default`, so the `#[derivative(Default)]` on `AppState` still works with no extra attribute.
 
 2. In `tauri_specta::collect_commands!( ... )` (around `main.rs:119`), add on their own lines:
+
    ```rust
                get_explorer_moves,
                clear_explorer_cache,
@@ -782,12 +793,14 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 ## Task 4: Frontend — `RepertoireReference` type + `computeTreeCoverage` signature
 
 **Files:**
+
 - Modify: `src/utils/db.ts:176` (add `getExplorerMoves` near `searchPositionsBatch`)
 - Modify: `src/utils/repertoire.ts:1-57`
 - Modify: `src/components/panels/practice/RepertoireInfo.tsx:181` (call-site only — keep it green, no selector yet)
 - Test: `src/utils/tests/repertoire.test.ts`
 
 **Interfaces:**
+
 - Consumes: `commands.getExplorerMoves` + `ExplorerSource` type from `@/bindings` (Task 3); `searchPositionsBatch` from `@/utils/db`.
 - Produces:
   - `src/utils/repertoire.ts`: `export type RepertoireReference = { kind: "local"; path: string } | { kind: "lichess" } | { kind: "masters" }`
@@ -811,29 +824,29 @@ In `src/utils/tests/repertoire.test.ts`:
 
 ```ts
 test("uses the lichess explorer when the reference is a lichess source", async () => {
-    getExplorerMoves.mockImplementation(async (_source, fens: string[]) =>
-        fens.map((fen) => {
-            if (fen === "fen-root") return [stats("e4", 100)];
-            if (fen === "fen-e4") return [stats("e5", 15), stats("c5", 15)];
-            return [];
-        }),
-    );
+  getExplorerMoves.mockImplementation(async (_source, fens: string[]) =>
+    fens.map((fen) => {
+      if (fen === "fen-root") return [stats("e4", 100)];
+      if (fen === "fen-e4") return [stats("e5", 15), stats("c5", 15)];
+      return [];
+    }),
+  );
 
-    const { coverageMap, missingGamesMap } = await computeTreeCoverage(
-        sampleTree(),
-        "white",
-        { kind: "lichess" },
-        10,
-    );
+  const { coverageMap, missingGamesMap } = await computeTreeCoverage(
+    sampleTree(),
+    "white",
+    { kind: "lichess" },
+    10,
+  );
 
-    expect(getExplorerMoves).toHaveBeenCalledTimes(1);
-    expect(getExplorerMoves).toHaveBeenCalledWith(
-        "lichess",
-        expect.arrayContaining(["fen-root", "fen-e4", "fen-e5"]),
-    );
-    expect(searchPositionsBatch).not.toHaveBeenCalled();
-    expect(coverageMap.get("0")).toBeCloseTo(0.5);
-    expect(missingGamesMap.get("0")).toBe(15);
+  expect(getExplorerMoves).toHaveBeenCalledTimes(1);
+  expect(getExplorerMoves).toHaveBeenCalledWith(
+    "lichess",
+    expect.arrayContaining(["fen-root", "fen-e4", "fen-e5"]),
+  );
+  expect(searchPositionsBatch).not.toHaveBeenCalled();
+  expect(coverageMap.get("0")).toBeCloseTo(0.5);
+  expect(missingGamesMap.get("0")).toBe(15);
 });
 ```
 
@@ -853,11 +866,8 @@ In `src/utils/db.ts`, after `searchPositionsBatch` (line ~176):
  * {@link searchPositionsBatch} (per-move rows plus a synthesized `*` summary),
  * so repertoire coverage can consume either interchangeably.
  */
-export async function searchExplorerMoves(
-    source: "lichess" | "masters",
-    fens: string[],
-) {
-    return unwrap(await commands.getExplorerMoves(source, fens));
+export async function searchExplorerMoves(source: "lichess" | "masters", fens: string[]) {
+  return unwrap(await commands.getExplorerMoves(source, fens));
 }
 ```
 
@@ -869,9 +879,7 @@ In `src/utils/repertoire.ts`:
 - After the imports, add:
   ```ts
   export type RepertoireReference =
-      | { kind: "local"; path: string }
-      | { kind: "lichess" }
-      | { kind: "masters" };
+    { kind: "local"; path: string } | { kind: "lichess" } | { kind: "masters" };
   ```
 - Change the signature (line ~20-26):
   ```ts
@@ -887,22 +895,22 @@ In `src/utils/repertoire.ts`:
 - Replace line 57 (`const batch = await searchPositionsBatch(dbPath, fenList);`):
   ```ts
   const batch =
-      reference.kind === "local"
-          ? await searchPositionsBatch(reference.path, fenList)
-          : await searchExplorerMoves(reference.kind, fenList);
+    reference.kind === "local"
+      ? await searchPositionsBatch(reference.path, fenList)
+      : await searchExplorerMoves(reference.kind, fenList);
   ```
 
 In `src/components/panels/practice/RepertoireInfo.tsx` line ~181, wrap the existing arg so the file still typechecks (the real selector comes in Task 5):
 
 ```ts
 computeTreeCoverage(
-    root,
-    orientation,
-    { kind: "local", path: referenceDb },
-    minGames,
-    startPath,
-    controller.signal,
-)
+  root,
+  orientation,
+  { kind: "local", path: referenceDb },
+  minGames,
+  startPath,
+  controller.signal,
+);
 ```
 
 (`referenceDb` is already guarded non-null earlier in that effect by the `if (!referenceDb || practiceTab !== "build")` early return.)
@@ -929,12 +937,14 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 ## Task 5: Frontend — source atom + selector + resolver in the Build panel
 
 **Files:**
+
 - Modify: `src/state/atoms.ts:338` (after `referenceDbAtom`)
 - Modify: `src/components/panels/practice/RepertoireInfo.tsx`
 - Modify: `src/translation/en-US.json`
 - Test: `src/utils/tests/repertoire.test.ts` already covers the resolver logic; this task is UI wiring, verified by `pnpm lint` + manual smoke.
 
 **Interfaces:**
+
 - Consumes: `RepertoireReference` and `searchExplorerMoves` (Task 4); `computeTreeCoverage` new signature.
 - Produces: `export const repertoireReferenceSourceAtom` — `atomWithStorage<"reference" | "lichess" | "masters">("repertoire-reference-source", "reference")`.
 
@@ -950,9 +960,10 @@ In `src/state/atoms.ts`, immediately after line 338 (`export const referenceDbAt
  * (cached permanently by the backend). Scoped to the repertoire builder only —
  * game reports and the analysis panel keep using `referenceDbAtom` directly.
  */
-export const repertoireReferenceSourceAtom = atomWithStorage<
-    "reference" | "lichess" | "masters"
->("repertoire-reference-source", "reference");
+export const repertoireReferenceSourceAtom = atomWithStorage<"reference" | "lichess" | "masters">(
+  "repertoire-reference-source",
+  "reference",
+);
 ```
 
 - [ ] **Step 2: Add the i18n keys**
@@ -975,6 +986,7 @@ And reword the existing `Board.Practice.Build.NoRefDb` value to:
 Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
 
 1. Imports:
+
    ```ts
    import { SegmentedControl } from "@mantine/core"; // add to the existing @mantine/core import list
    import {
@@ -996,6 +1008,7 @@ Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
    ```
 
 2. Inside `RepertoireInfo()`, after `const referenceDb = useAtomValue(referenceDbAtom);`:
+
    ```ts
    const referenceSource = useAtomValue(repertoireReferenceSourceAtom);
    const setReferenceSource = useSetAtom(repertoireReferenceSourceAtom);
@@ -1011,9 +1024,11 @@ Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
    const referenceKey =
      reference?.kind === "local" ? `local:${reference.path}` : (reference?.kind ?? "none");
    ```
+
    (Add `useSetAtom` to the `jotai` import.)
 
 3. Opponent-move effect (currently lines ~122-152): replace the body so it branches. Keep the `queryFen` / `currentFenRef` guard logic:
+
    ```ts
    useEffect(() => {
      if (!reference) {
@@ -1026,7 +1041,14 @@ Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
      const lookup: Promise<{ move: string; white: number; draw: number; black: number }[]> =
        reference.kind === "local"
          ? searchPosition(
-             { path: reference.path, type: "exact", fen: queryFen, color: "white", player: null, result: "any" },
+             {
+               path: reference.path,
+               type: "exact",
+               fen: queryFen,
+               color: "white",
+               player: null,
+               result: "any",
+             },
              "build-tab",
            ).then(([openings]) => openings)
          : searchExplorerMoves(reference.kind, [queryFen]).then((r) => r[0] ?? []);
@@ -1045,9 +1067,11 @@ Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
      // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [currentNode.fen, referenceKey]);
    ```
+
    (`PositionStats` from `searchExplorerMoves` is `{ move, white, draw, black }` — matches the `rawOpenings` state shape.)
 
 4. Coverage effect (currently lines ~167-196): replace the guard and the call:
+
    ```ts
    useEffect(() => {
      if (!reference || practiceTab !== "build") {
@@ -1061,8 +1085,12 @@ Changes to `src/components/panels/practice/RepertoireInfo.tsx`:
      const controller = new AbortController();
      setCoverageLoading(true);
      computeTreeCoverage(root, orientation, reference, minGames, startPath, controller.signal)
-       .then((result) => { /* unchanged body */ })
-       .catch(() => { /* unchanged body */ });
+       .then((result) => {
+         /* unchanged body */
+       })
+       .catch(() => {
+         /* unchanged body */
+       });
      return () => controller.abort();
      // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [debouncedRootStructureHash, orientation, referenceKey, startPathKey, minGames, practiceTab]);
@@ -1112,11 +1140,13 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 ## Task 6: Frontend — Settings row to clear the cache
 
 **Files:**
+
 - Create: `src/components/settings/ExplorerCacheSetting.tsx`
 - Modify: `src/components/settings/SettingsPage.tsx` (import + one `settings` array entry near `id: "repertoire-auto-difficulty"`, ~line 578)
 - Modify: `src/translation/en-US.json`
 
 **Interfaces:**
+
 - Consumes: `commands.explorerCacheStats`, `commands.clearExplorerCache` from `@/bindings`; `formatBytes`, `formatNumber` from `@/utils/format`; `ConfirmModal` from `@/components/common/ConfirmModal`.
 - Produces: default-exported `ExplorerCacheSetting` React component.
 
@@ -1205,6 +1235,7 @@ Check `ConfirmModal`'s prop names first (`grep "interface" src/components/common
 - [ ] **Step 3: Register in SettingsPage**
 
 In `src/components/settings/SettingsPage.tsx`:
+
 - Add import near line 80: `import ExplorerCacheSetting from "./ExplorerCacheSetting";`
 - Add an entry to the `settings` array right after the `repertoire-auto-difficulty` object (~line 578):
 
@@ -1259,6 +1290,7 @@ Expected: no new warnings in `explorer.rs` / `error.rs` / `main.rs` (fix any tha
 - [ ] **Step 3: Manual smoke — cache populates and is reused**
 
 Run: `pnpm tauri dev`
+
 1. Open/create a repertoire file, go to the Practice panel → **Build** tab.
 2. With source = **Reference database** and none set, confirm the reworded alert + the selector both show.
 3. Switch source to **Lichess**. The opponent-move list should populate for the start position within ~1–2 s.
@@ -1294,42 +1326,43 @@ Claude-Session: https://claude.ai/code/session_01S84vBLjZdcuoADqfACSpgT"
 
 **Spec coverage**
 
-| Spec section | Task |
-| --- | --- |
-| §1 new `repertoireReferenceSourceAtom` | Task 5 Step 1 |
-| §1 `RepertoireReference` union | Task 4 Step 3 |
-| §1 resolution + `null` only for unset local | Task 5 Step 3 point 2 |
-| §1 coverage data flow (branch batch) | Task 4 Step 3 (`repertoire.ts`) |
-| §1 opponent-move lookup branch | Task 5 Step 3 point 3 |
-| §1 FEN normalization (4 fields) | Task 1 (`normalize_fen`) |
-| §2 `explorer.rs` module | Tasks 1–3 |
-| §2 SQLite cache file in app-data, schema | Task 2 (`init`), Task 3 (`cache_path`) |
-| §2 `AppState.explorer_cache` | Task 3 Step 3 |
-| §2 `get_explorer_moves` (cache→fetch→store, aligned) | Task 3 (`resolve_cached`, command) |
-| §2 `*`-row synthesis, clamp at 0 | Task 1 (`map_response`) |
-| §2 429 backoff, empty vec on hard failure | Task 3 (`fetch_one`, `resolve_cached`) |
-| §2 in-flight dedup | Task 3 (`fetch_lock` + re-check + unique missing list) |
-| §2 rate limit ~1/s, single constant | Task 3 (`MIN_REQUEST_INTERVAL`, `throttle`) |
-| §2 `clear_explorer_cache` (DELETE + VACUUM) | Task 2 (`clear`), Task 3 (command) |
-| §2 `explorer_cache_stats` (count + file bytes) | Task 2 (`stats`), Task 3 (command) |
-| §2 endpoints, no token, `variant=standard` | Task 3 (`explorer_url`, `fetch_one`) |
-| §3 `searchExplorerMoves` wrapper | Task 4 Step 3 (`db.ts`) |
-| §3 `computeTreeCoverage` signature | Task 4 |
-| §3 selector, resolver, dep-array key | Task 5 Step 3 |
-| §3 keep debounce + `practiceTab` guard | Task 5 Step 3 point 4 (unchanged) |
-| §3 bindings regenerated not hand-edited | Task 3 Step 5 |
-| §4 Settings stats + Clear + confirm | Task 6 |
-| §4 i18n by hand, en-US only | Tasks 5–6 (keys), Global Constraints |
-| §5 update `repertoire.test.ts` + lichess case | Task 4 Step 1 |
-| §5 Rust tests (`*` synth, normalization, round-trip) | Tasks 1–3 test steps |
-| §5 manual smoke | Task 7 |
-| Out of scope: report / DatabasePanel / DB-tab entry / TTL / filters | Not touched — confirmed in Task 7 Step 5 |
+| Spec section                                                        | Task                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------ |
+| §1 new `repertoireReferenceSourceAtom`                              | Task 5 Step 1                                          |
+| §1 `RepertoireReference` union                                      | Task 4 Step 3                                          |
+| §1 resolution + `null` only for unset local                         | Task 5 Step 3 point 2                                  |
+| §1 coverage data flow (branch batch)                                | Task 4 Step 3 (`repertoire.ts`)                        |
+| §1 opponent-move lookup branch                                      | Task 5 Step 3 point 3                                  |
+| §1 FEN normalization (4 fields)                                     | Task 1 (`normalize_fen`)                               |
+| §2 `explorer.rs` module                                             | Tasks 1–3                                              |
+| §2 SQLite cache file in app-data, schema                            | Task 2 (`init`), Task 3 (`cache_path`)                 |
+| §2 `AppState.explorer_cache`                                        | Task 3 Step 3                                          |
+| §2 `get_explorer_moves` (cache→fetch→store, aligned)                | Task 3 (`resolve_cached`, command)                     |
+| §2 `*`-row synthesis, clamp at 0                                    | Task 1 (`map_response`)                                |
+| §2 429 backoff, empty vec on hard failure                           | Task 3 (`fetch_one`, `resolve_cached`)                 |
+| §2 in-flight dedup                                                  | Task 3 (`fetch_lock` + re-check + unique missing list) |
+| §2 rate limit ~1/s, single constant                                 | Task 3 (`MIN_REQUEST_INTERVAL`, `throttle`)            |
+| §2 `clear_explorer_cache` (DELETE + VACUUM)                         | Task 2 (`clear`), Task 3 (command)                     |
+| §2 `explorer_cache_stats` (count + file bytes)                      | Task 2 (`stats`), Task 3 (command)                     |
+| §2 endpoints, no token, `variant=standard`                          | Task 3 (`explorer_url`, `fetch_one`)                   |
+| §3 `searchExplorerMoves` wrapper                                    | Task 4 Step 3 (`db.ts`)                                |
+| §3 `computeTreeCoverage` signature                                  | Task 4                                                 |
+| §3 selector, resolver, dep-array key                                | Task 5 Step 3                                          |
+| §3 keep debounce + `practiceTab` guard                              | Task 5 Step 3 point 4 (unchanged)                      |
+| §3 bindings regenerated not hand-edited                             | Task 3 Step 5                                          |
+| §4 Settings stats + Clear + confirm                                 | Task 6                                                 |
+| §4 i18n by hand, en-US only                                         | Tasks 5–6 (keys), Global Constraints                   |
+| §5 update `repertoire.test.ts` + lichess case                       | Task 4 Step 1                                          |
+| §5 Rust tests (`*` synth, normalization, round-trip)                | Tasks 1–3 test steps                                   |
+| §5 manual smoke                                                     | Task 7                                                 |
+| Out of scope: report / DatabasePanel / DB-tab entry / TTL / filters | Not touched — confirmed in Task 7 Step 5               |
 
 **Naming consistency note:** the spec draft called the frontend wrapper `getExplorerMoves`; this plan renames it to `searchExplorerMoves` (symmetry with `searchPositionsBatch`) and uses that name consistently in Tasks 4, 5, and the self-review. The generated Tauri binding is `commands.getExplorerMoves` (from the Rust `get_explorer_moves`) and is used only inside the wrapper and the Settings component's sibling commands.
 
 **Placeholder scan:** No TBD/TODO. Every code step has concrete content. The `react-hooks/exhaustive-deps` disable comments are intentional (the effects key off `referenceKey`, a derived string, not the `reference` object identity).
 
 **Type consistency:**
+
 - `ExplorerSource` = `"lichess" | "masters"` end to end (Rust `#[serde(rename_all = "lowercase")]` → generated TS union → `searchExplorerMoves` param → `reference.kind` for the two non-local variants).
 - `PositionStats` `{ move, white, draw, black }` identical across `searchPositionsBatch` and `searchExplorerMoves` returns; `map_response` emits exactly those fields plus the `*` row.
 - `ExplorerCacheStats` `{ entries: i64, bytes: i64 }` → TS `{ entries: number; bytes: number }`, consumed in `ExplorerCacheSetting`.
