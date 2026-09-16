@@ -50,7 +50,7 @@ impl PuzzleCache {
             self.cache.clear();
             self.counter = 0;
 
-            let mut db = diesel::SqliteConnection::establish(file).expect("open database");
+            let mut db = diesel::SqliteConnection::establish(file)?;
 
             let min_id = puzzles::table
                 .select(puzzles::id)
@@ -176,13 +176,15 @@ pub struct PuzzleDatabaseInfo {
 pub async fn get_puzzle_db_info(file: PathBuf) -> Result<PuzzleDatabaseInfo, Error> {
     let path = file;
 
-    let mut db =
-        diesel::SqliteConnection::establish(&path.to_string_lossy()).expect("open database");
+    let mut db = diesel::SqliteConnection::establish(&path.to_string_lossy())?;
 
     let puzzle_count = puzzles::table.count().get_result::<i64>(&mut db)? as i32;
 
     let storage_size = path.metadata()?.len();
-    let filename = path.file_name().expect("get filename").to_string_lossy();
+    let filename = path
+        .file_name()
+        .ok_or_else(|| Error::NoFileName(path.to_string_lossy().to_string()))?
+        .to_string_lossy();
 
     Ok(PuzzleDatabaseInfo {
         title: filename.to_string(),
@@ -203,7 +205,7 @@ pub fn delete_puzzle_database(file: String) -> Result<(), Error> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_puzzle_themes(file: String) -> Result<Vec<String>, Error> {
-    let mut db = diesel::SqliteConnection::establish(&file).expect("open database");
+    let mut db = diesel::SqliteConnection::establish(&file)?;
     let result: Vec<String> = themes::table
         .select(themes::name)
         .order(themes::name.asc())
@@ -214,7 +216,7 @@ pub fn get_puzzle_themes(file: String) -> Result<Vec<String>, Error> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_themes_for_puzzle(file: String, puzzle_id: i32) -> Result<Vec<String>, Error> {
-    let mut db = diesel::SqliteConnection::establish(&file).expect("open database");
+    let mut db = diesel::SqliteConnection::establish(&file)?;
     let result: Vec<String> = themes::table
         .inner_join(puzzle_themes::table)
         .filter(puzzle_themes::puzzle_id.eq(puzzle_id))

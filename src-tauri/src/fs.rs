@@ -1,7 +1,7 @@
 use std::{
     fs::create_dir_all,
     io::Cursor,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use log::info;
@@ -32,13 +32,24 @@ pub async fn download_file(
 ) -> Result<(), Error> {
     let finalize = finalize.unwrap_or(true);
     info!("Downloading file from {}", url);
+
+    // Minimal path-traversal guard: `path` is the destination we write to
+    // (or extract an archive into) below, so reject any ".." component
+    // before it is used for anything. Callers always pass an
+    // already-resolved absolute destination (see `AddDatabase.tsx`,
+    // `AddPuzzle.tsx`, `utils/lichess/api.tsx`), so this should never
+    // trigger for legitimate use.
+    if path.components().any(|c| c == Component::ParentDir) {
+        return Err(Error::PathTraversal(path.to_string_lossy().to_string()));
+    }
+
     let client = state.http_client.clone();
 
     let mut req = client.get(&url);
     // add Bearer if token is present
     if let Some(token) = token {
         let mut header_map = HeaderMap::new();
-        header_map.insert("Authorization", format!("Bearer {token}").parse().unwrap());
+        header_map.insert("Authorization", format!("Bearer {token}").parse()?);
         req = req.headers(header_map);
     }
     let res = req.send().await?;
@@ -47,6 +58,17 @@ pub async fn download_file(
     } else {
         res.content_length()
     };
+
+    // Only enforce a hard cap when a size was declared up front (either by
+    // the caller or via the response's Content-Length). `total_size` is
+    // sometimes an approximation supplied by the caller (e.g. an estimated
+    // PGN size based on game count, see `downloadLichess` in
+    // `utils/lichess/api.tsx`) rather than an exact figure, so allow
+    // generous slack - both a relative margin and an absolute floor -
+    // before aborting. This exists to stop a misbehaving/malicious server
+    // from streaming an unbounded amount of data into memory, not to
+    // enforce exact byte accounting.
+    let max_allowed_size = total_size.map(|size| size.saturating_mul(2) + 5 * 1024 * 1024);
 
     let mut file: Vec<u8> = Vec::new();
     let mut downloaded: u64 = 0;
@@ -58,6 +80,13 @@ pub async fn download_file(
         let chunk = item?;
         file.extend_from_slice(&chunk);
         downloaded += chunk.len() as u64;
+
+        if let Some(max_allowed_size) = max_allowed_size {
+            if downloaded > max_allowed_size {
+                return Err(Error::DownloadSizeExceeded);
+            }
+        }
+
         if let Some(total_size) = total_size {
             let progress = ((downloaded as f32 / total_size as f32) * 100.0).min(100.0);
             if progress - last_reported_progress >= 0.5
