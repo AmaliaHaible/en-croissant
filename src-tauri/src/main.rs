@@ -95,6 +95,7 @@ pub struct AppState {
     #[derivative(Default(value = "DashMap::new()"))]
     search_collisions: DashMap<(GameQuery, PathBuf), Arc<tokio::sync::Mutex<()>>>,
     pgn_offsets: DashMap<String, pgn::PgnIndex>,
+    pgn_file_locks: DashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>,
 
     engine_processes: DashMap<(String, String), Arc<tokio::sync::Mutex<EngineProcess>>>,
     analysis_cancel_flags: DashMap<String, Arc<AtomicBool>>,

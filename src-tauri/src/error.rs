@@ -101,6 +101,27 @@ pub enum Error {
 
     #[error("Analysis cancelled")]
     AnalysisCancelled,
+
+    #[error("Invalid path (not valid UTF-8): {0}")]
+    InvalidPath(String),
+
+    #[error("Invalid negative index: {0}")]
+    NegativeIndex(i32),
+
+    #[error("Authentication already in progress")]
+    AlreadyAuthenticating,
+
+    #[error("Path traversal is not allowed: {0}")]
+    PathTraversal(String),
+
+    #[error("Path has no filename component: {0}")]
+    NoFileName(String),
+
+    #[error("Downloaded file exceeds the expected size")]
+    DownloadSizeExceeded,
+
+    #[error(transparent)]
+    InvalidHeaderValue(Box<reqwest::header::InvalidHeaderValue>),
 }
 
 impl From<std::io::Error> for Error {
@@ -202,6 +223,12 @@ impl From<std::time::SystemTimeError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::Json(Box::new(value))
+    }
+}
+
+impl From<reqwest::header::InvalidHeaderValue> for Error {
+    fn from(value: reqwest::header::InvalidHeaderValue) -> Self {
+        Self::InvalidHeaderValue(Box::new(value))
     }
 }
 
