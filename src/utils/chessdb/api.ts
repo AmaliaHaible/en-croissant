@@ -111,10 +111,18 @@ async function queryPosition(fen: string) {
     url.searchParams.append("action", "queryall");
     url.searchParams.append("json", "1");
     url.searchParams.append("board", fen);
-    const res = (await (await fetch(url.toString())).json()) as AllResponse;
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+        throw new Error(`Failed to query chessdb.cn: ${response.status} ${response.statusText}`);
+    }
+    const res = (await response.json()) as AllResponse;
 
     if (res.status !== "ok") {
         return [];
+    }
+
+    if (!Array.isArray(res.moves)) {
+        throw new Error("Unexpected response shape from chessdb.cn: missing moves array");
     }
 
     const data: CachedResult[] = res.moves.map((m) => ({
@@ -141,7 +149,11 @@ async function queryBest(fen: string) {
     url.searchParams.append("json", "1");
     url.searchParams.append("stable", "1");
     url.searchParams.append("board", fen);
-    const res = (await (await fetch(url.toString())).json()) as BestResponse;
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+        throw new Error(`Failed to query chessdb.cn: ${response.status} ${response.statusText}`);
+    }
+    const res = (await response.json()) as BestResponse;
 
     if (res.status !== "ok") {
         return null;

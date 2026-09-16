@@ -7,6 +7,7 @@ import { error } from "@tauri-apps/plugin-log";
 import { parseUci } from "chessops";
 import { makeFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
+import i18next from "i18next";
 import { match, P } from "ts-pattern";
 import {
   type BestMoves,
@@ -225,8 +226,13 @@ export async function getLichessAccount({
   if (!response.ok) {
     error(`Failed to fetch Lichess account: ${response.status} ${response.url}`);
     notifications.show({
-      title: "Failed to fetch Lichess account",
-      message: `Could not find account "${username}" on lichess.org`,
+      title: i18next.t("Lichess.Account.NotFound.Title", {
+        defaultValue: "Failed to fetch Lichess account",
+      }),
+      message: i18next.t("Lichess.Account.NotFound.Message", {
+        username,
+        defaultValue: `Could not find account "${username}" on lichess.org`,
+      }),
       color: "red",
       icon: <IconX />,
     });
@@ -314,6 +320,11 @@ async function getCloudEvaluation(fen: string, multipv: number): Promise<Lichess
   url.searchParams.append("multiPv", multipv.toString());
 
   const response = await fetch(url.toString(), { headers: apiHeaders() });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Lichess cloud evaluation: ${response.status} ${response.statusText}`,
+    );
+  }
   const data = (await response.json()) as LichessCloudData;
   cache.set(`${fen}-${multipv}`, data);
   return data;
