@@ -95,11 +95,10 @@ function PracticePanel() {
   const lastSyncedTreeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const treeFingerprint = JSON.stringify(root);
-    if (lastSyncedTreeRef.current === treeFingerprint) return;
-
     const orientation = headers.orientation || "white";
     const start = headers.start || [];
+    const treeFingerprint = `${orientation}|${JSON.stringify(root)}`;
+    if (lastSyncedTreeRef.current === treeFingerprint) return;
 
     if (deckPositionsRef.current.length === 0) {
       const newDeck = buildFromTree(root, orientation, start);
