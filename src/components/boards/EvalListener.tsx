@@ -2,7 +2,7 @@ import { parseUci } from "chessops";
 import { INITIAL_FEN, makeFen } from "chessops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
-import { startTransition, useContext, useEffect, useMemo } from "react";
+import { startTransition, useContext, useEffect, useMemo, useRef } from "react";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -24,6 +24,7 @@ import {
   type LocalEngine,
   getBestMoves as localGetBestMoves,
   getDefaultVariant,
+  killEngine,
   stopEngine,
 } from "@/utils/engines";
 import { getBestMoves as lichessGetBestMoves } from "@/utils/lichess/api";
@@ -133,6 +134,37 @@ function EngineListener({
       tab: activeTab!,
     }),
   );
+
+  // Kept current every render so a resolving `getBestMoves` promise (below) can
+  // tell whether the position it was asked about is still the one the user is
+  // looking at, mirroring the `resultFen === rootFen` check in useEvalPreview.
+  const searchingFenRef = useRef(searchingFen);
+  const searchingMovesRef = useRef(searchingMoves);
+  useEffect(() => {
+    searchingFenRef.current = searchingFen;
+    searchingMovesRef.current = searchingMoves;
+  });
+
+  // This listener only exists while its tab is the active one, so switching to
+  // another tab (without closing this one) unmounts it. Without this, a local
+  // engine search started below keeps running in the backend forever, since
+  // `useThrottledEffect`'s own cleanup only clears a pending timeout, not an
+  // already-started search (see useCoachHint/useEvalPreview/useTrainingEngine
+  // for the same pattern).
+  const engineRef = useRef(engine);
+  engineRef.current = engine;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  useEffect(() => {
+    return () => {
+      const e = engineRef.current;
+      const tab = activeTabRef.current;
+      if (e.type === "local" && tab) {
+        killEngine(e, tab).catch(() => {});
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!settings.enabled) return;
     const unlisten = events.bestMovesPayload.listen(({ payload }) => {
@@ -207,21 +239,45 @@ function EngineListener({
               name: s.name,
               value: s.value?.toString() || "",
             })) ?? [];
+          const requestFen = searchingFen;
+          const requestMoves = searchingMoves;
           getBestMoves(activeTab!, settings.go, {
-            moves: searchingMoves,
-            fen: searchingFen,
+            moves: requestMoves,
+            fen: requestFen,
             extraOptions: options,
-          }).then((moves) => {
-            if (moves) {
+          })
+            .then((moves) => {
+              if (!moves) return;
+              // A slower response for a position we've since navigated away
+              // from: applying it now would overwrite the current eval with a
+              // stale one. Compare against the latest values (kept fresh every
+              // render via the refs above), not the ones this closure captured
+              // when the request was made.
+              if (
+                requestFen !== searchingFenRef.current ||
+                !equal(requestMoves, searchingMovesRef.current)
+              ) {
+                return;
+              }
               const [progress, bestMoves] = moves;
               setEngineVariation((prev) => {
                 const newMap = new Map(prev);
-                newMap.set(`${searchingFen}:${searchingMoves.join(",")}`, bestMoves);
+                newMap.set(`${requestFen}:${requestMoves.join(",")}`, bestMoves);
                 return newMap;
               });
               setProgress(progress);
-            }
-          });
+            })
+            .catch((error) => {
+              console.error("Failed to get best moves", error);
+              if (
+                requestFen === searchingFenRef.current &&
+                equal(requestMoves, searchingMovesRef.current)
+              ) {
+                // Stop showing a perpetual "still calculating" spinner for a
+                // request that's never going to resolve.
+                setProgress(100);
+              }
+            });
         }
       } else {
         if (engine.type === "local") {

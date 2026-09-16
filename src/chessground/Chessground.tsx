@@ -81,6 +81,15 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
     [api],
   );
 
+  // Only responsible for creating the native chessground instance once
+  // (the `else` branch, gated on `api` being null). The `if (api)` branch below
+  // is a settle-call for the render right after creation (when `api` flips
+  // from null to a value) — every prop-driven update after that is handled by
+  // the effect below, which applies a superset of this same config (it also
+  // layers in the moveMethod-driven draggable/selectable overrides). Depending
+  // on `props` here too would make both effects re-run and call `api.set(...)`
+  // on every single render, with this one's result immediately clobbered by
+  // the other — so `props` is deliberately left out of these deps.
   useEffect(() => {
     if (boardRef?.current == null) return;
     if (api) {
@@ -118,8 +127,16 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
       });
       setApi(chessgroundApi);
     }
-  }, [api, props, boardRef]);
+  }, [api, boardRef]);
 
+  // Keeps the native board in sync with every prop that actually feeds into
+  // `api.set(...)` below (the full `Config` surface, since it's spread in
+  // wholesale) plus `moveMethod`. Depending on `props` as a whole here would
+  // re-run (and call `api.set(...)`) on every re-render of this component
+  // regardless of whether anything relevant changed, since `Chessground({
+  // ref, ...props })` destructures a brand-new `props` object every call.
+  // Listing the individual fields lets primitive values (fen, orientation,
+  // turnColor, ...) that are unchanged across a re-render skip the call.
   useEffect(() => {
     api?.set({
       ...props,
@@ -140,7 +157,37 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
         enabled: moveMethod !== "drag",
       },
     });
-  }, [api, props, moveMethod]);
+  }, [
+    api,
+    moveMethod,
+    props.fen,
+    props.orientation,
+    props.turnColor,
+    props.check,
+    props.lastMove,
+    props.selected,
+    props.coordinates,
+    props.coordinatesOnSquares,
+    props.ranksPosition,
+    props.autoCastle,
+    props.viewOnly,
+    props.disableContextMenu,
+    props.addPieceZIndex,
+    props.blockTouchScroll,
+    props.touchIgnoreRadius,
+    props.trustAllEvents,
+    props.jsHover,
+    props.highlight,
+    props.animation,
+    props.movable,
+    props.premovable,
+    props.predroppable,
+    props.draggable,
+    props.selectable,
+    props.events,
+    props.drawable,
+    props.setBoardFen,
+  ]);
 
   const onDragOverDestRef = useRef(props.onDragOverDest);
   onDragOverDestRef.current = props.onDragOverDest;
