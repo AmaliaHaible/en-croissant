@@ -41,6 +41,7 @@ import {
   hidePuzzleRatingAtom,
   jumpToNextPuzzleAtom,
   progressivePuzzlesAtom,
+  puzzleEloAtom,
   puzzleRatingRangeAtom,
   puzzleThemeAtom,
   selectedPuzzleDbAtom,
@@ -48,6 +49,7 @@ import {
   trackPuzzleTimeAtom,
 } from "@/state/atoms";
 import { positionFromFen } from "@/utils/chessops";
+import { updateElo } from "@/utils/elo";
 import { formatThemeLabel, formatTime } from "@/utils/format";
 import { type Completion, getPuzzleDatabases, type Puzzle } from "@/utils/puzzles";
 import { createTab } from "@/utils/tabs";
@@ -60,6 +62,10 @@ import MoveControls from "../common/MoveControls";
 import { TreeStateContext } from "../common/TreeStateContext";
 import AddPuzzle from "./AddPuzzle";
 import PuzzleBoard from "./PuzzleBoard";
+
+const PUZZLE_RATING_MIN = 600;
+const PUZZLE_RATING_MAX = 2800;
+const PROGRESSIVE_BAND_WIDTH = 100;
 
 // Ticks its own 100ms display timer in isolation so the rest of the puzzle
 // tree (in particular PuzzleBoard/Chessground) doesn't re-render 10x/sec.
@@ -213,11 +219,12 @@ function Puzzles({ id }: { id: string }) {
 
     let range = ratingRange;
     if (progressive) {
-      const rating = puzzles[currentPuzzle]?.rating;
-      if (rating) {
-        range = [rating + 50, rating + 100];
-        setRatingRange([rating + 50, rating + 100]);
-      }
+      const elo = puzzleElo ?? Math.round((ratingRange[0] + ratingRange[1]) / 2);
+      range = [
+        Math.max(PUZZLE_RATING_MIN, elo - PROGRESSIVE_BAND_WIDTH),
+        Math.min(PUZZLE_RATING_MAX, elo + PROGRESSIVE_BAND_WIDTH),
+      ];
+      setRatingRange(range);
     }
     const res = await commands.getPuzzle(db, range[0], range[1], effectiveSelectedTheme);
     const puzzle = unwrap(res);
@@ -239,6 +246,12 @@ function Puzzles({ id }: { id: string }) {
   async function changeCompletion(completion: Completion) {
     const timeSpent = timerStart !== null ? Date.now() - timerStart : 0;
     const puzzle = puzzles[currentPuzzle];
+
+    if (progressive && puzzle?.rating) {
+      const baseline = puzzleElo ?? Math.round((ratingRange[0] + ratingRange[1]) / 2);
+      setPuzzleElo(updateElo(baseline, puzzle.rating, completion === "correct" ? 1 : 0));
+    }
+
     setPuzzles((puzzles) => {
       puzzles[currentPuzzle].completion = completion;
       puzzles[currentPuzzle].timeSpent = timeSpent;
@@ -262,6 +275,7 @@ function Puzzles({ id }: { id: string }) {
   const [isPlayingSolution, setIsPlayingSolution] = useState(false);
 
   const [progressive, setProgressive] = useAtom(progressivePuzzlesAtom);
+  const [puzzleElo, setPuzzleElo] = useAtom(puzzleEloAtom);
   const [hideRating, setHideRating] = useAtom(hidePuzzleRatingAtom);
   const [trackTime, setTrackTime] = useAtom(trackPuzzleTimeAtom);
 
@@ -430,9 +444,9 @@ function Puzzles({ id }: { id: string }) {
                       {t("Puzzle.RatingRange")}
                     </Text>
                     <RangeSlider
-                      min={600}
+                      min={PUZZLE_RATING_MIN}
                       my="md"
-                      max={2800}
+                      max={PUZZLE_RATING_MAX}
                       value={ratingRange}
                       onChange={setRatingRange}
                       disabled={progressive}
@@ -456,12 +470,24 @@ function Puzzles({ id }: { id: string }) {
                     searchable
                   />
                   <SimpleGrid cols={2} spacing="sm">
-                    <Switch
-                      label={t("Puzzle.Progressive")}
-                      description={t("Puzzle.Progressive.Desc")}
-                      checked={progressive}
-                      onChange={(event) => setProgressive(event.currentTarget.checked)}
-                    />
+                    <div>
+                      <Switch
+                        label={t("Puzzle.Progressive")}
+                        description={t("Puzzle.Progressive.Desc")}
+                        checked={progressive}
+                        onChange={(event) => setProgressive(event.currentTarget.checked)}
+                      />
+                      {puzzleElo !== null && (
+                        <Button
+                          variant="subtle"
+                          size="compact-xs"
+                          mt={4}
+                          onClick={() => setPuzzleElo(null)}
+                        >
+                          {t("Puzzle.ResetElo")}
+                        </Button>
+                      )}
+                    </div>
                     <Switch
                       label={t("Puzzle.HideRating")}
                       description={t("Puzzle.HideRating.Desc")}
@@ -505,6 +531,17 @@ function Puzzles({ id }: { id: string }) {
                   : puzzles[currentPuzzle]?.rating || "-"}
               </Text>
             </Paper>
+
+            {progressive && (
+              <Paper withBorder p="xs">
+                <Text size="xs" c="dimmed">
+                  {t("Puzzle.Elo")}
+                </Text>
+                <Text fw={700} size="lg">
+                  {puzzleElo ?? "-"}
+                </Text>
+              </Paper>
+            )}
 
             {trackTime && (
               <PuzzleTimer
