@@ -61,6 +61,52 @@ import { TreeStateContext } from "../common/TreeStateContext";
 import AddPuzzle from "./AddPuzzle";
 import PuzzleBoard from "./PuzzleBoard";
 
+// Ticks its own 100ms display timer in isolation so the rest of the puzzle
+// tree (in particular PuzzleBoard/Chessground) doesn't re-render 10x/sec.
+// A shared tick in the parent would give the Chessground `drawable` prop a
+// new object identity every tick, which makes chessground wipe hand-drawn
+// arrows and re-apply the FEN on every render (see Chessground.tsx).
+function PuzzleTimer({
+  trackTime,
+  isPuzzleIncomplete,
+  timerStart,
+  timeSpent,
+}: {
+  trackTime: boolean;
+  isPuzzleIncomplete: boolean;
+  timerStart: number | null;
+  timeSpent: number | undefined;
+}) {
+  const { t } = useTranslation();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!trackTime || !isPuzzleIncomplete || timerStart === null) return;
+
+    const displayInterval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 100);
+
+    return () => clearInterval(displayInterval);
+  }, [trackTime, isPuzzleIncomplete, timerStart]);
+
+  const elapsedTime =
+    timerStart !== null && isPuzzleIncomplete && trackTime
+      ? Date.now() - timerStart
+      : timeSpent || 0;
+
+  return (
+    <Paper withBorder p="xs">
+      <Text size="xs" c="dimmed">
+        {t("Puzzle.Time")}
+      </Text>
+      <Text fw={700} size="lg" ff="monospace">
+        {formatTime(elapsedTime)}
+      </Text>
+    </Paper>
+  );
+}
+
 function Puzzles({ id }: { id: string }) {
   const { t } = useTranslation();
   const store = useContext(TreeStateContext)!;
@@ -220,28 +266,13 @@ function Puzzles({ id }: { id: string }) {
   const [trackTime, setTrackTime] = useAtom(trackPuzzleTimeAtom);
 
   const [timerStart, setTimerStart] = useAtom(currentPuzzleTimerAtom);
-  const [, setTick] = useState(0);
   const isPuzzleIncomplete = puzzles[currentPuzzle]?.completion === "incomplete";
-  const elapsedTime =
-    timerStart && isPuzzleIncomplete && trackTime
-      ? Date.now() - timerStart
-      : puzzles[currentPuzzle]?.timeSpent || 0;
 
   useEffect(() => {
     if (trackTime && isPuzzleIncomplete && timerStart === null) {
       setTimerStart(Date.now());
     }
   }, [trackTime, isPuzzleIncomplete, timerStart, setTimerStart]);
-
-  useEffect(() => {
-    if (!trackTime || !isPuzzleIncomplete || timerStart === null) return;
-
-    const displayInterval = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 100);
-
-    return () => clearInterval(displayInterval);
-  }, [trackTime, isPuzzleIncomplete, timerStart]);
 
   useEffect(() => {
     return () => {
@@ -476,14 +507,12 @@ function Puzzles({ id }: { id: string }) {
             </Paper>
 
             {trackTime && (
-              <Paper withBorder p="xs">
-                <Text size="xs" c="dimmed">
-                  {t("Puzzle.Time")}
-                </Text>
-                <Text fw={700} size="lg" ff="monospace">
-                  {formatTime(elapsedTime)}
-                </Text>
-              </Paper>
+              <PuzzleTimer
+                trackTime={trackTime}
+                isPuzzleIncomplete={isPuzzleIncomplete}
+                timerStart={timerStart}
+                timeSpent={puzzles[currentPuzzle]?.timeSpent}
+              />
             )}
 
             <Paper withBorder p="xs">
