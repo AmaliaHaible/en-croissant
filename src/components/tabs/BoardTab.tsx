@@ -43,7 +43,8 @@ export function BoardTab({
 
   const dirty = useAtomValue(tabDirtyFamily(tab.value));
   const autoSave = useAtomValue(autoSaveAtom);
-  const showUnsavedDot = tabType === "analysis" && isPersistentGameOrigin(tab) && dirty && !autoSave;
+  const showUnsavedDot =
+    tabType === "analysis" && isPersistentGameOrigin(tab) && dirty && !autoSave;
 
   const ref = useClickOutside(() => {
     toggleOpen(false);
