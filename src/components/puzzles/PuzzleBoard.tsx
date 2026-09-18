@@ -8,7 +8,9 @@ import { useAtom, useAtomValue } from "jotai";
 import { useContext, useState } from "react";
 import { useStore } from "zustand";
 import { Chessground } from "@/chessground/Chessground";
+import { useKeybind } from "@/hooks/useKeybind";
 import { jumpToNextPuzzleAtom, moveHighlightAtom, showCoordinatesAtom } from "@/state/atoms";
+import { keyMapAtom } from "@/state/keybinds";
 import classes from "@/styles/Chessboard.module.css";
 import { positionFromFen } from "@/utils/chessops";
 import type { Completion, Puzzle } from "@/utils/puzzles";
@@ -37,8 +39,12 @@ function PuzzleBoard({
   const makeMove = useStore(store, (s) => s.makeMove);
   const makeMoves = useStore(store, (s) => s.makeMoves);
   const setShapes = useStore(store, (s) => s.setShapes);
+  const clearShapes = useStore(store, (s) => s.clearShapes);
   const reset = useForceUpdate();
   const [jumpToNextPuzzleImmediately] = useAtom(jumpToNextPuzzleAtom);
+
+  const keyMap = useAtomValue(keyMapAtom);
+  useKeybind(keyMap.CLEAR_SHAPES.keys, () => clearShapes());
 
   const currentNode = getNodeAtPath(root, position);
 
