@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pre-commit: auto-format staged files with oxfmt and cargo fmt, then re-stage
+# the formatted result so the formatting is included in the commit.
+
+set -u
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root" || exit 1
+
+# Staged files that still exist on disk (added/copied/modified/renamed).
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -z "$staged_files" ]; then
+  exit 0
+fi
+
+# --- Frontend: oxfmt (skips generated files via .oxfmtrc.json ignorePatterns) ---
+frontend_files=$(echo "$staged_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|json|jsonc|css)$' || true)
+
+if [ -n "$frontend_files" ]; then
+  echo "==> oxfmt (staged files)"
+  echo "$frontend_files" | xargs pnpm exec oxfmt --write --no-error-on-unmatched-pattern
+  echo "$frontend_files" | xargs git add --
+fi
+
+# --- Rust: cargo fmt ---
+rust_files=$(echo "$staged_files" | grep -E '^src-tauri/.*\.rs$' || true)
+
+if [ -n "$rust_files" ]; then
+  echo "==> cargo fmt (staged files)"
+  echo "$rust_files" | xargs cargo fmt --manifest-path src-tauri/Cargo.toml --
+  echo "$rust_files" | xargs git add --
+fi
+
+exit 0

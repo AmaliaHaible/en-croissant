@@ -10,6 +10,7 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "dev": "vite",
     "dev:frontend": "vite",
     "dev:desktop": "tauri dev",
