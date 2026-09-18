@@ -497,6 +497,11 @@ export const scoreTypeFamily = atomFamily((_engine: string) => atom<"cp" | "wdl"
 const threatFamily = atomFamily((_tab: string) => atom(false));
 export const currentThreatAtom = tabValue(threatFamily);
 
+// Mirrors the per-tab tree store's `dirty` flag so `BoardTab` — which sits
+// outside the store's React context — can show an unsaved-changes indicator.
+// Kept in sync by `TreeStateProvider`.
+export const tabDirtyFamily = atomFamily((_tab: string) => atom(false));
+
 const evalOpenFamily = atomFamily((_tab: string) => atom(true));
 export const currentEvalOpenAtom = tabValue(evalOpenFamily);
 
@@ -944,6 +949,7 @@ export const tabEngineSettingsFamily = atomFamily(
 const tabKeyedFamilies: { remove: (tab: string) => void }[] = [
     puzzleTimerFamily,
     threatFamily,
+    tabDirtyFamily,
     evalOpenFamily,
     evalBarDisplayFamily,
     invisibleFamily,

@@ -11,8 +11,10 @@ import {
   IconZoomCheck,
 } from "@tabler/icons-react";
 import cx from "clsx";
+import { useAtomValue } from "jotai";
 import { useEffect } from "react";
-import type { Tab } from "@/utils/tabs";
+import { autoSaveAtom, tabDirtyFamily } from "@/state/atoms";
+import { isPersistentGameOrigin, type Tab } from "@/utils/tabs";
 import { InlineInput } from "../common/InlineInput";
 import classes from "./BoardTab.module.css";
 import { FileIcon } from "../files/FileIcon";
@@ -38,6 +40,10 @@ export function BoardTab({
   const { t } = useTranslation();
   const [open, toggleOpen] = useToggle();
   const [renaming, toggleRenaming] = useToggle();
+
+  const dirty = useAtomValue(tabDirtyFamily(tab.value));
+  const autoSave = useAtomValue(autoSaveAtom);
+  const showUnsavedDot = tabType === "analysis" && isPersistentGameOrigin(tab) && dirty && !autoSave;
 
   const ref = useClickOutside(() => {
     toggleOpen(false);
@@ -70,14 +76,15 @@ export function BoardTab({
           rightSection={
             <ActionIcon
               component="div"
-              className={classes.closeTabBtn}
+              className={cx(classes.closeTabBtn, { [classes.hasUnsavedDot]: showUnsavedDot })}
               onClick={(e) => {
                 closeTab(tab.value);
                 e.stopPropagation();
               }}
               size="0.875rem"
             >
-              <IconX />
+              <span className={classes.unsavedDot} />
+              <IconX className={classes.closeIcon} />
             </ActionIcon>
           }
           onPointerDown={(e) => {
