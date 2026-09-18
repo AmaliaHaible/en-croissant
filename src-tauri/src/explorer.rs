@@ -96,7 +96,9 @@ fn map_response(data: &ExplorerResponse) -> Vec<PositionStats> {
 /// Cached entries hold the raw body, so this runs on every cache read — a
 /// change to `map_response` therefore takes effect without a cache wipe.
 fn parse_and_map(raw: &str) -> Result<Vec<PositionStats>, Error> {
-    Ok(map_response(&serde_json::from_str::<ExplorerResponse>(raw)?))
+    Ok(map_response(&serde_json::from_str::<ExplorerResponse>(
+        raw,
+    )?))
 }
 
 type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
@@ -193,7 +195,9 @@ impl ExplorerCache {
         let rows: Vec<CountRow> =
             sql_query("SELECT COUNT(*) AS count FROM position_cache").load(&mut conn)?;
         let entries = rows.first().map(|r| r.count).unwrap_or(0);
-        let bytes = std::fs::metadata(cache_path).map(|m| m.len() as i64).unwrap_or(0);
+        let bytes = std::fs::metadata(cache_path)
+            .map(|m| m.len() as i64)
+            .unwrap_or(0);
         Ok(ExplorerCacheStats { entries, bytes })
     }
 }
@@ -203,12 +207,11 @@ fn cache_get(
     source: ExplorerSource,
     fen: &str,
 ) -> Result<Option<Vec<PositionStats>>, Error> {
-    let rows: Vec<ResponseRow> = sql_query(
-        "SELECT response FROM position_cache WHERE source = ? AND fen = ? LIMIT 1",
-    )
-    .bind::<Text, _>(source.as_str())
-    .bind::<Text, _>(fen)
-    .load(conn)?;
+    let rows: Vec<ResponseRow> =
+        sql_query("SELECT response FROM position_cache WHERE source = ? AND fen = ? LIMIT 1")
+            .bind::<Text, _>(source.as_str())
+            .bind::<Text, _>(fen)
+            .load(conn)?;
 
     match rows.into_iter().next() {
         // A row we can no longer parse (hand-edited db, or a payload shape that
@@ -475,15 +478,28 @@ mod tests {
             draws: 40,
             black: 60, // 200 games total through the position
             moves: vec![
-                ExplorerMove { san: "e4".into(), white: 50, draws: 20, black: 25 },
-                ExplorerMove { san: "d4".into(), white: 40, draws: 15, black: 30 },
+                ExplorerMove {
+                    san: "e4".into(),
+                    white: 50,
+                    draws: 20,
+                    black: 25,
+                },
+                ExplorerMove {
+                    san: "d4".into(),
+                    white: 40,
+                    draws: 15,
+                    black: 30,
+                },
             ],
         };
         let stats = map_response(&data);
 
         assert_eq!(stats.len(), 3);
         assert_eq!(stats[0].move_, "e4");
-        assert_eq!((stats[0].white, stats[0].draw, stats[0].black), (50, 20, 25));
+        assert_eq!(
+            (stats[0].white, stats[0].draw, stats[0].black),
+            (50, 20, 25)
+        );
 
         let star = stats.iter().find(|s| s.move_ == "*").unwrap();
         // 100-90=10 white, 40-35=5 draw, 60-55=5 black terminated here
@@ -496,9 +512,17 @@ mod tests {
             white: 10,
             draws: 10,
             black: 10,
-            moves: vec![ExplorerMove { san: "e4".into(), white: 99, draws: 0, black: 0 }],
+            moves: vec![ExplorerMove {
+                san: "e4".into(),
+                white: 99,
+                draws: 0,
+                black: 0,
+            }],
         };
-        let star = map_response(&data).into_iter().find(|s| s.move_ == "*").unwrap();
+        let star = map_response(&data)
+            .into_iter()
+            .find(|s| s.move_ == "*")
+            .unwrap();
         assert_eq!((star.white, star.draw, star.black), (0, 10, 10));
     }
 
@@ -514,20 +538,26 @@ mod tests {
         let mut conn = pool.get().unwrap();
 
         let fen = normalize_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        assert!(cache_get(&mut conn, ExplorerSource::Lichess, &fen).unwrap().is_none());
+        assert!(cache_get(&mut conn, ExplorerSource::Lichess, &fen)
+            .unwrap()
+            .is_none());
 
         // The cache holds the raw explorer body; `cache_get` maps it on read.
         let raw = r#"{"white":5,"draws":1,"black":2,"moves":[{"san":"e4","white":5,"draws":1,"black":2}]}"#;
         cache_put(&mut conn, ExplorerSource::Lichess, &fen, raw).unwrap();
 
-        let got = cache_get(&mut conn, ExplorerSource::Lichess, &fen).unwrap().unwrap();
+        let got = cache_get(&mut conn, ExplorerSource::Lichess, &fen)
+            .unwrap()
+            .unwrap();
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].move_, "e4");
         assert_eq!(got[0].white, 5);
         assert!(got.iter().any(|s| s.move_ == "*"));
 
         // different source is a different key
-        assert!(cache_get(&mut conn, ExplorerSource::Masters, &fen).unwrap().is_none());
+        assert!(cache_get(&mut conn, ExplorerSource::Masters, &fen)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

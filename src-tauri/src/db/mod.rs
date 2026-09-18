@@ -679,11 +679,7 @@ pub fn generate_search_index(
     db_path: &Path,
     state: &tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let db = &mut get_db_or_create(
-        state,
-        path_to_str(db_path)?,
-        ConnectionOptions::default(),
-    )?;
+    let db = &mut get_db_or_create(state, path_to_str(db_path)?, ConnectionOptions::default())?;
     let index_path = get_index_path(db_path);
 
     info!("Generating search index at {:?}", index_path);
